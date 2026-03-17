@@ -1,4 +1,4 @@
-export type SymbolCode = 'NAS100' | 'US30' | 'NQ' | 'YM' | 'MNQ' | 'MYM';
+export type SymbolCode = 'NAS100' | 'US30' | 'NQ' | 'ES' | 'YM' | 'MNQ' | 'MYM';
 
 export type SessionName = 'NY';
 

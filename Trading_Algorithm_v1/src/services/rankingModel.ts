@@ -68,7 +68,7 @@ export const normalizeRankingModel = (raw: unknown): RankingModel => {
   const symbolAdjustments: Partial<Record<SymbolCode, number>> = {};
   const rawSymbols = obj.symbolAdjustments as Record<string, unknown> | undefined;
   if (rawSymbols && typeof rawSymbols === 'object') {
-    const symbols: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM'];
+    const symbols: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM'];
     for (const symbol of symbols) {
       if (symbol in rawSymbols) {
         symbolAdjustments[symbol] = clamp(toNumber(rawSymbols[symbol], 0), -10, 10);

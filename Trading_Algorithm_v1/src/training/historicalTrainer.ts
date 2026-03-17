@@ -63,16 +63,22 @@ const symbolAliases: Record<string, SymbolCode> = {
   NAS100: 'NAS100',
   US30: 'US30',
   NQ: 'NQ',
+  ES: 'ES',
   YM: 'YM',
   MNQ: 'MNQ',
   MYM: 'MYM',
+  SPY: 'ES',
+  SPX: 'ES',
+  GSPC: 'ES',
+  '^GSPC': 'ES',
+  US500: 'ES',
   USTEC: 'NAS100',
   US100: 'NAS100',
   DJ30: 'US30',
   DJI: 'US30'
 };
 
-const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM']);
+const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM']);
 
 const clamp = (value: number, min: number, max: number): number => {
   if (value < min) {

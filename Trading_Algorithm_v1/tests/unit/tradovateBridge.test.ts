@@ -8,6 +8,7 @@ import {
 describe('tradovate bridge helpers', () => {
   it('maps Tradovate contract symbols to internal symbols', () => {
     expect(mapTradovateSymbol('NQM6')).toBe('NQ');
+    expect(mapTradovateSymbol('ESM6')).toBe('ES');
     expect(mapTradovateSymbol('YMM6')).toBe('YM');
     expect(mapTradovateSymbol('MNQU6')).toBe('MNQ');
     expect(mapTradovateSymbol('MYMU6')).toBe('MYM');

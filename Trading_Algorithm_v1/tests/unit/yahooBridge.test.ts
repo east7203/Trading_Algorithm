@@ -7,8 +7,10 @@ import {
 describe('yahoo live bridge helpers', () => {
   it('maps Yahoo symbols to internal symbols', () => {
     expect(mapYahooSymbol('^NDX')).toBe('NAS100');
+    expect(mapYahooSymbol('^GSPC')).toBe('ES');
     expect(mapYahooSymbol('^DJI')).toBe('US30');
     expect(mapYahooSymbol('NQ=F')).toBe('NQ');
+    expect(mapYahooSymbol('ES=F')).toBe('ES');
     expect(mapYahooSymbol('YM=F')).toBe('YM');
     expect(mapYahooSymbol('custom', { CUSTOM: 'MNQ' })).toBe('MNQ');
   });

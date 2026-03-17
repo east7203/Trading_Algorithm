@@ -83,7 +83,7 @@ const signalNyRangeMinutesEl = document.getElementById('signalNyRangeMinutes');
 const signalRequireRangeEl = document.getElementById('signalRequireRange');
 const signalAPlusOnlyEl = document.getElementById('signalAPlusOnly');
 const symbolNqToggleEl = document.getElementById('symbolNqToggle');
-const symbolYmToggleEl = document.getElementById('symbolYmToggle');
+const symbolEsToggleEl = document.getElementById('symbolEsToggle');
 const setupSweepMssToggleEl = document.getElementById('setupSweepMssToggle');
 const setupSweepRevToggleEl = document.getElementById('setupSweepRevToggle');
 const setupObToggleEl = document.getElementById('setupObToggle');
@@ -106,6 +106,8 @@ const diagLearningFrameEl = document.getElementById('diagLearningFrame');
 const diagTrainingFramesEl = document.getElementById('diagTrainingFrames');
 const diagTrainingTriggerEl = document.getElementById('diagTrainingTrigger');
 const ibkrRecoveryPanelEl = document.getElementById('ibkrRecoveryPanel');
+const diagQuietModeEl = document.getElementById('diagQuietMode');
+const diagQuietModeHintEl = document.getElementById('diagQuietModeHint');
 const diagIbkrRecoveryStateEl = document.getElementById('diagIbkrRecoveryState');
 const diagIbkrRecoveryHintEl = document.getElementById('diagIbkrRecoveryHint');
 const ibkrRetryLoginEl = document.getElementById('ibkrRetryLogin');
@@ -144,6 +146,7 @@ let latestTrades = [];
 let latestEvents = [];
 let latestReviews = [];
 let latestDiagnostics = null;
+let latestRiskConfig = null;
 let latestHealth = null;
 let lastSyncAt = null;
 let serviceWorkerRegistrationPromise = null;
@@ -539,6 +542,72 @@ const getFeedStateMeta = (diagnostics) => {
   };
 };
 
+const parseTimeZoneClock = (isoTimestamp, timeZone) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date(isoTimestamp));
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null;
+  }
+  return hour * 60 + minute;
+};
+
+const isWithinRiskWindow = (nowIso, riskConfig) => {
+  const window = riskConfig?.tradingWindow;
+  if (!window?.enabled) {
+    return true;
+  }
+
+  const nowMinutes = parseTimeZoneClock(nowIso, window.timezone);
+  if (nowMinutes === null) {
+    return false;
+  }
+
+  const startMinutes = window.startHour * 60 + window.startMinute;
+  const endMinutes = window.endHour * 60 + window.endMinute;
+  if (startMinutes <= endMinutes) {
+    return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+  }
+
+  return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+};
+
+const renderQuietModeState = () => {
+  if (!diagQuietModeEl) {
+    return;
+  }
+
+  const riskConfig = latestRiskConfig?.config ?? null;
+  const window = riskConfig?.tradingWindow ?? null;
+  if (!window) {
+    diagQuietModeEl.dataset.tone = 'warn';
+    diagQuietModeEl.textContent = 'Quiet mode --';
+    if (diagQuietModeHintEl) {
+      diagQuietModeHintEl.textContent = 'Quiet mode follows the trading window once risk config loads.';
+    }
+    return;
+  }
+
+  const insideWindow = isWithinRiskWindow(new Date().toISOString(), riskConfig);
+  const tzLabel = window.timezone === 'America/New_York' ? 'ET' : window.timezone;
+  const startText = formatTimeValue(window.startHour, window.startMinute);
+  const endText = formatTimeValue(window.endHour, window.endMinute);
+
+  diagQuietModeEl.dataset.tone = insideWindow ? 'good' : 'warn';
+  diagQuietModeEl.textContent = insideWindow ? 'Quiet mode off' : 'Quiet mode on';
+  if (diagQuietModeHintEl) {
+    diagQuietModeHintEl.textContent = insideWindow
+      ? `Recovery alerts stay normal during the ${startText}-${endText} ${tzLabel} window.`
+      : `Outside the ${startText}-${endText} ${tzLabel} window, recovery alerts stay quiet unless you trigger them manually.`;
+  }
+};
+
 const recoveryEventTitle = (kind) => {
   const map = {
     LOGIN_REQUIRED: 'Login required',
@@ -737,7 +806,7 @@ const renderSignalSettings = (config) => {
   signalRequireRangeEl.checked = Boolean(config.requireOpeningRangeComplete);
   signalAPlusOnlyEl.checked = Boolean(config.aPlusOnlyAfterFirstHour);
   symbolNqToggleEl.checked = (config.enabledSymbols ?? []).includes('NQ');
-  symbolYmToggleEl.checked = (config.enabledSymbols ?? []).includes('YM');
+  symbolEsToggleEl.checked = (config.enabledSymbols ?? []).includes('ES');
 
   Object.entries(setupToggleMap).forEach(([setup, toggle]) => {
     toggle.checked = (config.enabledSetups ?? []).includes(setup);
@@ -765,7 +834,7 @@ const currentSignalSettingsPayload = () => {
     nyRangeMinutes: Number(signalNyRangeMinutesEl.value),
     requireOpeningRangeComplete: signalRequireRangeEl.checked,
     aPlusOnlyAfterFirstHour: signalAPlusOnlyEl.checked,
-    enabledSymbols: [symbolNqToggleEl.checked ? 'NQ' : null, symbolYmToggleEl.checked ? 'YM' : null].filter(Boolean),
+    enabledSymbols: [symbolNqToggleEl.checked ? 'NQ' : null, symbolEsToggleEl.checked ? 'ES' : null].filter(Boolean),
     enabledSetups: selectedSetups()
   };
 };
@@ -1920,9 +1989,10 @@ const renderDiagnostics = () => {
         ? 'Phone • Mac • Telegram • Sunday'
         : 'Phone • Mac • Telegram'
       : diagnostics.notifications?.ibkrLoginReminderEnabled
-        ? 'Phone • Mac • Sunday'
-        : 'Phone • Mac'
+      ? 'Phone • Mac • Sunday'
+      : 'Phone • Mac'
     : 'Phone alerts off';
+  renderQuietModeState();
   updateSystemSummary();
 };
 
@@ -2022,6 +2092,15 @@ const loadDiagnostics = async () => {
     renderDiagnostics();
     renderStatusRail();
   }
+};
+
+const loadRiskConfig = async () => {
+  try {
+    latestRiskConfig = await apiFetch('/risk/config');
+  } catch {
+    latestRiskConfig = null;
+  }
+  renderQuietModeState();
 };
 
 const loadSignalSettings = async () => {
@@ -2445,7 +2524,15 @@ const refreshAll = async () => {
   if (pullRefreshMetaEl && !pullRefreshGesture.refreshing) {
     pullRefreshMetaEl.textContent = pullRefreshMetaText('Syncing');
   }
-  refreshInFlight = Promise.all([loadHealth(), loadAlerts(), loadPending(), loadTrades(), loadReviews(), loadDiagnostics()])
+  refreshInFlight = Promise.all([
+    loadHealth(),
+    loadAlerts(),
+    loadPending(),
+    loadTrades(),
+    loadReviews(),
+    loadDiagnostics(),
+    loadRiskConfig()
+  ])
     .then(() => {
       lastSyncAt = new Date().toISOString();
       updateStats();
@@ -2644,7 +2731,7 @@ const bindSignalSettingsControls = () => {
     renderSignalSettings({
       ...(signalSettings ?? {}),
       ...preset,
-      enabledSymbols: signalSettings?.enabledSymbols ?? ['NQ', 'YM'],
+      enabledSymbols: signalSettings?.enabledSymbols ?? ['NQ', 'ES'],
       enabledSetups:
         signalSettings?.enabledSetups ?? [
           'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION',
@@ -2831,6 +2918,7 @@ const bootstrap = async () => {
   await registerServiceWorker();
 
   await loadSignalSettings();
+  await loadRiskConfig();
   await refreshAll();
   if (getNotificationPrefs().enabled) {
     const granted = await requestNotificationPermission();

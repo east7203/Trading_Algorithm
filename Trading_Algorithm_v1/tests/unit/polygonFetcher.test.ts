@@ -4,8 +4,10 @@ import { mapPolygonTicker } from '../../src/tools/fetchPolygonHistorical.js';
 describe('polygon fetcher symbol mapping', () => {
   it('maps common index and ETF proxies to futures symbols', () => {
     expect(mapPolygonTicker('QQQ')).toBe('NQ');
+    expect(mapPolygonTicker('SPY')).toBe('ES');
     expect(mapPolygonTicker('DIA')).toBe('YM');
     expect(mapPolygonTicker('I:NDX')).toBe('NQ');
+    expect(mapPolygonTicker('I:SPX')).toBe('ES');
     expect(mapPolygonTicker('I:DJI')).toBe('YM');
   });
 
@@ -15,6 +17,6 @@ describe('polygon fetcher symbol mapping', () => {
   });
 
   it('returns null for unknown ticker when unmapped', () => {
-    expect(mapPolygonTicker('SPY')).toBeNull();
+    expect(mapPolygonTicker('TLT')).toBeNull();
   });
 });

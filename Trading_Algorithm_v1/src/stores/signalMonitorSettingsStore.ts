@@ -4,7 +4,7 @@ import type { SetupType, SignalMonitorSettings, SymbolCode } from '../domain/typ
 
 export type SignalMonitorSettingsPatch = Partial<SignalMonitorSettings>;
 
-const VALID_SYMBOLS: SymbolCode[] = ['NQ', 'YM'];
+const VALID_SYMBOLS: SymbolCode[] = ['NQ', 'ES'];
 const VALID_SETUPS: SetupType[] = [
   'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION',
   'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES',

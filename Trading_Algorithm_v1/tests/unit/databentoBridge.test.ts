@@ -7,6 +7,7 @@ import {
 describe('databento live bridge helpers', () => {
   it('maps Databento symbol formats to internal symbols', () => {
     expect(mapDatabentoSymbol('NQ.c.0')).toBe('NQ');
+    expect(mapDatabentoSymbol('ES.FUT')).toBe('ES');
     expect(mapDatabentoSymbol('YM.FUT')).toBe('YM');
     expect(mapDatabentoSymbol('MNQZ6')).toBe('MNQ');
     expect(mapDatabentoSymbol('MYMZ6')).toBe('MYM');

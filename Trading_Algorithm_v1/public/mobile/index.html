@@ -40,14 +40,14 @@
             <span class="micro-pill">NY Session</span>
           </div>
         </div>
-        <p class="subtitle">Morning setup intelligence for NQ and YM. Review, decide, and execute manually in Tradovate.</p>
+        <p class="subtitle">Morning setup intelligence for NQ and ES. Review, decide, and execute manually in Tradovate.</p>
         <div class="chip-row">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
           <button id="refreshAll" class="chip-btn" type="button">Sync</button>
         </div>
         <div class="ops-ribbon">
-          <span class="ops-item">Portfolio: NQ + YM</span>
+          <span class="ops-item">Portfolio: NQ + ES</span>
           <span class="ops-dot" aria-hidden="true"></span>
           <span class="ops-item">Rule-first ranking</span>
           <span class="ops-dot" aria-hidden="true"></span>
@@ -194,7 +194,7 @@
                 <div class="segmented-control segmented-control-compact" id="signalSymbolFilters">
                   <button class="segment-btn is-active" type="button" data-symbol-filter="ALL">All Mkts</button>
                   <button class="segment-btn" type="button" data-symbol-filter="NQ">NQ</button>
-                  <button class="segment-btn" type="button" data-symbol-filter="YM">YM</button>
+                  <button class="segment-btn" type="button" data-symbol-filter="ES">ES</button>
                 </div>
               </div>
               <div class="signal-toolbar-meta">
@@ -397,8 +397,8 @@
                 <span>NQ</span>
               </label>
               <label class="toggle-chip">
-                <input id="symbolYmToggle" type="checkbox" />
-                <span>YM</span>
+                <input id="symbolEsToggle" type="checkbox" />
+                <span>ES</span>
               </label>
             </div>
 
@@ -490,8 +490,12 @@
                 <p class="stat-label">IBKR Recovery</p>
                 <p class="section-kicker">Use these controls only if the IBKR session actually asks for reauthentication.</p>
               </div>
-              <span id="diagIbkrRecoveryState" class="recovery-state-pill">Checking</span>
+              <div class="recovery-state-cluster">
+                <span id="diagQuietMode" class="quiet-mode-pill">Quiet mode --</span>
+                <span id="diagIbkrRecoveryState" class="recovery-state-pill">Checking</span>
+              </div>
             </div>
+            <p id="diagQuietModeHint" class="quiet-mode-copy">Quiet mode follows your trading window and suppresses noisy recovery alerts when the desk is closed.</p>
             <p id="diagIbkrRecoveryHint" class="recovery-copy">Waiting for live status.</p>
             <div class="recovery-actions">
               <button id="ibkrRetryLogin" class="chip-btn secondary-btn" type="button">Run Full Recovery</button>

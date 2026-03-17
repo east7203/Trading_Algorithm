@@ -23,11 +23,11 @@ const usage = (): never => {
   throw new Error(
     [
       'Usage:',
-      '  npm run fetch:ibkr -- --symbols NQ,YM --start 2026-01-01T00:00:00Z --end 2026-03-12T00:00:00Z [--timeframe 1m] [--outputDir data/historical/ibkr] [--continuous true] [--useRth false]',
+      '  npm run fetch:ibkr -- --symbols NQ,ES --start 2026-01-01T00:00:00Z --end 2026-03-12T00:00:00Z [--timeframe 1m] [--outputDir data/historical/ibkr] [--continuous true] [--useRth false]',
       '',
       'Examples:',
-      '  npm run fetch:ibkr -- --symbols NQ,YM --start 2026-02-01T00:00:00Z --end 2026-03-12T00:00:00Z --timeframe 1m',
-      '  npm run fetch:ibkr -- --symbols NQ,YM --start 2025-01-01T00:00:00Z --end 2026-03-12T00:00:00Z --timeframe 5m --continuous true'
+      '  npm run fetch:ibkr -- --symbols NQ,ES --start 2026-02-01T00:00:00Z --end 2026-03-12T00:00:00Z --timeframe 1m',
+      '  npm run fetch:ibkr -- --symbols NQ,ES --start 2025-01-01T00:00:00Z --end 2026-03-12T00:00:00Z --timeframe 5m --continuous true'
     ].join('\n')
   );
 };

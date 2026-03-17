@@ -179,14 +179,14 @@ describe('signal monitor integration', () => {
       method: 'PATCH',
       path: '/signals/config',
       payload: {
-        enabledSymbols: ['YM'],
+        enabledSymbols: ['ES'],
         enabledSetups: ['NY_BREAK_RETEST_MOMENTUM'],
         minFinalScore: 0
       }
     });
 
     expect(patch.statusCode).toBe(200);
-    expect(patch.json().config.enabledSymbols).toEqual(['YM']);
+    expect(patch.json().config.enabledSymbols).toEqual(['ES']);
 
     const ingest = await ctx.app.inject({
       method: 'POST',
@@ -231,13 +231,13 @@ describe('signal monitor integration', () => {
       method: 'POST',
       path: '/notifications/test/alert',
       payload: {
-        symbol: 'YM'
+        symbol: 'ES'
       }
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json().ok).toBe(true);
-    expect(response.json().alert.symbol).toBe('YM');
+    expect(response.json().alert.symbol).toBe('ES');
 
     const alertsResponse = await ctx.app.inject({
       method: 'GET',
@@ -246,7 +246,7 @@ describe('signal monitor integration', () => {
 
     expect(alertsResponse.statusCode).toBe(200);
     expect(alertsResponse.json().alerts[0].title).toContain('test signal');
-    expect(alertsResponse.json().alerts[0].symbol).toBe('YM');
+    expect(alertsResponse.json().alerts[0].symbol).toBe('ES');
     expect(alertsResponse.json().alerts[0].reviewState.escalationCount).toBe(0);
 
     await new Promise((resolve) => setTimeout(resolve, 90));

@@ -51,8 +51,10 @@ export interface YahooLiveBridgeStatus {
 
 const defaultSymbolAliases: Record<string, SymbolCode> = {
   '^NDX': 'NAS100',
+  '^GSPC': 'ES',
   '^DJI': 'US30',
   'NQ=F': 'NQ',
+  'ES=F': 'ES',
   'YM=F': 'YM',
   'MNQ=F': 'MNQ',
   'MYM=F': 'MYM',
@@ -60,6 +62,12 @@ const defaultSymbolAliases: Record<string, SymbolCode> = {
   US30: 'US30',
   US100: 'NAS100',
   USTEC: 'NAS100',
+  ES: 'ES',
+  MES: 'ES',
+  SPY: 'ES',
+  SPX: 'ES',
+  GSPC: 'ES',
+  US500: 'ES',
   DJ30: 'US30',
   DJI: 'US30',
   NQ: 'NQ',
@@ -101,7 +109,7 @@ const tokenizeSymbol = (raw: string): string[] =>
 const inferSymbol = (raw: string): SymbolCode | null => {
   const tokens = tokenizeSymbol(raw);
   const candidates = tokens.length > 0 ? tokens : [raw.toUpperCase()];
-  const priority = ['MNQ=F', 'MYM=F', '^NDX', '^DJI', 'MNQ', 'MYM', 'NAS100', 'US30', 'NQ', 'YM'];
+  const priority = ['MNQ=F', 'MYM=F', '^NDX', '^GSPC', '^DJI', 'ES=F', 'MNQ', 'MYM', 'NAS100', 'US30', 'ES', 'MES', 'SPY', 'SPX', 'GSPC', 'US500', 'NQ', 'YM'];
 
   for (const token of candidates) {
     for (const key of priority) {

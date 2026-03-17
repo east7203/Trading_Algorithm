@@ -145,7 +145,7 @@ export interface ContinuousTrainingConfig {
   pollApiKeyHeader?: string;
 }
 
-const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM']);
+const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM']);
 
 const normalizeSymbol = (raw: unknown): SymbolCode => {
   if (typeof raw !== 'string') {
@@ -208,6 +208,11 @@ const inferSymbolFromFileName = (filePath: string): SymbolCode | undefined => {
     MYM: 'MYM',
     NAS100: 'NAS100',
     US30: 'US30',
+    ES: 'ES',
+    SPY: 'ES',
+    SPX: 'ES',
+    GSPC: 'ES',
+    US500: 'ES',
     USTEC: 'NAS100',
     US100: 'NAS100',
     DJ30: 'US30',
@@ -221,7 +226,7 @@ const inferSymbolFromFileName = (filePath: string): SymbolCode | undefined => {
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter((token) => token.length > 0);
-  const priority = ['MNQ', 'MYM', 'NAS100', 'US30', 'USTEC', 'US100', 'DJ30', 'DJI', 'NQ', 'YM'];
+  const priority = ['MNQ', 'MYM', 'NAS100', 'US30', 'USTEC', 'US100', 'ES', 'SPY', 'SPX', 'GSPC', 'US500', 'DJ30', 'DJI', 'NQ', 'YM'];
   for (const key of priority) {
     if (tokens.includes(key)) {
       return aliasToSymbol[key];

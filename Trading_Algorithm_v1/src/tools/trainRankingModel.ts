@@ -31,7 +31,7 @@ interface EvaluationSummary {
 
 const parseSymbol = (raw: string): SymbolCode => {
   const normalized = raw.trim().toUpperCase();
-  const allowed: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM'];
+  const allowed: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM'];
   if (!allowed.includes(normalized as SymbolCode)) {
     throw new Error(`Unsupported symbol override "${raw}". Allowed: ${allowed.join(', ')}`);
   }
@@ -44,6 +44,11 @@ const inferSymbolFromFileName = (filePath: string): SymbolCode | undefined => {
     MYM: 'MYM',
     NAS100: 'NAS100',
     US30: 'US30',
+    ES: 'ES',
+    SPY: 'ES',
+    SPX: 'ES',
+    GSPC: 'ES',
+    US500: 'ES',
     USTEC: 'NAS100',
     US100: 'NAS100',
     DJ30: 'US30',
@@ -58,7 +63,7 @@ const inferSymbolFromFileName = (filePath: string): SymbolCode | undefined => {
     .split(/[^A-Z0-9]+/)
     .filter((token) => token.length > 0);
 
-  const priority = ['MNQ', 'MYM', 'NAS100', 'US30', 'USTEC', 'US100', 'DJ30', 'DJI', 'NQ', 'YM'];
+  const priority = ['MNQ', 'MYM', 'NAS100', 'US30', 'USTEC', 'US100', 'ES', 'SPY', 'SPX', 'GSPC', 'US500', 'DJ30', 'DJI', 'NQ', 'YM'];
   for (const key of priority) {
     if (tokens.includes(key)) {
       return aliasToSymbol[key];

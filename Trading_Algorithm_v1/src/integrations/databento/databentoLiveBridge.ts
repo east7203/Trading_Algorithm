@@ -53,6 +53,12 @@ const defaultSymbolAliases: Record<string, SymbolCode> = {
   US30: 'US30',
   US100: 'NAS100',
   USTEC: 'NAS100',
+  ES: 'ES',
+  MES: 'ES',
+  SPY: 'ES',
+  SPX: 'ES',
+  GSPC: 'ES',
+  US500: 'ES',
   DJ30: 'US30',
   DJI: 'US30',
   NQ: 'NQ',
@@ -86,7 +92,7 @@ const tokenizeSymbol = (raw: string): string[] =>
 const inferSymbol = (raw: string): SymbolCode | null => {
   const tokens = tokenizeSymbol(raw);
   const candidates = tokens.length > 0 ? tokens : [raw.toUpperCase()];
-  const priority = ['MNQ', 'MYM', 'NAS100', 'US30', 'USTEC', 'US100', 'DJ30', 'DJI', 'NQ', 'YM'];
+  const priority = ['MNQ', 'MYM', 'NAS100', 'US30', 'USTEC', 'US100', 'ES', 'MES', 'SPY', 'SPX', 'GSPC', 'US500', 'DJ30', 'DJI', 'NQ', 'YM'];
 
   for (const token of candidates) {
     for (const key of priority) {

@@ -86,7 +86,7 @@ const run = async (): Promise<void> => {
   const enabled = parseBoolean(process.env.TRADOVATE_BRIDGE_ENABLED, false);
   const symbols = parseSymbolsEnv(process.env.TRADOVATE_BRIDGE_SYMBOLS);
   if (enabled && symbols.length === 0) {
-    throw new Error('TRADOVATE_BRIDGE_SYMBOLS is required when bridge is enabled (example: NQM6,YMM6)');
+    throw new Error('TRADOVATE_BRIDGE_SYMBOLS is required when bridge is enabled (example: NQM6,ESM6)');
   }
 
   const bridge = new TradovateBridge({

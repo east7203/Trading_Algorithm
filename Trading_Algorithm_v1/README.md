@@ -20,7 +20,7 @@ Rule-first, AI-assisted daytrading service focused on funded-account survival.
   - `POST /execution/propose` (build manual execution intent)
   - `POST /execution/approve` (manual approval + audit log, no broker API order placement)
   - approval now requires explicit checklist confirmation (`manualChecklistConfirmed=true`, `paperAccountConfirmed=true`)
-- Symbol support for futures workflows: `NQ`, `YM`, `MNQ`, `MYM` (legacy aliases `NAS100`, `US30` also accepted).
+- Symbol support for futures workflows: `NQ`, `ES`, `MNQ`, `MYM` (legacy aliases `NAS100`, `US30` are still accepted where applicable).
 - Full audit trail for signal, risk, approval, and execution events.
 - Policy confirmation guard required before approval.
 
@@ -107,14 +107,14 @@ Supported CSV columns (case-insensitive):
 - optional: `volume`
 - optional: `symbol,ticker,instrument` (or pass `--symbol` override)
 - Databento `ts_event` timestamps are accepted as well
-- if symbol column is missing and `--symbol` is not passed, the trainer tries to infer symbol from filename tokens (`NQ`, `YM`, `MNQ`, `MYM`, `NAS100`, `US30`, `USTEC`, `US100`, `DJ30`, `DJI`)
+- if symbol column is missing and `--symbol` is not passed, the trainer tries to infer symbol from filename tokens (`NQ`, `ES`, `YM`, `MNQ`, `MYM`, `NAS100`, `US30`, `USTEC`, `US100`, `DJ30`, `DJI`, `SPY`, `SPX`, `GSPC`, `US500`)
 
 Download 1-minute OHLCV from Databento directly into `data/historical`:
 
 ```bash
 DATABENTO_API_KEY=your_key \
 npm run fetch:databento -- \
-  --symbols NQ.FUT,YM.FUT \
+  --symbols NQ.FUT,ES.FUT \
   --start 2024-01-01T00:00:00Z \
   --end 2026-03-01T00:00:00Z
 ```
@@ -123,20 +123,20 @@ Free Yahoo download (no paid key) for recent 1m history:
 
 ```bash
 npm run fetch:yahoo -- \
-  --symbols ^NDX,^DJI \
+  --symbols NQ=F,ES=F \
   --interval 1m \
   --start 2026-02-01T00:00:00Z \
   --end 2026-03-01T00:00:00Z \
-  --symbolMap '{"^NDX":"NQ","^DJI":"YM"}'
+  --symbolMap '{"NQ=F":"NQ","ES=F":"ES"}'
 ```
 
 Free long-range daily history from Stooq:
 
 ```bash
 npm run fetch:stooq -- \
-  --symbols ^NDX,^DJI \
+  --symbols ^NDX,^GSPC \
   --interval d \
-  --symbolMap '{"^NDX":"NQ","^DJI":"YM"}'
+  --symbolMap '{"^NDX":"NQ","^GSPC":"ES"}'
 ```
 
 Polygon historical download (stocks/indices proxy):
@@ -145,23 +145,23 @@ Polygon historical download (stocks/indices proxy):
 cp .env.polygon.example .env.polygon
 # set POLYGON_API_KEY in .env.polygon
 npm run fetch:polygon -- \
-  --tickers QQQ,DIA \
+  --tickers QQQ,SPY \
   --start 2020-01-01 \
   --end 2026-03-10 \
   --timespan day \
-  --symbolMap '{"QQQ":"NQ","DIA":"YM"}'
+  --symbolMap '{"QQQ":"NQ","SPY":"ES"}'
 ```
 
 For intraday historical pulls from Polygon:
 
 ```bash
 npm run fetch:polygon -- \
-  --tickers QQQ,DIA \
+  --tickers QQQ,SPY \
   --start 2026-02-01 \
   --end 2026-03-10 \
   --timespan minute \
   --multiplier 1 \
-  --symbolMap '{"QQQ":"NQ","DIA":"YM"}'
+  --symbolMap '{"QQQ":"NQ","SPY":"ES"}'
 ```
 
 IBKR historical pull (continuous futures by default, requires TWS or IB Gateway running and API access enabled):
@@ -170,7 +170,7 @@ IBKR historical pull (continuous futures by default, requires TWS or IB Gateway 
 cp .env.ibkr.bridge.example .env.ibkr.bridge
 # set IBKR_HOST / IBKR_PORT / IBKR_CLIENT_ID to match your IB Gateway or TWS session
 npm run fetch:ibkr -- \
-  --symbols NQ,YM \
+  --symbols NQ,ES \
   --start 2026-02-01T00:00:00Z \
   --end 2026-03-12T00:00:00Z \
   --timeframe 1m \
@@ -333,7 +333,7 @@ Historical CSV pulls from IBKR use the same credentials/session and write into `
 
 ```bash
 npm run fetch:ibkr -- \
-  --symbols NQ,YM \
+  --symbols NQ,ES \
   --start 2026-01-01T00:00:00Z \
   --end 2026-03-12T00:00:00Z \
   --timeframe 5m
@@ -370,8 +370,8 @@ Important env vars:
 - `DATABENTO_DATASET=GLBX.MDP3`
 - `DATABENTO_SCHEMA=ohlcv-1m`
 - `DATABENTO_STYPE_IN=continuous` (or `parent`, etc.)
-- `DATABENTO_BRIDGE_SYMBOLS=NQ.c.0,YM.c.0`
-- `DATABENTO_SYMBOL_MAP` optional JSON override, example: `{"NQ.C.0":"NQ","YM.C.0":"YM"}`
+- `DATABENTO_BRIDGE_SYMBOLS=NQ.c.0,ES.c.0`
+- `DATABENTO_SYMBOL_MAP` optional JSON override, example: `{"NQ.C.0":"NQ","ES.C.0":"ES"}`
 - `DATABENTO_POLL_SECONDS=60`
 - `TRAINING_API_BASE_URL=http://127.0.0.1:3000`
 - `DATABENTO_BRIDGE_ENV_FILE=path/to/file` (optional, defaults to `.env.databento.bridge`)
@@ -393,8 +393,8 @@ npm run bridge:yahoo
 Important env vars:
 
 - `YAHOO_BRIDGE_ENABLED=true|false`
-- `YAHOO_BRIDGE_SYMBOLS=^NDX,^DJI`
-- `YAHOO_BRIDGE_SYMBOL_MAP` optional JSON mapping, example: `{"^NDX":"NQ","^DJI":"YM"}`
+- `YAHOO_BRIDGE_SYMBOLS=NQ=F,ES=F`
+- `YAHOO_BRIDGE_SYMBOL_MAP` optional JSON mapping, example: `{"NQ=F":"NQ","ES=F":"ES"}`
 - `YAHOO_INTERVAL=1m`
 - `YAHOO_RANGE=1d`
 - `YAHOO_POLL_SECONDS=60`
@@ -435,9 +435,9 @@ Important bridge env vars:
 - `TRADOVATE_APP_VERSION` (optional)
 - `TRADOVATE_CID` (optional)
 - `TRADOVATE_SEC` (optional)
-- `TRADOVATE_BRIDGE_SYMBOLS=comma,separated,contracts` (example: `NQM6,YMM6`)
+- `TRADOVATE_BRIDGE_SYMBOLS=comma,separated,contracts` (example: `NQM6,ESM6`)
 - `TRADOVATE_SYMBOL_MAP` optional JSON mapping to internal symbols  
-  example: `{"NQM6":"NQ","YMM6":"YM"}`
+  example: `{"NQM6":"NQ","ESM6":"ES"}`
 - `TRADOVATE_CHART_HISTORY_BARS=300`
 - `TRAINING_API_BASE_URL=http://127.0.0.1:3000`
 - `TRAINING_API_KEY` and `TRAINING_API_KEY_HEADER` (optional if your API is protected)

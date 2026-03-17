@@ -62,15 +62,15 @@ describe('IBKR reconnect fallback notifications', () => {
       path: '/notifications/ibkr/login-required',
       payload: {
         symbols: ['NQ', 'YM'],
-        source: 'test-trial',
+        source: 'manual-phone-retry',
         reason: 'Fallback test',
         fallbackDelaySeconds: 5
       }
     });
 
     expect(response.statusCode).toBe(200);
-    expect(loginTriggerCalls).toEqual(['test-trial']);
-    expect(resendTriggerCalls).toEqual(['test-trial-push']);
+    expect(loginTriggerCalls).toEqual(['manual-phone-retry']);
+    expect(resendTriggerCalls).toEqual(['manual-phone-retry-push']);
     expect(webPushMessages).toHaveLength(1);
     expect(webPushMessages[0].url).toBe(
       'https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection'
@@ -91,8 +91,8 @@ describe('IBKR reconnect fallback notifications', () => {
       setTimeout(resolve, 5_500);
     });
 
-    expect(loginTriggerCalls).toEqual(['test-trial', 'test-trial-reminder']);
-    expect(resendTriggerCalls).toEqual(['test-trial-push', 'test-trial-reminder-push']);
+    expect(loginTriggerCalls).toEqual(['manual-phone-retry', 'manual-phone-retry-reminder']);
+    expect(resendTriggerCalls).toEqual(['manual-phone-retry-push', 'manual-phone-retry-reminder-push']);
     expect(webPushMessages).toHaveLength(2);
     expect(webPushMessages[1].title).toBe('IBKR still not connected');
     expect(webPushMessages[1].url).toBe('https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection');
@@ -142,7 +142,7 @@ describe('IBKR reconnect fallback notifications', () => {
       path: '/notifications/ibkr/connected',
       payload: {
         symbols: ['NQ', 'YM'],
-        source: 'ibkr-bridge',
+        source: 'manual-phone-retry',
         connectedAt: '2026-03-15T00:00:00.000Z'
       }
     });
@@ -156,7 +156,7 @@ describe('IBKR reconnect fallback notifications', () => {
       path: '/notifications/ibkr/connected',
       payload: {
         symbols: ['NQ', 'YM'],
-        source: 'ibkr-bridge',
+        source: 'manual-phone-retry',
         connectedAt: '2026-03-15T00:05:00.000Z'
       }
     });

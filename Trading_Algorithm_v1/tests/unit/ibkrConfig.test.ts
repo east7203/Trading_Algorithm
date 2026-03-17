@@ -9,16 +9,17 @@ import {
 describe('ibkr config helpers', () => {
   it('maps core futures aliases to supported symbols', () => {
     expect(mapIbkrSymbol('NQ')).toBe('NQ');
+    expect(mapIbkrSymbol('ES')).toBe('ES');
     expect(mapIbkrSymbol('YM')).toBe('YM');
     expect(mapIbkrSymbol('USTEC')).toBe('NAS100');
     expect(mapIbkrSymbol('DJ30.cash')).toBe('US30');
   });
 
   it('parses custom symbol map env safely', () => {
-    const parsed = parseIbkrSymbolMapEnv('{"NQ_CONT":"NQ","YM_CONT":"YM","BAD":"UNKNOWN"}');
+    const parsed = parseIbkrSymbolMapEnv('{"NQ_CONT":"NQ","ES_CONT":"ES","BAD":"UNKNOWN"}');
     expect(parsed).toEqual({
       NQ_CONT: 'NQ',
-      YM_CONT: 'YM'
+      ES_CONT: 'ES'
     });
   });
 
@@ -37,11 +38,11 @@ describe('ibkr config helpers', () => {
 
   it('parses contract specs from alias array', () => {
     const parsed = parseIbkrContractSpecsEnv(
-      '[{"alias":"YM_CONT","symbol":"YM","exchange":"CBOT","currency":"USD","secType":"CONTFUT"}]'
+      '[{"alias":"ES_CONT","symbol":"ES","exchange":"CME","currency":"USD","secType":"CONTFUT"}]'
     );
-    expect(parsed.YM_CONT).toMatchObject({
-      symbol: 'YM',
-      exchange: 'CBOT',
+    expect(parsed.ES_CONT).toMatchObject({
+      symbol: 'ES',
+      exchange: 'CME',
       currency: 'USD',
       secType: 'CONTFUT'
     });

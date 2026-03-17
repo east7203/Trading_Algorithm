@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const symbolSchema = z.enum(['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM']);
+export const symbolSchema = z.enum(['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM']);
 export const sessionSchema = z.enum(['NY']);
 export const sideSchema = z.enum(['LONG', 'SHORT']);
 

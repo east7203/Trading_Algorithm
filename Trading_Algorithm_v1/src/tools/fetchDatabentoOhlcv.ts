@@ -16,7 +16,7 @@ interface CliArgs {
 const usage = (): string =>
   [
     'Usage:',
-    '  DATABENTO_API_KEY=... npm run fetch:databento -- --symbols NQ.FUT,YM.FUT --start 2024-01-01T00:00:00Z [--end 2026-01-01T00:00:00Z]',
+    '  DATABENTO_API_KEY=... npm run fetch:databento -- --symbols NQ.FUT,ES.FUT --start 2024-01-01T00:00:00Z [--end 2026-01-01T00:00:00Z]',
     '',
     'Optional:',
     '  --dataset GLBX.MDP3',

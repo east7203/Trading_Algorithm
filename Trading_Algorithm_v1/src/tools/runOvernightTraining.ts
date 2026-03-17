@@ -82,8 +82,8 @@ const resolveConfig = (): OvernightConfig => {
   const defaultOutputRoot = path.resolve(cwd, 'data', 'historical', 'polygon-overnight');
 
   return {
-    tickers: parseList(process.env.POLYGON_OVERNIGHT_TICKERS, ['QQQ', 'DIA']),
-    symbolMap: process.env.POLYGON_OVERNIGHT_SYMBOL_MAP ?? '{"QQQ":"NQ","DIA":"YM"}',
+    tickers: parseList(process.env.POLYGON_OVERNIGHT_TICKERS, ['QQQ', 'SPY']),
+    symbolMap: process.env.POLYGON_OVERNIGHT_SYMBOL_MAP ?? '{"QQQ":"NQ","SPY":"ES"}',
     startDate: process.env.POLYGON_OVERNIGHT_START ?? '2024-01-01',
     endDate: process.env.POLYGON_OVERNIGHT_END ?? nowDate(),
     outputRoot: path.resolve(cwd, process.env.POLYGON_OVERNIGHT_OUTPUT_ROOT ?? defaultOutputRoot),

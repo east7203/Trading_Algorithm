@@ -30,6 +30,7 @@ import {
   type OperationalReminderConfig,
   type OperationalReminderStatus
 } from './services/operationalReminderService.js';
+import { shouldNotifyIbkrRecovery } from './services/ibkrRecoveryNotificationPolicy.js';
 import { JournalStore } from './stores/journalStore.js';
 import { RiskConfigStore } from './stores/riskConfigStore.js';
 import {
@@ -655,6 +656,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const runIbkrResendPush =
     options.ibkrResendPushTrigger ??
     (async (source: string): Promise<IbkrLoginTriggerResult> => await runIbkrScript(ibkrResendPushScriptPath, source));
+  const canNotifyIbkrRecovery = (source: string): boolean =>
+    shouldNotifyIbkrRecovery(source, new Date().toISOString(), riskConfigStore.get().tradingWindow);
   const runIbkrRecoveryAttempt = async (
     source: string,
     recoveryOptions: { ignoreCooldown?: boolean } = {}
@@ -743,29 +746,32 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const resendLine = resendAttempt.ok
       ? 'The server also ran IB Gateway fallback controls: resend notification, challenge/response, and QR code.'
       : 'The server could not run the IB Gateway fallback controls from the current auth screen.';
+    const notifyUsers = canNotifyIbkrRecovery(source);
 
-    await Promise.allSettled([
-      webPushNotificationService?.notifyGeneric({
-        title,
-        body: bodyText,
-        url: ibkrStatusUrl,
-        tag: 'ibkr-login-fallback'
-      }),
-      telegramAlertService?.notifyGeneric({
-        title,
-        lines: [
-          bodyText,
-          triggerLine,
-          resendLine,
-          `Source: ${source}`,
-          'Approve the official IBKR push on your phone if IBKR is still waiting there.'
-        ],
-        buttons: [
-          { text: 'Open Status', url: ibkrStatusUrl },
-          { text: 'Last-Resort Website', url: ibkrMobileUrl }
-        ]
-      })
-    ]);
+    if (notifyUsers) {
+      await Promise.allSettled([
+        webPushNotificationService?.notifyGeneric({
+          title,
+          body: bodyText,
+          url: ibkrStatusUrl,
+          tag: 'ibkr-login-fallback'
+        }),
+        telegramAlertService?.notifyGeneric({
+          title,
+          lines: [
+            bodyText,
+            triggerLine,
+            resendLine,
+            `Source: ${source}`,
+            'Approve the official IBKR push on your phone if IBKR is still waiting there.'
+          ],
+          buttons: [
+            { text: 'Open Status', url: ibkrStatusUrl },
+            { text: 'Last-Resort Website', url: ibkrMobileUrl }
+          ]
+        })
+      ]);
+    }
 
     ibkrReconnectState.lastFallbackAtMs = Date.now();
     ibkrReconnectState.lastSource = source;
@@ -1311,7 +1317,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
 
     const rawSymbol = (request.body as { symbol?: string } | undefined)?.symbol?.toUpperCase();
-    const symbol = rawSymbol === 'YM' ? 'YM' : 'NQ';
+    const symbol = rawSymbol === 'ES' ? 'ES' : 'NQ';
     const alert = await signalMonitorService.triggerTestAlert(symbol);
 
     return reply.status(200).send({
@@ -1397,7 +1403,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       symbols: symbols.length > 0 ? symbols : [...ibkrReconnectState.lastSymbols],
       detail: yahooCutover.message
     });
-    const shouldNotifyUsers = hadPendingReconnect || previousConnectedAtMs === 0;
+    const shouldNotifyUsers = (hadPendingReconnect || previousConnectedAtMs === 0) && canNotifyIbkrRecovery(source);
 
     const deliveries = shouldNotifyUsers
       ? await Promise.allSettled([
@@ -1470,33 +1476,36 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const resendLine = resendAttempt.ok
       ? 'The server also ran IB Gateway fallback controls: resend notification, challenge/response, and QR code.'
       : 'The server could not run the IB Gateway fallback controls from the current auth screen.';
+    const notifyUsers = canNotifyIbkrRecovery(source);
 
-    const deliveries = await Promise.allSettled([
-      webPushNotificationService?.notifyGeneric({
-        title,
-        body: bodyText,
-        url: ibkrStatusUrl,
-        tag: 'ibkr-login-required'
-      }),
-      telegramAlertService?.notifyGeneric({
-        title,
-        lines: [
-          bodyText,
-          triggerLine,
-          resendLine,
-          'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
-          `Source: ${source}`,
-          `Detected at: ${detectedAt}`,
-          `Reason: ${reason}`,
-          `You will get a follow-up notice in about ${fallbackDelaySeconds}s if it still does not reconnect.`,
-          `After that, reminders will repeat every ${ibkrReconnectReminderLabel} until it reconnects.`
-        ],
-        buttons: [
-          { text: 'Open Status', url: ibkrStatusUrl },
-          { text: 'Last-Resort Website', url: ibkrMobileUrl }
-        ]
-      })
-    ]);
+    const deliveries = notifyUsers
+      ? await Promise.allSettled([
+          webPushNotificationService?.notifyGeneric({
+            title,
+            body: bodyText,
+            url: ibkrStatusUrl,
+            tag: 'ibkr-login-required'
+          }),
+          telegramAlertService?.notifyGeneric({
+            title,
+            lines: [
+              bodyText,
+              triggerLine,
+              resendLine,
+              'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
+              `Source: ${source}`,
+              `Detected at: ${detectedAt}`,
+              `Reason: ${reason}`,
+              `You will get a follow-up notice in about ${fallbackDelaySeconds}s if it still does not reconnect.`,
+              `After that, reminders will repeat every ${ibkrReconnectReminderLabel} until it reconnects.`
+            ],
+            buttons: [
+              { text: 'Open Status', url: ibkrStatusUrl },
+              { text: 'Last-Resort Website', url: ibkrMobileUrl }
+            ]
+          })
+        ])
+      : [];
 
     scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, fallbackDelaySeconds * 1000);
 
@@ -1576,6 +1585,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       staleMinutes !== undefined
         ? `IBKR stayed ${liveFeedStatus.toLowerCase()} for about ${staleMinutes} minute(s). Yahoo fallback has been restarted automatically.`
         : `IBKR stayed ${liveFeedStatus.toLowerCase()}. Yahoo fallback has been restarted automatically.`;
+    const notifyUsers = canNotifyIbkrRecovery(source);
     await appendIbkrReconnectHistory({
       kind: 'FALLBACK_ACTIVATED',
       atMs: activatedAtMs,
@@ -1584,24 +1594,26 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       detail: bodyText
     });
 
-    const deliveries = await Promise.allSettled([
-      webPushNotificationService?.notifyGeneric({
-        title,
-        body: bodyText,
-        url: ibkrStatusUrl,
-        tag: 'ibkr-fallback-activated'
-      }),
-      telegramAlertService?.notifyGeneric({
-        title,
-        lines: [
-          bodyText,
-          `Source: ${source}`,
-          `Activated at: ${activatedAt}`,
-          body.latestBarTimestamp ? `Last IBKR bar: ${body.latestBarTimestamp}` : 'Last IBKR bar timestamp unavailable.'
-        ],
-        buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-      })
-    ]);
+    const deliveries = notifyUsers
+      ? await Promise.allSettled([
+          webPushNotificationService?.notifyGeneric({
+            title,
+            body: bodyText,
+            url: ibkrStatusUrl,
+            tag: 'ibkr-fallback-activated'
+          }),
+          telegramAlertService?.notifyGeneric({
+            title,
+            lines: [
+              bodyText,
+              `Source: ${source}`,
+              `Activated at: ${activatedAt}`,
+              body.latestBarTimestamp ? `Last IBKR bar: ${body.latestBarTimestamp}` : 'Last IBKR bar timestamp unavailable.'
+            ],
+            buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
+          })
+        ])
+      : [];
 
     return reply.status(200).send({
       ok: true,
@@ -1738,6 +1750,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     } catch (error) {
       return reply.status(400).send({ message: 'Invalid risk check request', error });
     }
+  });
+
+  app.get('/risk/config', async (_request, reply) => {
+    return reply.status(200).send({
+      config: riskConfigStore.get()
+    });
   });
 
   app.patch('/risk/config', async (request, reply) => {

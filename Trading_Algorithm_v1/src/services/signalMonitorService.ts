@@ -238,8 +238,12 @@ export class SignalMonitorService {
   }
 
   status(): SignalMonitorStatus {
+    const enabledSymbols = new Set(this.getSettings().enabledSymbols);
     const latestBarTimestampBySymbol: Partial<Record<SymbolCode, string>> = {};
     for (const [symbol, bars] of this.barsBySymbol.entries()) {
+      if (enabledSymbols.size > 0 && !enabledSymbols.has(symbol)) {
+        continue;
+      }
       const latest = bars[bars.length - 1];
       if (latest) {
         latestBarTimestampBySymbol[symbol] = latest.timestamp;
@@ -265,7 +269,7 @@ export class SignalMonitorService {
     const symbolBars = this.barsBySymbol.get(symbol) ?? [];
     const latestBar = symbolBars[symbolBars.length - 1];
     const detectedAt = latestBar?.timestamp ?? new Date().toISOString();
-    const referencePrice = latestBar?.close ?? (symbol === 'YM' ? 42_000 : 21_000);
+    const referencePrice = latestBar?.close ?? (symbol === 'ES' ? 6_000 : symbol === 'YM' ? 42_000 : 21_000);
     const side = symbol === 'YM' ? 'SHORT' : 'LONG';
     const direction = side === 'LONG' ? 1 : -1;
     const entry = Number((referencePrice + direction * 4).toFixed(2));

@@ -2332,6 +2332,13 @@ h1 {
   gap: 10px;
 }
 
+.recovery-state-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .recovery-state-pill {
   display: inline-flex;
   align-items: center;
@@ -2361,6 +2368,38 @@ h1 {
 .recovery-state-pill[data-tone='bad'] {
   color: #ffb0b0;
   border-color: rgba(255, 120, 120, 0.22);
+}
+
+.quiet-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(152, 189, 225, 0.14);
+  background: rgba(8, 18, 29, 0.68);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quiet-mode-pill[data-tone='good'] {
+  color: #9df1cc;
+  border-color: rgba(70, 214, 148, 0.2);
+}
+
+.quiet-mode-pill[data-tone='warn'] {
+  color: #ffd791;
+  border-color: rgba(247, 193, 94, 0.24);
+}
+
+.quiet-mode-copy {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .recovery-copy {

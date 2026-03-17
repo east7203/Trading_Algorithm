@@ -57,7 +57,7 @@ describe('IBKR reconnect state persistence', () => {
       path: '/notifications/ibkr/login-required',
       payload: {
         symbols: ['NQ', 'YM'],
-        source: 'persist-test',
+        source: 'manual-phone-retry',
         detectedAt: loginRequiredAt,
         fallbackDelaySeconds: 5
       }
@@ -82,8 +82,8 @@ describe('IBKR reconnect state persistence', () => {
     expect(typeof pendingPayload.diagnostics.ibkrRecovery.lastReminderAt).toBe('string');
     expect(pendingPayload.diagnostics.ibkrRecovery.history).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: 'LOGIN_REQUIRED', at: loginRequiredAt, source: 'persist-test' }),
-        expect.objectContaining({ kind: 'REMINDER', source: 'persist-test' })
+        expect.objectContaining({ kind: 'LOGIN_REQUIRED', at: loginRequiredAt, source: 'manual-phone-retry' }),
+        expect.objectContaining({ kind: 'REMINDER', source: 'manual-phone-retry' })
       ])
     );
 

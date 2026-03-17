@@ -53,10 +53,10 @@ interface OutputBar {
 const usage = (): string =>
   [
     'Usage:',
-    '  POLYGON_API_KEY=... npm run fetch:polygon -- --tickers QQQ,DIA --start 2020-01-01 --end 2026-03-10 --timespan day',
+    '  POLYGON_API_KEY=... npm run fetch:polygon -- --tickers QQQ,SPY --start 2020-01-01 --end 2026-03-10 --timespan day',
     '',
     'Options:',
-    '  --tickers QQQ,DIA                         (required)',
+    '  --tickers QQQ,SPY                         (required)',
     '  --start 2020-01-01                        (default: 2000-01-01)',
     '  --end 2026-03-10                          (default: now)',
     '  --multiplier 1                            (default: 1)',
@@ -65,7 +65,7 @@ const usage = (): string =>
     '  --sort asc|desc                           (default: asc)',
     '  --limit 50000                             (default: 50000)',
     '  --outputDir data/historical/polygon       (default: data/historical/polygon)',
-    '  --symbolMap {"QQQ":"NQ","DIA":"YM"}',
+    '  --symbolMap {"QQQ":"NQ","SPY":"ES"}',
     '  --requestDelayMs 250                      (default: 250)',
     '  --retries 5                               (default: 5)',
     '  --baseUrl https://api.polygon.io',
@@ -76,7 +76,7 @@ const usage = (): string =>
     '  POLYGON_ENV_FILE=.env.polygon             (optional env loader)'
   ].join('\n');
 
-const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM']);
+const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM']);
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
   if (value === undefined) {
@@ -167,6 +167,13 @@ const defaultAliases: Record<string, SymbolCode> = {
   NAS100: 'NQ',
   US100: 'NQ',
   USTEC: 'NQ',
+  SPY: 'ES',
+  'I:SPX': 'ES',
+  '^GSPC': 'ES',
+  GSPC: 'ES',
+  SPX: 'ES',
+  US500: 'ES',
+  'ES=F': 'ES',
   DIA: 'YM',
   'I:DJI': 'YM',
   '^DJI': 'YM',
