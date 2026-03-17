@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REMOTE_HOST="${DEPLOY_HOST:-root@167.172.252.171}"
+REMOTE_PATH="${DEPLOY_PATH:-/opt/trading-algorithm}"
+SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
+PM2_APPS="${DEPLOY_PM2_APPS:-trading-api yahoo-bridge ibkr-fallback-watchdog}"
+
+echo "Deploying ${PROJECT_ROOT} -> ${REMOTE_HOST}:${REMOTE_PATH}"
+
+rsync -az --delete \
+  -e "ssh -i ${SSH_KEY}" \
+  --exclude node_modules \
+  --exclude dist \
+  --exclude dist-desktop \
+  --exclude ios \
+  --exclude data \
+  --exclude releases \
+  --exclude '.env*' \
+  --exclude '.pm2.env' \
+  --exclude '.ibkr-login.json' \
+  --exclude '.venv-ibkr' \
+  --exclude '*.zip' \
+  --exclude '.DS_Store' \
+  "${PROJECT_ROOT}/" "${REMOTE_HOST}:${REMOTE_PATH}/"
+
+ssh -i "${SSH_KEY}" "${REMOTE_HOST}" "
+  set -euo pipefail
+  cd '${REMOTE_PATH}'
+  npm ci
+  npm run build
+  chmod +x \
+    scripts/launch-ibgateway-vps.sh \
+    scripts/launch-ibkr-bridge-vps.sh \
+    scripts/ibkr-autologin-vps.sh \
+    scripts/ibkr-recovery-vps.sh \
+    scripts/ibkr-resend-push-vps.sh \
+    scripts/trigger-ibkr-login-vps.sh
+  if [ ! -x .venv-ibkr/bin/python ]; then
+    python3 -m venv .venv-ibkr
+  fi
+  .venv-ibkr/bin/pip install --quiet --upgrade pip
+  .venv-ibkr/bin/pip install --quiet -r requirements-ibkr.txt
+  if [ -f .pm2.env ]; then
+    python3 - <<'PY'
+from pathlib import Path
+
+env_path = Path('.pm2.env')
+content = env_path.read_text()
+legacy = 'IBKR_LOGIN_ENV_JSON=/opt/trading-algorithm/.ibkr-login.json'
+current = 'IBKR_LOGIN_ENV_JSON=/opt/ibkr-runtime/run/ibkr-login.json'
+if legacy in content:
+    env_path.write_text(content.replace(legacy, current))
+PY
+    eval \"\$(
+      python3 - <<'PY'
+from pathlib import Path
+import shlex
+
+for raw_line in Path('.pm2.env').read_text().splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith('#') or '=' not in line:
+        continue
+    key, value = line.split('=', 1)
+    print(f'export {key.strip()}={shlex.quote(value)}')
+PY
+    )\"
+  fi
+  for app in ${PM2_APPS}; do
+    if pm2 describe \"\${app}\" >/dev/null 2>&1; then
+      pm2 restart \"\${app}\" --update-env
+    fi
+  done
+  python3 - <<'PY'
+import json
+import subprocess
+import time
+import urllib.request
+
+time.sleep(3)
+try:
+    with urllib.request.urlopen('http://127.0.0.1:3000/diagnostics', timeout=5) as response:
+        payload = json.load(response)
+    recovery = payload.get('diagnostics', {}).get('ibkrRecovery', {})
+    if recovery.get('lastConnectedAt') and not recovery.get('pendingReconnect'):
+        subprocess.run(['pm2', 'stop', 'yahoo-bridge'], check=False)
+except Exception:
+    pass
+PY
+  pm2 save
+"
+
+echo "Deploy complete. Runtime state under ${REMOTE_PATH}/data was preserved."

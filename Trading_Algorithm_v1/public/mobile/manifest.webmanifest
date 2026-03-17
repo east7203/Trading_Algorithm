@@ -1,0 +1,18 @@
+{
+  "name": "Trading Assist Mobile",
+  "short_name": "TradeAssist",
+  "description": "Mobile approval console for the trading algorithm.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#08131f",
+  "theme_color": "#0b1624",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

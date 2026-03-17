@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-desktop
+coverage
+data
+releases
+*.zip
+.env
+.env.bridge
+.env.ibkr.bridge
+.env.databento.bridge
+.env.yahoo.bridge
+.env.polygon
+.env.overnight
+.DS_Store
+ibkr-root*.png

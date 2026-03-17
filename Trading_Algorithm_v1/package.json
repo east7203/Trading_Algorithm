@@ -1,0 +1,85 @@
+{
+  "name": "trading-algorithm-v1",
+  "version": "0.1.0",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "dev:continuous": "CONTINUOUS_TRAINING_ENABLED=true npm run dev",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "start:continuous": "CONTINUOUS_TRAINING_ENABLED=true npm run start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "train:model": "tsx src/tools/trainRankingModel.ts",
+    "train:overnight": "tsx src/tools/runOvernightTraining.ts",
+    "fetch:databento": "tsx src/tools/fetchDatabentoOhlcv.ts",
+    "fetch:ibkr": "tsx src/tools/fetchIbkrHistorical.ts",
+    "fetch:polygon": "tsx src/tools/fetchPolygonHistorical.ts",
+    "fetch:yahoo": "tsx src/tools/fetchYahooHistorical.ts",
+    "fetch:stooq": "tsx src/tools/fetchStooqHistorical.ts",
+    "bridge:databento": "tsx src/tools/runDatabentoBridge.ts",
+    "bridge:ibkr": "tsx src/tools/runIbkrBridge.ts",
+    "bridge:yahoo": "tsx src/tools/runYahooBridge.ts",
+    "bridge:tradovate": "tsx src/tools/runTradovateBridge.ts",
+    "ibkr:vps:console": "bash scripts/open-ibkr-vps-console.sh",
+    "package:mobile": "mkdir -p releases && rm -f releases/trading-mobile-pwa.zip && cd public/mobile && zip -r ../../releases/trading-mobile-pwa.zip .",
+    "ios:init": "npx cap add ios",
+    "ios:sync": "npx cap sync ios",
+    "ios:copy": "npx cap copy ios",
+    "ios:open": "if [ -d /Applications/Xcode.app ]; then open -a Xcode ios/App/App.xcodeproj; else echo 'Xcode is not installed. Install from https://apps.apple.com/us/app/xcode/id497799835'; open 'https://apps.apple.com/us/app/xcode/id497799835'; fi",
+    "desktop:dev": "electron desktop/main.cjs",
+    "desktop:build": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir -c.mac.identity=null",
+    "desktop:install": "npm run desktop:build && APP_PATH=$(find dist-desktop -maxdepth 3 -name '*.app' | head -n 1) && [ -n \"$APP_PATH\" ] && rm -rf '/Applications/Trading Algo.app' && cp -R \"$APP_PATH\" '/Applications/Trading Algo.app' && echo 'Installed: /Applications/Trading Algo.app'",
+    "desktop:open": "open '/Applications/Trading Algo.app'",
+    "mac:notifier:install": "node desktop/manage-mac-notifier.cjs install",
+    "mac:notifier:status": "node desktop/manage-mac-notifier.cjs status",
+    "mac:notifier:logs": "node desktop/manage-mac-notifier.cjs logs",
+    "mac:notifier:uninstall": "node desktop/manage-mac-notifier.cjs uninstall",
+    "deploy:vps": "bash scripts/deploy-vps.sh"
+  },
+  "build": {
+    "appId": "com.tradingalgo.desktop",
+    "productName": "Trading Algo",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "public/mobile/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "category": "public.app-category.finance"
+    }
+  },
+  "dependencies": {
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0",
+    "@capacitor/local-notifications": "^8.0.2",
+    "@capacitor/push-notifications": "^8.0.2",
+    "@fastify/static": "^8.3.0",
+    "fastify": "^5.6.2",
+    "jsonwebtoken": "^9.0.3",
+    "uuid": "^11.1.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.18.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.5.2",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1",
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.8"
+  }
+}

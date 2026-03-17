@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, minimum-scale=0.75, maximum-scale=5, user-scalable=yes, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b1624" />
+    <title>Trading Assist</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <main class="phone-shell">
+      <div id="pullRefresh" class="pull-refresh" aria-hidden="true">
+        <div class="pull-refresh-wheel"></div>
+        <div class="pull-refresh-copy">
+          <p id="pullRefreshLabel" class="pull-refresh-label">Pull to refresh</p>
+          <p id="pullRefreshMeta" class="pull-refresh-meta">Live desk sync</p>
+        </div>
+      </div>
+
+      <header class="top-card">
+        <div class="masthead-row">
+          <div class="brand-cluster">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <div>
+              <p class="eyebrow">TRADING ASSIST</p>
+              <h1>Execution Desk</h1>
+            </div>
+          </div>
+          <div class="masthead-tags">
+            <span class="micro-pill micro-pill-strong">Manual</span>
+            <span class="micro-pill">NY Session</span>
+          </div>
+        </div>
+        <p class="subtitle">Morning setup intelligence for NQ and YM. Review, decide, and execute manually in Tradovate.</p>
+        <div class="chip-row">
+          <span id="liveBadge" class="chip chip-offline">Offline</span>
+          <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
+          <button id="refreshAll" class="chip-btn" type="button">Sync</button>
+        </div>
+        <div class="ops-ribbon">
+          <span class="ops-item">Portfolio: NQ + YM</span>
+          <span class="ops-dot" aria-hidden="true"></span>
+          <span class="ops-item">Rule-first ranking</span>
+          <span class="ops-dot" aria-hidden="true"></span>
+          <span class="ops-item">Human approval required</span>
+        </div>
+
+        <section class="hero-grid">
+          <article class="hero-panel hero-panel-primary">
+            <p class="panel-label">Desk Focus</p>
+            <div class="hero-primary">
+              <div>
+                <p id="heroFocus" class="hero-title">Waiting for structure</p>
+                <p id="heroSubline" class="panel-note">The system is watching for qualified morning setups.</p>
+              </div>
+              <div class="hero-stack">
+                <span id="heroFeedBadge" class="micro-pill">Feed --</span>
+                <span id="heroPushBadge" class="micro-pill">Alerts --</span>
+              </div>
+            </div>
+          </article>
+          <div class="hero-side-stack">
+            <article class="hero-panel hero-panel-compact">
+              <p class="panel-label">Morning Window</p>
+              <p id="heroWindow" class="panel-value">08:30-11:30 ET</p>
+              <p class="panel-note">Manual execution only</p>
+            </article>
+            <article class="hero-panel hero-panel-compact hero-panel-muted">
+              <p class="panel-label">Delivery Stack</p>
+              <p id="heroStack" class="panel-value">Web Push • Mac • Telegram</p>
+              <p id="heroLastAlert" class="panel-note">No alert yet</p>
+            </article>
+          </div>
+        </section>
+
+        <div class="quick-actions" aria-label="Section shortcuts">
+          <button class="quick-action" type="button" data-target-tab="signals">Desk</button>
+          <button class="quick-action" type="button" data-target-tab="pending">Queue</button>
+          <button class="quick-action" type="button" data-target-tab="reviews">Review</button>
+          <button class="quick-action" type="button" data-target-tab="settings">System</button>
+        </div>
+      </header>
+
+      <nav class="tabbar tabbar-top" aria-label="Primary tabs">
+        <button class="tab-btn is-active" type="button" data-tab="signals" aria-current="page">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">D</span>
+            <span class="tab-label">Desk</span>
+          </span>
+        </button>
+        <button class="tab-btn" type="button" data-tab="pending">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">Q</span>
+            <span class="tab-label">Queue</span>
+          </span>
+        </button>
+        <button class="tab-btn" type="button" data-tab="trades">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">T</span>
+            <span class="tab-label">Trades</span>
+          </span>
+        </button>
+        <button class="tab-btn" type="button" data-tab="reviews">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">R</span>
+            <span class="tab-label">Review</span>
+          </span>
+        </button>
+        <button class="tab-btn" type="button" data-tab="settings">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">S</span>
+            <span class="tab-label">Prefs</span>
+          </span>
+        </button>
+        <button class="tab-btn" type="button" data-tab="status">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">H</span>
+            <span class="tab-label">Status</span>
+          </span>
+        </button>
+      </nav>
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <p class="stat-label">Pending</p>
+          <p id="pendingCount" class="stat-value">0</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Approved Today</p>
+          <p id="sentCount" class="stat-value">0</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Open Risk</p>
+          <p id="openRiskCount" class="stat-value">0.00%</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Signals</p>
+          <p id="signalCount" class="stat-value">0</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Top Setup</p>
+          <p id="topSetupStat" class="stat-value stat-value-sm">--</p>
+        </article>
+        <article class="stat-card">
+          <p class="stat-label">Reviews Due</p>
+          <p id="reviewPendingStat" class="stat-value">0</p>
+        </article>
+      </section>
+
+      <section class="views">
+        <section id="view-signals" class="view view-signals is-active">
+          <div class="section-head">
+            <div>
+              <h2>Signals</h2>
+              <p class="section-kicker">Ranked ideas, chart context, and execution-ready review in one place.</p>
+            </div>
+            <span id="signalFilterSummary" class="chip chip-neutral">All signals</span>
+          </div>
+          <section class="signal-workspace">
+            <section class="desk-grid">
+              <article class="desk-card desk-card-spotlight">
+                <p class="stat-label">Lead Idea</p>
+                <p id="signalLeadIdea" class="desk-value">No live idea yet</p>
+                <p id="signalLeadWhy" class="desk-note">Waiting for opening range structure.</p>
+              </article>
+              <article class="desk-card">
+                <p class="stat-label">Ready vs Blocked</p>
+                <p id="signalReadyBlocked" class="desk-value">0 / 0</p>
+                <p class="desk-note">Immediate tradeability snapshot.</p>
+              </article>
+              <article class="desk-card">
+                <p class="stat-label">Lead Symbol</p>
+                <p id="signalLeadSymbol" class="desk-value">--</p>
+                <p class="desk-note">Which market currently has the highest-ranked idea.</p>
+              </article>
+            </section>
+
+            <section class="signal-toolbar">
+              <div class="filter-row">
+                <div class="segmented-control" id="signalStatusFilters">
+                  <button class="segment-btn is-active" type="button" data-status-filter="ALL">All</button>
+                  <button class="segment-btn" type="button" data-status-filter="READY">Ready</button>
+                  <button class="segment-btn" type="button" data-status-filter="BLOCKED">Blocked</button>
+                </div>
+                <div class="segmented-control segmented-control-compact" id="signalSymbolFilters">
+                  <button class="segment-btn is-active" type="button" data-symbol-filter="ALL">All Mkts</button>
+                  <button class="segment-btn" type="button" data-symbol-filter="NQ">NQ</button>
+                  <button class="segment-btn" type="button" data-symbol-filter="YM">YM</button>
+                </div>
+              </div>
+              <div class="signal-toolbar-meta">
+                <p class="hint hint-banner">Background push works from the hosted app once notifications are allowed.</p>
+                <span id="signalQueueSummary" class="chip chip-neutral">Queue --</span>
+              </div>
+            </section>
+          </section>
+          <div class="section-subhead">
+            <div>
+              <h3>Live Queue</h3>
+              <p class="section-kicker">Newest ranked ideas with the saved trigger snapshot and review actions.</p>
+            </div>
+          </div>
+          <div id="alertsList" class="stack"></div>
+        </section>
+
+        <section id="view-pending" class="view view-pending">
+          <div class="section-head">
+            <h2>Approvals</h2>
+          </div>
+          <div class="row">
+            <label class="inline-label" for="approvedBy">Approver</label>
+            <input id="approvedBy" type="text" placeholder="your name" maxlength="64" />
+          </div>
+          <label class="confirm-row" for="manualChecklistConfirm">
+            <input id="manualChecklistConfirm" type="checkbox" />
+            <span>I confirm this is paper account and I will execute manually in E8/Tradovate.</span>
+          </label>
+          <p class="hint">Approving logs the setup and checklist only. Execute manually in Tradovate.</p>
+          <div id="pendingList" class="stack"></div>
+        </section>
+
+        <section id="view-trades" class="view view-trades">
+          <div class="section-head">
+            <h2>Recent Trades</h2>
+          </div>
+          <section class="insights-grid">
+            <article class="insight-card">
+              <p class="stat-label">Setup Mix</p>
+              <p id="setupMix" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Guardrail Hits</p>
+              <p id="guardrailSummary" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Journal</p>
+              <p id="journalSummary" class="insight-text">--</p>
+            </article>
+          </section>
+          <div id="tradesList" class="stack"></div>
+        </section>
+
+        <section id="view-reviews" class="view view-reviews">
+          <div class="section-head">
+            <h2>Review Loop</h2>
+            <span id="reviewSummaryChip" class="chip chip-neutral">0 pending</span>
+          </div>
+          <p class="hint">Review the saved trigger chart, mark whether the setup was clean, and record what price likely did next.</p>
+
+          <section class="insights-grid review-insights-grid">
+            <article class="insight-card">
+              <p class="stat-label">Best Setup</p>
+              <p id="reviewSetupEdge" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Best Time</p>
+              <p id="reviewTimeEdge" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Best Score Bucket</p>
+              <p id="reviewScoreEdge" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Ready vs Blocked</p>
+              <p id="reviewBlockedVsReady" class="insight-text">--</p>
+            </article>
+          </section>
+
+          <section class="review-section">
+            <div class="section-subhead">
+              <h3>Pending Queue</h3>
+              <span id="reviewPendingQueueChip" class="chip chip-neutral">0 pending</span>
+            </div>
+            <div id="reviewsPendingList" class="stack"></div>
+          </section>
+
+          <section class="review-section">
+            <div class="section-subhead">
+              <h3>Completed Archive</h3>
+              <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 completed</span>
+            </div>
+            <div id="reviewsCompletedList" class="stack"></div>
+          </section>
+        </section>
+
+        <section id="view-settings" class="view view-settings">
+          <div class="section-head">
+            <div>
+              <h2>Settings</h2>
+              <p class="section-kicker">What is running, how alerts reach you, and where to adjust your desk.</p>
+            </div>
+          </div>
+          <section class="settings-block settings-block-accent system-summary-block">
+            <div class="block-head">
+              <div>
+                <h3>What This Desk Is Doing</h3>
+                <p class="section-kicker">A plain-language snapshot so you do not need to read raw diagnostics.</p>
+              </div>
+            </div>
+            <p id="systemOverview" class="system-overview-copy">--</p>
+          </section>
+          <section class="system-glance-grid">
+            <article class="insight-card system-glance-card">
+              <p class="stat-label">Connection</p>
+              <p id="sysGlanceFeed" class="insight-text">--</p>
+            </article>
+            <article class="insight-card system-glance-card">
+              <p class="stat-label">Desk Rules</p>
+              <p id="sysGlanceModel" class="insight-text">--</p>
+            </article>
+            <article class="insight-card system-glance-card">
+              <p class="stat-label">Learning</p>
+              <p id="sysGlanceTraining" class="insight-text">--</p>
+            </article>
+            <article class="insight-card system-glance-card">
+              <p class="stat-label">Alerts</p>
+              <p id="sysGlanceAlerts" class="insight-text">--</p>
+            </article>
+          </section>
+          <section class="settings-block">
+            <div class="block-head">
+              <div>
+                <h3>Connection</h3>
+                <p class="section-kicker">Your phone talks to the hosted desk server for signals, reviews, and alerts.</p>
+              </div>
+            </div>
+            <div class="safe-summary-card">
+              <p class="stat-label">Current Server</p>
+              <p id="apiBaseSummary" class="insight-text">Secure cloud desk server</p>
+              <p class="hint">The raw server address stays hidden unless you open Advanced.</p>
+            </div>
+            <details class="advanced-panel">
+              <summary>Advanced server settings</summary>
+              <div class="advanced-panel-body">
+                <label for="apiBase">API URL</label>
+                <div class="row">
+                  <input id="apiBase" type="url" placeholder="http://your-server:3000" />
+                  <button id="saveApiBase" class="primary-btn" type="button">Save</button>
+                </div>
+                <p class="hint">Use the hosted HTTPS API for background push. Local URLs only work for open-app polling.</p>
+              </div>
+            </details>
+          </section>
+
+          <section class="settings-block settings-block-accent">
+            <div class="block-head">
+              <div>
+                <h3>Desk Rules</h3>
+                <p class="section-kicker">Tune your morning window and what counts as a strong enough setup.</p>
+              </div>
+              <button id="applyMorningPreset" class="chip-btn" type="button">Morning Default</button>
+            </div>
+            <div class="stack controls-stack">
+              <div class="control-row">
+                <label for="signalMinScore">Minimum Score</label>
+                <input id="signalMinScore" type="number" min="0" max="100" step="1" />
+              </div>
+              <div class="control-row">
+                <label for="signalAPlusMinScore">A+ Score After 1st Hour</label>
+                <input id="signalAPlusMinScore" type="number" min="0" max="100" step="1" />
+              </div>
+              <div class="control-row">
+                <label for="signalSessionStart">Start Time</label>
+                <input id="signalSessionStart" type="time" />
+              </div>
+              <div class="control-row">
+                <label for="signalSessionEnd">Stop New Signals</label>
+                <input id="signalSessionEnd" type="time" />
+              </div>
+              <div class="control-row">
+                <label for="signalNyRangeMinutes">Opening Range Length</label>
+                <input id="signalNyRangeMinutes" type="number" min="15" max="180" step="5" />
+              </div>
+              <div class="control-row control-row-toggle">
+                <label for="signalRequireRange">Wait For Opening Range Close</label>
+                <input id="signalRequireRange" type="checkbox" />
+              </div>
+              <div class="control-row control-row-toggle">
+                <label for="signalAPlusOnly">A+ Only After First Hour</label>
+                <input id="signalAPlusOnly" type="checkbox" />
+              </div>
+            </div>
+
+            <div class="toggle-group">
+              <p class="group-label">Markets</p>
+              <label class="toggle-chip">
+                <input id="symbolNqToggle" type="checkbox" />
+                <span>NQ</span>
+              </label>
+              <label class="toggle-chip">
+                <input id="symbolYmToggle" type="checkbox" />
+                <span>YM</span>
+              </label>
+            </div>
+
+            <div class="toggle-group">
+              <p class="group-label">Setup Types</p>
+              <label class="toggle-chip">
+                <input id="setupSweepMssToggle" type="checkbox" />
+                <span>Sweep -> MSS -> FVG</span>
+              </label>
+              <label class="toggle-chip">
+                <input id="setupSweepRevToggle" type="checkbox" />
+                <span>Sweep Reversal</span>
+              </label>
+              <label class="toggle-chip">
+                <input id="setupObToggle" type="checkbox" />
+                <span>Displacement + OB</span>
+              </label>
+              <label class="toggle-chip">
+                <input id="setupBreakRetestToggle" type="checkbox" />
+                <span>Break &amp; Retest</span>
+              </label>
+            </div>
+
+            <button id="saveSignalSettings" class="primary-btn" type="button">Save Desk Rules</button>
+          </section>
+
+          <section class="settings-block">
+            <div class="block-head">
+              <div>
+                <h3>App Preferences</h3>
+                <p class="section-kicker">Adjust the look and alert behavior without changing the trading logic.</p>
+              </div>
+            </div>
+
+            <div class="stack controls-stack">
+              <div class="control-row">
+                <label for="themePreset">Theme</label>
+                <select id="themePreset">
+                  <option value="ocean">Ocean</option>
+                  <option value="ember">Ember</option>
+                  <option value="graphite">Graphite</option>
+                </select>
+              </div>
+
+              <div class="control-row">
+                <label for="densityPreset">Density</label>
+                <select id="densityPreset">
+                  <option value="cozy">Cozy</option>
+                  <option value="compact">Compact</option>
+                </select>
+              </div>
+
+              <div class="control-row control-row-range">
+                <label for="textScale">Text Size</label>
+                <input id="textScale" type="range" min="90" max="120" step="5" value="100" />
+              </div>
+
+              <div class="control-row control-row-toggle">
+                <label for="reduceMotion">Reduce Motion</label>
+                <input id="reduceMotion" type="checkbox" />
+              </div>
+
+              <div class="control-row control-row-toggle">
+                <label for="notificationToggle">Phone Alerts</label>
+                <input id="notificationToggle" type="checkbox" />
+              </div>
+            </div>
+
+            <div class="settings-inline-actions">
+              <button id="sendTestAppAlert" class="chip-btn secondary-btn" type="button">Test Phone Alert</button>
+            </div>
+
+            <button id="resetUiPrefs" class="chip-btn secondary-btn" type="button">Reset Preferences</button>
+          </section>
+
+          <p id="status" class="status">Status: checking...</p>
+        </section>
+
+        <section id="view-status" class="view view-status">
+          <div class="section-head">
+            <div>
+              <h2>Status</h2>
+              <p class="section-kicker">Operational Status and Diagnostics for the desk, server, model, alerts, and training loop.</p>
+            </div>
+          </div>
+          <section id="ibkrRecoveryPanel" class="recovery-panel">
+            <div class="recovery-panel-head">
+              <div>
+                <p class="stat-label">IBKR Recovery</p>
+                <p class="section-kicker">Use these controls only if the IBKR session actually asks for reauthentication.</p>
+              </div>
+              <span id="diagIbkrRecoveryState" class="recovery-state-pill">Checking</span>
+            </div>
+            <p id="diagIbkrRecoveryHint" class="recovery-copy">Waiting for live status.</p>
+            <div class="recovery-actions">
+              <button id="ibkrRetryLogin" class="chip-btn secondary-btn" type="button">Run Full Recovery</button>
+              <button id="ibkrResendPush" class="chip-btn secondary-btn" type="button">Run Broker Fallback</button>
+              <button id="ibkrWebsiteFallback" class="chip-btn secondary-btn" type="button">Last-Resort Website</button>
+            </div>
+            <div class="recovery-timeline">
+              <div class="recovery-timeline-head">
+                <p class="stat-label">Recent Recovery Events</p>
+                <p class="section-kicker">This timeline survives restarts so you can see the last disconnect, retries, and reconnects clearly.</p>
+              </div>
+              <div id="ibkrRecoveryTimeline" class="recovery-timeline-list"></div>
+            </div>
+          </section>
+          <section class="status-rail" aria-label="Desk health">
+            <article id="statusSegmentServer" class="status-segment">
+              <p class="status-segment-label">Server</p>
+              <p class="status-segment-value">--</p>
+            </article>
+            <article id="statusSegmentFeed" class="status-segment">
+              <p class="status-segment-label">Feed</p>
+              <p class="status-segment-value">--</p>
+            </article>
+            <article id="statusSegmentMonitor" class="status-segment">
+              <p class="status-segment-label">Monitor</p>
+              <p class="status-segment-value">--</p>
+            </article>
+            <article id="statusSegmentTraining" class="status-segment">
+              <p class="status-segment-label">Training</p>
+              <p class="status-segment-value">--</p>
+            </article>
+            <article id="statusSegmentAlerts" class="status-segment">
+              <p class="status-segment-label">Alerts</p>
+              <p class="status-segment-value">--</p>
+            </article>
+            <article id="statusSegmentModel" class="status-segment">
+              <p class="status-segment-label">Model</p>
+              <p class="status-segment-value">--</p>
+            </article>
+          </section>
+          <section class="insights-grid">
+            <article class="insight-card">
+              <p class="stat-label">Live Feed</p>
+              <p id="diagLiveFeed" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Last Bar</p>
+              <p id="diagLastBar" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Model</p>
+              <p id="diagModel" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Subscribers</p>
+              <p id="diagSubscribers" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Signal Monitor</p>
+              <p id="diagSignalMonitor" class="insight-text">--</p>
+            </article>
+            <article class="insight-card">
+              <p class="stat-label">Last Alert</p>
+              <p id="diagLastAlert" class="insight-text">--</p>
+            </article>
+          </section>
+          <section class="training-panel">
+            <div class="training-panel-head">
+              <div>
+                <p class="stat-label">Continuous Training</p>
+                <p class="section-kicker">Shows the active live model, the most recent retrain attempt, and the next retrain gate.</p>
+              </div>
+            </div>
+            <div class="training-panel-grid">
+              <article class="training-panel-card">
+                <p class="stat-label">Cadence</p>
+                <p id="diagTrainingCadence" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Last Retrain Attempt</p>
+                <p id="diagTrainingLastRun" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Current Live Model</p>
+                <p id="diagTrainingActiveModel" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Next Retrain Gate</p>
+                <p id="diagTrainingNextWindow" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Last Promotion Decision</p>
+                <p id="diagTrainingPromotion" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Feedback Loop</p>
+                <p id="diagLearningFeedback" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Best Setup</p>
+                <p id="diagLearningSetup" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Best Frame</p>
+                <p id="diagLearningFrame" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card training-panel-card-wide">
+                <p class="stat-label">Analysis Frames</p>
+                <p id="diagTrainingFrames" class="training-panel-value training-panel-value-compact">--</p>
+              </article>
+            </div>
+            <p id="diagTrainingTrigger" class="training-panel-note">--</p>
+          </section>
+        </section>
+      </section>
+
+    </main>
+
+    <template id="signalItemTemplate">
+      <article class="item-card signal-card">
+        <div class="item-row">
+          <strong class="symbol"></strong>
+          <span class="pill signalState"></span>
+        </div>
+        <p class="setupType"></p>
+        <div class="signal-guidance">
+          <div class="signal-guidance-block">
+            <p class="card-section-label">What It Is</p>
+            <p class="signalSummary"></p>
+          </div>
+          <div class="signal-guidance-block">
+            <p class="card-section-label">What To Do Next</p>
+            <p class="signalNextStep"></p>
+          </div>
+        </div>
+        <p class="card-section-label">Trigger Snapshot</p>
+        <div class="signalChart"></div>
+        <div class="signal-levels">
+          <span class="level-chip level-chip-entry">Entry <b class="entry"></b></span>
+          <span class="level-chip level-chip-stop">SL <b class="stopLoss"></b></span>
+          <span class="level-chip level-chip-target">TP1 <b class="takeProfitOne"></b></span>
+        </div>
+        <div class="projection-grid">
+          <div class="projection-card projection-card-target">
+            <p class="card-section-label">Projected Take Profit</p>
+            <p class="projection-value signalProjectedTakeProfit">--</p>
+            <p class="projection-note signalProjectedTakeProfitNote">--</p>
+          </div>
+          <div class="projection-card projection-card-stop">
+            <p class="card-section-label">Projected Stop Loss</p>
+            <p class="projection-value signalProjectedStopLoss">--</p>
+            <p class="projection-note signalProjectedStopLossNote">--</p>
+          </div>
+        </div>
+        <p class="card-section-label">Quick Read</p>
+        <div class="item-meta">
+          <span>Score <b class="signalScore"></b></span>
+          <span>Risk <b class="signalRisk"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>Bias <b class="signalBias"></b></span>
+          <span>1m Conf <b class="oneMinuteConfidence"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>R:R <b class="rr"></b></span>
+          <span class="signalIntentHint"></span>
+        </div>
+        <p class="card-section-label">Why It Matters</p>
+        <div class="evidence-strip signalEvidence"></div>
+        <div class="item-meta item-meta-stack">
+          <span class="signalReasons"></span>
+          <span class="detectedAt"></span>
+        </div>
+        <div class="signal-actions">
+          <button class="acknowledgeBtn chip-btn secondary-btn" type="button">Acknowledge</button>
+          <button class="reviewSignalBtn chip-btn secondary-btn" type="button">Review</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="pendingItemTemplate">
+      <article class="item-card pending-card">
+        <div class="item-row">
+          <strong class="symbol"></strong>
+          <span class="pill">PROPOSED</span>
+        </div>
+        <p class="setupType"></p>
+        <div class="item-meta">
+          <span>Entry <b class="entry"></b></span>
+          <span>SL <b class="stopLoss"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>TPs <b class="takeProfit"></b></span>
+          <span>R:R <b class="rr"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>Risk <b class="riskPct"></b>%</span>
+          <span>Qty <b class="quantity"></b></span>
+        </div>
+        <div class="item-meta">
+          <span class="createdAt"></span>
+        </div>
+        <button class="approveBtn primary-btn" type="button">Approve (Manual Execute)</button>
+      </article>
+    </template>
+
+    <template id="tradeItemTemplate">
+      <article class="item-card trade-card">
+        <div class="item-row">
+          <strong class="symbol"></strong>
+          <span class="pill tradeStatus"></span>
+        </div>
+        <p class="setupType"></p>
+        <div class="item-meta">
+          <span>Risk <b class="riskPct"></b>%</span>
+          <span>ID <b class="intentId"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>Created <b class="createdAt"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>Approved <b class="approvedAt"></b></span>
+        </div>
+      </article>
+    </template>
+
+    <template id="reviewItemTemplate">
+      <article class="item-card review-card">
+        <div class="item-row">
+          <strong class="symbol"></strong>
+          <span class="pill reviewStatus"></span>
+        </div>
+        <p class="setupType"></p>
+        <p class="review-section-label">Trigger Snapshot</p>
+        <p class="review-section-copy">This is the saved chart from the moment the signal fired.</p>
+        <div class="signalChart reviewSnapshotChart"></div>
+        <div class="signal-levels reviewSnapshotLevels">
+          <span class="level-chip level-chip-entry">Entry <b class="reviewEntry"></b></span>
+          <span class="level-chip level-chip-stop">SL <b class="reviewStopLoss"></b></span>
+          <span class="level-chip level-chip-target">TP1 <b class="reviewTakeProfitOne"></b></span>
+        </div>
+        <div class="projection-grid reviewProjectionGrid">
+          <div class="projection-card projection-card-target">
+            <p class="card-section-label">Projected Take Profit</p>
+            <p class="projection-value reviewProjectedTakeProfit">--</p>
+            <p class="projection-note reviewProjectedTakeProfitNote">--</p>
+          </div>
+          <div class="projection-card projection-card-stop">
+            <p class="card-section-label">Projected Stop Loss</p>
+            <p class="projection-value reviewProjectedStopLoss">--</p>
+            <p class="projection-note reviewProjectedStopLossNote">--</p>
+          </div>
+        </div>
+        <div class="item-meta">
+          <span>Timeframe <b class="reviewSnapshotTimeframe"></b></span>
+          <span class="reviewSnapshotNote"></span>
+        </div>
+        <p class="review-chart-legend">Blue dashed = session levels. Amber dashed = NY range. Solid lines = entry, stop, and target.</p>
+        <p class="review-section-label">Signal Read</p>
+        <div class="item-meta">
+          <span>Detected <b class="detectedAt"></b></span>
+          <span>Score <b class="signalScore"></b></span>
+        </div>
+        <div class="item-meta">
+          <span>Risk <b class="signalRisk"></b></span>
+          <span>1m Confidence <b class="signalConfidence"></b></span>
+        </div>
+        <p class="review-section-label">Mark Your Review</p>
+        <p class="review-section-copy">Validity = was the setup actually clean? Outcome = what price likely did if you followed the plan.</p>
+        <div class="review-form">
+          <label>
+            Was The Setup Valid?
+            <select class="reviewValidity">
+              <option value="">Select</option>
+              <option value="VALID">Valid</option>
+              <option value="INVALID">Invalid</option>
+              <option value="UNSURE">Unsure</option>
+            </select>
+          </label>
+          <label>
+            What Happened Next?
+            <select class="reviewOutcome">
+              <option value="">Select</option>
+              <option value="WOULD_WIN">Would Win</option>
+              <option value="WOULD_LOSE">Would Lose</option>
+              <option value="BREAKEVEN">Breakeven</option>
+              <option value="MISSED">Missed</option>
+              <option value="SKIPPED">Skipped</option>
+            </select>
+          </label>
+          <label>
+            Notes / Why?
+            <textarea class="reviewNotes" rows="3" placeholder="Why was it valid or invalid? What happened after the signal?"></textarea>
+          </label>
+        </div>
+        <div class="item-meta">
+          <span class="reviewUpdatedAt">Not reviewed yet</span>
+          <span class="reviewedByHint"></span>
+        </div>
+        <button class="saveReviewBtn primary-btn" type="button">Save Review</button>
+      </article>
+    </template>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

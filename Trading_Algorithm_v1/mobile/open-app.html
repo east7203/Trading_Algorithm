@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, minimum-scale=0.75, maximum-scale=5, user-scalable=yes, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#07111b" />
+    <title>Open Trading Assist</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="opener-body">
+    <main class="opener-shell">
+      <section class="opener-card">
+        <p class="eyebrow">TRADING ASSIST</p>
+        <h1>Opening App</h1>
+        <p class="subtitle">If the iPhone app is installed, it should open automatically.</p>
+        <div class="opener-actions">
+          <a id="openNativeApp" class="primary-btn opener-btn" href="tradingassist://open">Open iPhone App</a>
+          <a id="openWebFallback" class="chip-btn opener-btn" href="/mobile/">Stay on Web App</a>
+        </div>
+        <p id="openerStatus" class="status">Trying to launch the installed app…</p>
+      </section>
+    </main>
+    <script type="module" src="open-app.js"></script>
+  </body>
+</html>
