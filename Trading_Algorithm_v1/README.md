@@ -466,6 +466,24 @@ Verify continuous learning:
 curl http://127.0.0.1:3000/training/status
 ```
 
+### GitHub Actions deploy to VPS
+
+The repo includes a workflow at `.github/workflows/deploy-vps.yml` that can deploy directly to the VPS on every push to `main` or by manual dispatch.
+
+Required GitHub repository secrets:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_SSH_KEY`
+- `VPS_PORT` (optional, defaults to `22`)
+
+The workflow:
+
+- runs `npm ci`
+- runs `npm run build`
+- runs `npm test`
+- runs `bash scripts/deploy-vps.sh`
+
 ## Mobile app options
 
 ### PWA (install from browser)

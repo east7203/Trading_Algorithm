@@ -5,12 +5,13 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE_HOST="${DEPLOY_HOST:-root@167.172.252.171}"
 REMOTE_PATH="${DEPLOY_PATH:-/opt/trading-algorithm}"
 SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
+SSH_PORT="${DEPLOY_PORT:-22}"
 PM2_APPS="${DEPLOY_PM2_APPS:-trading-api yahoo-bridge ibkr-fallback-watchdog}"
 
 echo "Deploying ${PROJECT_ROOT} -> ${REMOTE_HOST}:${REMOTE_PATH}"
 
 rsync -az --delete \
-  -e "ssh -i ${SSH_KEY}" \
+  -e "ssh -i ${SSH_KEY} -p ${SSH_PORT}" \
   --exclude node_modules \
   --exclude dist \
   --exclude dist-desktop \
@@ -25,7 +26,7 @@ rsync -az --delete \
   --exclude '.DS_Store' \
   "${PROJECT_ROOT}/" "${REMOTE_HOST}:${REMOTE_PATH}/"
 
-ssh -i "${SSH_KEY}" "${REMOTE_HOST}" "
+ssh -i "${SSH_KEY}" -p "${SSH_PORT}" "${REMOTE_HOST}" "
   set -euo pipefail
   cd '${REMOTE_PATH}'
   npm ci
@@ -79,15 +80,18 @@ import subprocess
 import time
 import urllib.request
 
-time.sleep(3)
-try:
-    with urllib.request.urlopen('http://127.0.0.1:3000/diagnostics', timeout=5) as response:
-        payload = json.load(response)
-    recovery = payload.get('ibkrRecovery') or payload.get('diagnostics', {}).get('ibkrRecovery', {})
-    if recovery.get('lastConnectedAt') and not recovery.get('pendingReconnect'):
-        subprocess.run(['pm2', 'stop', 'yahoo-bridge'], check=False)
-except Exception:
-    pass
+for _ in range(20):
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:3000/diagnostics', timeout=5) as response:
+            payload = json.load(response)
+        diagnostics = payload.get('diagnostics', {})
+        recovery = diagnostics.get('ibkrRecovery') or payload.get('ibkrRecovery', {})
+        if recovery.get('lastConnectedAt') and not recovery.get('pendingReconnect'):
+            subprocess.run(['pm2', 'stop', 'yahoo-bridge'], check=False)
+            break
+    except Exception:
+        pass
+    time.sleep(3)
 PY
   pm2 save
 "

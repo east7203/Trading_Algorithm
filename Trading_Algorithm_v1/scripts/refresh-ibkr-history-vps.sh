@@ -27,9 +27,14 @@ else
   export IBKR_CLIENT_ID="$((17121 + ($$ % 1000)))"
 fi
 
-START_UTC="$(date -u -d '3 days ago' +"%Y-%m-%dT%H:%M:%SZ")"
+REFRESH_DAYS="${IBKR_HISTORY_REFRESH_DAYS:-14}"
+if ! [[ "${REFRESH_DAYS}" =~ ^[0-9]+$ ]]; then
+  REFRESH_DAYS=14
+fi
+
+START_UTC="$(date -u -d "${REFRESH_DAYS} days ago" +"%Y-%m-%dT%H:%M:%SZ")"
 END_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-export START_UTC END_UTC
+export START_UTC END_UTC REFRESH_DAYS
 OUTPUT_DIR="data/historical/ibkr-auto"
 
 find "${OUTPUT_DIR}" -type f -name '*.csv' -delete
@@ -44,6 +49,22 @@ npm run fetch:ibkr -- \
   --useRth false \
   --pacingSleepSeconds 1
 
+if [[ -f "${PROJECT_ROOT}/.pm2.env" ]]; then
+  eval "$(
+    python3 - <<'PY'
+from pathlib import Path
+import shlex
+
+for raw_line in Path('/opt/trading-algorithm/.pm2.env').read_text().splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith('#') or '=' not in line:
+        continue
+    key, value = line.split('=', 1)
+    print(f'export {key.strip()}={shlex.quote(value)}')
+PY
+  )"
+fi
+
 pm2 restart trading-api --update-env >/dev/null
 sleep 8
 curl -fsS -X POST http://127.0.0.1:3000/training/retrain >/dev/null || true
@@ -57,10 +78,11 @@ import os
 log_path = Path('/opt/trading-algorithm/data/logs/ibkr-history-refresh-state.json')
 payload = {
     'lastRefreshedAt': datetime.now(timezone.utc).isoformat(),
+    'refreshDays': os.environ.get('REFRESH_DAYS'),
     'windowStartUtc': os.environ.get('START_UTC'),
     'windowEndUtc': os.environ.get('END_UTC')
 }
 log_path.write_text(json.dumps(payload, indent=2))
 PY
 
-echo "[ibkr-history-refresh] completed window ${START_UTC} -> ${END_UTC}"
+echo "[ibkr-history-refresh] completed ${REFRESH_DAYS}d window ${START_UTC} -> ${END_UTC}"
