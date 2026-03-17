@@ -769,12 +769,13 @@ export class SignalMonitorService {
 
     const activeModel = this.rankingModelStore.get();
     const ranked = rankCandidates({ candidates }, activeModel);
-    const topCandidate = ranked[0];
     const minScoreThreshold =
       settings.aPlusOnlyAfterFirstHour && localNow.minuteOfDay >= rangeEnd
         ? Math.max(settings.minFinalScore, settings.aPlusMinScore)
         : settings.minFinalScore;
-    if (!topCandidate || (topCandidate.finalScore ?? 0) < minScoreThreshold) {
+    const qualifyingCandidates = ranked.filter((candidate) => (candidate.finalScore ?? 0) >= minScoreThreshold);
+    const topCandidate = qualifyingCandidates[0];
+    if (!topCandidate) {
       return;
     }
 
@@ -785,73 +786,76 @@ export class SignalMonitorService {
       symbol,
       payload: {
         rankedCount: ranked.length,
+        qualifyingCount: qualifyingCandidates.length,
         topCandidateId: topCandidate.id,
         topFinalScore: topCandidate.finalScore ?? null,
         rankingModelId: activeModel.modelId,
         source: 'signal-monitor'
       }
     });
-
-    const alertKey = `${topCandidate.symbol}|${topCandidate.setupType}|${topCandidate.side}|${topCandidate.generatedAt}`;
-    if (this.alertKeys.has(alertKey)) {
-      return;
-    }
-    this.alertKeys.add(alertKey);
-
     const newsEvents = await this.calendarClient.listUpcomingEvents();
-    const riskDecision = evaluateRisk(
-      {
-        candidate: topCandidate,
-        account: this.config.accountSnapshot,
-        market: this.config.marketConditions,
-        now: currentBar.timestamp,
-        newsEvents
-      },
-      this.getRiskConfig()
-    );
 
-    this.journalStore.addEvent({
-      type: 'RISK_CHECKED',
-      timestamp: currentBar.timestamp,
-      candidateId: topCandidate.id,
-      symbol,
-      payload: {
-        allowed: riskDecision.allowed,
-        reasonCodes: riskDecision.reasonCodes,
-        finalRiskPct: riskDecision.finalRiskPct,
-        source: 'signal-monitor'
+    for (const candidate of qualifyingCandidates) {
+      const alertKey = `${candidate.symbol}|${candidate.setupType}|${candidate.side}|${candidate.generatedAt}`;
+      if (this.alertKeys.has(alertKey)) {
+        continue;
       }
-    });
+      this.alertKeys.add(alertKey);
 
-    let executionIntentId: string | undefined;
-    if (riskDecision.allowed) {
-      const intent = this.executionService.propose(topCandidate, riskDecision, currentBar.timestamp);
-      executionIntentId = intent.intentId;
+      const riskDecision = evaluateRisk(
+        {
+          candidate,
+          account: this.config.accountSnapshot,
+          market: this.config.marketConditions,
+          now: currentBar.timestamp,
+          newsEvents
+        },
+        this.getRiskConfig()
+      );
+
+      this.journalStore.addEvent({
+        type: 'RISK_CHECKED',
+        timestamp: currentBar.timestamp,
+        candidateId: candidate.id,
+        symbol,
+        payload: {
+          allowed: riskDecision.allowed,
+          reasonCodes: riskDecision.reasonCodes,
+          finalRiskPct: riskDecision.finalRiskPct,
+          source: 'signal-monitor'
+        }
+      });
+
+      let executionIntentId: string | undefined;
+      if (riskDecision.allowed) {
+        const intent = this.executionService.propose(candidate, riskDecision, currentBar.timestamp);
+        executionIntentId = intent.intentId;
+      }
+
+      const alert: SignalAlert = {
+        alertId: uuidv4(),
+        symbol: candidate.symbol,
+        setupType: candidate.setupType,
+        side: candidate.side,
+        detectedAt: currentBar.timestamp,
+        rankingModelId: activeModel.modelId,
+        executionIntentId,
+        title: `${candidate.symbol} ${candidate.side} signal`,
+        summary: summarizeCandidate(candidate),
+        candidate,
+        riskDecision,
+        chartSnapshot: createChartSnapshot(candles5m, candidate, input.sessionLevels)
+      };
+
+      await this.publishAlert(alert, {
+        timestamp: currentBar.timestamp,
+        candidateId: candidate.id,
+        symbol,
+        executionIntentId,
+        finalScore: candidate.finalScore ?? null,
+        source: 'signal-monitor'
+      });
     }
-
-    const alert: SignalAlert = {
-      alertId: uuidv4(),
-      symbol: topCandidate.symbol,
-      setupType: topCandidate.setupType,
-      side: topCandidate.side,
-      detectedAt: currentBar.timestamp,
-      rankingModelId: activeModel.modelId,
-      executionIntentId,
-      title: `${topCandidate.symbol} ${topCandidate.side} signal`,
-      summary: summarizeCandidate(topCandidate),
-      candidate: topCandidate,
-      riskDecision,
-      chartSnapshot: createChartSnapshot(candles5m, topCandidate, input.sessionLevels)
-    };
-
-    await this.publishAlert(alert, {
-      timestamp: currentBar.timestamp,
-      candidateId: topCandidate.id,
-      symbol,
-      executionIntentId,
-      finalScore: topCandidate.finalScore ?? null,
-      source: 'signal-monitor'
-    });
   }
 
   private async publishAlert(

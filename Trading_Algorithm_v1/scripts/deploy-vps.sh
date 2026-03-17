@@ -36,6 +36,7 @@ ssh -i "${SSH_KEY}" "${REMOTE_HOST}" "
     scripts/ibkr-autologin-vps.sh \
     scripts/ibkr-recovery-vps.sh \
     scripts/ibkr-resend-push-vps.sh \
+    scripts/refresh-ibkr-history-vps.sh \
     scripts/trigger-ibkr-login-vps.sh
   if [ ! -x .venv-ibkr/bin/python ]; then
     python3 -m venv .venv-ibkr
@@ -82,7 +83,7 @@ time.sleep(3)
 try:
     with urllib.request.urlopen('http://127.0.0.1:3000/diagnostics', timeout=5) as response:
         payload = json.load(response)
-    recovery = payload.get('diagnostics', {}).get('ibkrRecovery', {})
+    recovery = payload.get('ibkrRecovery') or payload.get('diagnostics', {}).get('ibkrRecovery', {})
     if recovery.get('lastConnectedAt') and not recovery.get('pendingReconnect'):
         subprocess.run(['pm2', 'stop', 'yahoo-bridge'], check=False)
 except Exception:

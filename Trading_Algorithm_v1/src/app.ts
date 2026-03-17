@@ -279,6 +279,7 @@ const resolveContinuousTrainingConfig = (
     historyLimit: parseIntEnv('CONTINUOUS_TRAINING_HISTORY_LIMIT', 25, 1, 500),
     promotionMinDelta: parseFloatEnv('CONTINUOUS_TRAINING_PROMOTION_MIN_DELTA', 0.001, 0),
     minEvaluationTopPicks: parseIntEnv('CONTINUOUS_TRAINING_MIN_EVAL_TOP_PICKS', 20, 1),
+    alwaysPromoteLatestModel: parseBooleanEnv('CONTINUOUS_TRAINING_ALWAYS_PROMOTE_LATEST', true),
     trainingOptions: {
       timezone: process.env.CONTINUOUS_TRAINING_TIMEZONE ?? 'America/New_York',
       sessionStartHour: parseIntEnv('CONTINUOUS_TRAINING_SESSION_START_HOUR', 8, 0, 23),

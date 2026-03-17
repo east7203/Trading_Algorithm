@@ -87,6 +87,7 @@ export interface ContinuousTrainingStatus {
     activeModelId: string;
     promotionMinDelta: number;
     minEvaluationTopPicks: number;
+    alwaysPromoteLatestModel: boolean;
     promotions: number;
     blockedPromotions: number;
     lastDecision?: PromotionDecision;
@@ -139,6 +140,7 @@ export interface ContinuousTrainingConfig {
   feedbackDatasetProvider?: () => Promise<LearningFeedbackDataset> | LearningFeedbackDataset;
   promotionMinDelta: number;
   minEvaluationTopPicks: number;
+  alwaysPromoteLatestModel?: boolean;
   pollUrl?: string;
   pollIntervalMs: number;
   pollApiKey?: string;
@@ -774,12 +776,16 @@ export class ContinuousTrainingService {
 
       const championModel = this.modelStore.get();
       const promotionMetrics = compareModels(evaluationExamples, championModel, challengerValidationModel);
+      const alwaysPromoteLatestModel = this.config.alwaysPromoteLatestModel ?? false;
+      const validatedImprovement = promotionMetrics.delta >= this.config.promotionMinDelta;
       const promotionDecision: PromotionDecision = {
-        promoted: promotionMetrics.delta >= this.config.promotionMinDelta,
+        promoted: alwaysPromoteLatestModel || validatedImprovement,
         reason:
-          promotionMetrics.delta >= this.config.promotionMinDelta
+          validatedImprovement
             ? 'VALIDATED_IMPROVEMENT'
-            : `DELTA_BELOW_THRESHOLD_${promotionMetrics.delta.toFixed(4)}`,
+            : alwaysPromoteLatestModel
+              ? `LATEST_RETRAIN_LIVE_${promotionMetrics.delta.toFixed(4)}`
+              : `DELTA_BELOW_THRESHOLD_${promotionMetrics.delta.toFixed(4)}`,
         evaluationSet,
         championModelId: championModel.modelId,
         challengerModelId: challengerValidationModel.modelId,
@@ -1005,6 +1011,7 @@ export class ContinuousTrainingService {
         activeModelId: currentModel.modelId,
         promotionMinDelta: this.config.promotionMinDelta,
         minEvaluationTopPicks: this.config.minEvaluationTopPicks,
+        alwaysPromoteLatestModel: this.config.alwaysPromoteLatestModel ?? false,
         promotions: this.promotions,
         blockedPromotions: this.blockedPromotions,
         lastDecision: this.lastPromotionDecision

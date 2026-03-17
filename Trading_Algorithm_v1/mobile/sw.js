@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trading-assist-mobile-v7';
+const CACHE_NAME = 'trading-assist-mobile-v8';
 const ASSETS = [
   './',
   'index.html',
@@ -49,6 +49,10 @@ self.addEventListener('fetch', (event) => {
   const isDocumentRequest =
     event.request.mode === 'navigate' || event.request.destination === 'document';
   const isAppShellAsset = requestUrl.origin === self.location.origin && APP_SHELL_PATHS.has(requestUrl.pathname);
+  const isApiRequest =
+    requestUrl.origin === self.location.origin &&
+    requestUrl.pathname !== '/mobile' &&
+    !requestUrl.pathname.startsWith('/mobile/');
 
   if (isDocumentRequest || isAppShellAsset) {
     event.respondWith(
@@ -63,6 +67,21 @@ self.addEventListener('fetch', (event) => {
         .catch(() =>
           caches.match(event.request).then((cached) => cached || caches.match('/mobile/index.html') || caches.match('index.html'))
         )
+    );
+    return;
+  }
+
+  if (isApiRequest) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }

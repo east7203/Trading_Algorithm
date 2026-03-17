@@ -1946,11 +1946,11 @@ const renderDiagnostics = () => {
     : 'Disabled';
   const lastAttemptAt = training?.lastRun?.trainedAt ?? training?.lastTrainedAt;
   diagTrainingLastRunEl.textContent = lastAttemptAt
-    ? `${fmtDateTimeCompact(lastAttemptAt)} • ${fmtRelativeMinutes(lastAttemptAt)}`
+    ? `${fmtDateTimeCompact(lastAttemptAt)} • completed ${fmtRelativeMinutes(lastAttemptAt)}`
     : 'No retrain attempt yet';
   const activeModelTrainedAt = training?.model?.trainedAt ?? training?.lastTrainedAt;
   diagTrainingActiveModelEl.textContent = activeModelTrainedAt
-    ? `${fmtDateTimeCompact(activeModelTrainedAt)} • ${fmtRelativeMinutes(activeModelTrainedAt)}`
+    ? `${fmtDateTimeCompact(activeModelTrainedAt)} • live ${fmtRelativeMinutes(activeModelTrainedAt)}`
     : 'Current live model has not been promoted yet';
   diagTrainingNextWindowEl.textContent = training?.trainingInProgress
     ? 'Training now'
@@ -1958,9 +1958,11 @@ const renderDiagnostics = () => {
       ? `${fmtDateTimeCompact(cadence.nextWindowAt)} • needs ${cadence?.barsNeededForNextRetrain ?? '--'} bars`
       : 'Waiting for new bars';
   diagTrainingPromotionEl.textContent = training?.promotion?.lastDecision
-    ? training.promotion.lastDecision.promoted
-      ? `Promoted challenger • +${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
-      : `Held champion • ${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
+    ? training.promotion.alwaysPromoteLatestModel
+      ? `Newest retrain goes live • validation ${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
+      : training.promotion.lastDecision.promoted
+        ? `Promoted challenger • +${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
+        : `Held champion • ${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
     : 'No decision yet';
   diagLearningFeedbackEl.textContent = training?.feedback
     ? `${training.feedback.manualResolvedReviews ?? 0} manual • ${training.feedback.autoResolvedReviews ?? 0} auto`
@@ -1973,7 +1975,9 @@ const renderDiagnostics = () => {
     : 'Need more resolved reviews';
   diagTrainingFramesEl.textContent = analysisFrames.length ? analysisFrames.join(' • ') : '--';
   diagTrainingTriggerEl.textContent = training?.enabled
-    ? `Last retrain attempt ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} • next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
+    ? training?.promotion?.alwaysPromoteLatestModel
+      ? `Latest retrain becomes the live model automatically. Last run was ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} and the next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
+      : `Last retrain attempt ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} • next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
     : 'Continuous training is disabled.';
   sysGlanceFeedEl.textContent =
     recovery?.pendingReconnect
