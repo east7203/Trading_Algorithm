@@ -468,7 +468,7 @@ curl http://127.0.0.1:3000/training/status
 
 ### GitHub Actions deploy to VPS
 
-The repo includes a workflow at `.github/workflows/deploy-vps.yml` that can deploy directly to the VPS on every push to `main` or by manual dispatch.
+The repo root includes a workflow at `.github/workflows/deploy-vps.yml` that can deploy directly to the VPS on every push to `main` or by manual dispatch.
 
 Required GitHub repository secrets:
 
