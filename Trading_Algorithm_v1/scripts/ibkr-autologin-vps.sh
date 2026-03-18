@@ -8,12 +8,8 @@ WINDOW_WAIT_SECONDS="${IBKR_WINDOW_WAIT_SECONDS:-60}"
 TYPE_DELAY_MS="${IBKR_TYPE_DELAY_MS:-25}"
 WINDOW_WIDTH="${IBKR_WINDOW_WIDTH:-790}"
 WINDOW_HEIGHT="${IBKR_WINDOW_HEIGHT:-610}"
-USERNAME_X="${IBKR_USERNAME_FIELD_X:-368}"
+USERNAME_X="${IBKR_USERNAME_FIELD_X:-300}"
 USERNAME_Y="${IBKR_USERNAME_FIELD_Y:-277}"
-PASSWORD_X="${IBKR_PASSWORD_FIELD_X:-368}"
-PASSWORD_Y="${IBKR_PASSWORD_FIELD_Y:-315}"
-LOGIN_BUTTON_X="${IBKR_LOGIN_BUTTON_X:-384}"
-LOGIN_BUTTON_Y="${IBKR_LOGIN_BUTTON_Y:-382}"
 LOGIN_ENV_JSON="${IBKR_LOGIN_ENV_JSON:-/opt/ibkr-runtime/run/ibkr-login.json}"
 
 if [ ! -f "${LOGIN_ENV_JSON}" ]; then
@@ -120,23 +116,18 @@ xdotool windowactivate --sync "${WINDOW_ID}"
 sleep 1
 xdotool windowsize "${WINDOW_ID}" "${WINDOW_WIDTH}" "${WINDOW_HEIGHT}" || true
 
-# The refreshed IB Gateway login form requires an explicit click into the
-# username field, but text entry must go through the active window instead of
-# xdotool's per-window type mode.
+# The refreshed IB Gateway login form is more reliable when navigated
+# keyboard-first after focusing the username field.
 xdotool mousemove --window "${WINDOW_ID}" "${USERNAME_X}" "${USERNAME_Y}" click 1
 sleep 0.2
 xdotool key --clearmodifiers ctrl+a BackSpace
 sleep 0.2
 type_text "${IBKR_USERNAME}"
 sleep 0.2
-xdotool mousemove --window "${WINDOW_ID}" "${PASSWORD_X}" "${PASSWORD_Y}" click 1
-sleep 0.2
-xdotool key --clearmodifiers ctrl+a BackSpace
+xdotool key --clearmodifiers Tab
 sleep 0.2
 type_text "${IBKR_PASSWORD}"
 sleep 0.4
-xdotool mousemove --window "${WINDOW_ID}" "${LOGIN_BUTTON_X}" "${LOGIN_BUTTON_Y}" click 1
-sleep 0.3
 xdotool key --clearmodifiers Return || true
 
 echo "Submitted IBKR Gateway credentials for ${SOURCE} using window ${WINDOW_ID}"

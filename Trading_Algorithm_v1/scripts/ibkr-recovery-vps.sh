@@ -9,8 +9,8 @@ ATTEMPTS="${IBKR_RECOVERY_ATTEMPTS:-3}"
 POLL_SECONDS="${IBKR_RECOVERY_POLL_SECONDS:-8}"
 RELOGIN_BUTTON_X="${IBKR_RELOGIN_BUTTON_X:-278}"
 RELOGIN_BUTTON_Y="${IBKR_RELOGIN_BUTTON_Y:-262}"
-LOGIN_BUTTON_X="${IBKR_LOGIN_BUTTON_X:-395}"
-LOGIN_BUTTON_Y="${IBKR_LOGIN_BUTTON_Y:-360}"
+PROJECT_DIR="${IBKR_PROJECT_DIR:-/opt/trading-algorithm}"
+AUTOLOGIN_SCRIPT="${IBKR_AUTOLOGIN_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-autologin-vps.sh}"
 
 export DISPLAY="${DISPLAY_ID}"
 
@@ -39,11 +39,11 @@ for _ in $(seq 1 "${ATTEMPTS}"); do
   xdotool key --window "${WINDOW_ID}" --clearmodifiers Return || true
   sleep 0.5
 
-  # If Gateway is back on the login form and the stored credentials are still present,
-  # a keyboard-driven submit is more reliable than stale button coordinates.
-  xdotool key --window "${WINDOW_ID}" --clearmodifiers Tab Tab space || true
-  sleep 0.3
-  xdotool key --window "${WINDOW_ID}" --clearmodifiers Return || true
+  if [ -x "${AUTOLOGIN_SCRIPT}" ]; then
+    "${AUTOLOGIN_SCRIPT}" "recovery-attempt-${_}" || true
+  else
+    xdotool key --window "${WINDOW_ID}" --clearmodifiers Return || true
+  fi
 
   sleep "${POLL_SECONDS}"
 done
