@@ -59,6 +59,13 @@ const reviewPendingStatEl = document.getElementById('reviewPendingStat');
 const reviewSummaryChipEl = document.getElementById('reviewSummaryChip');
 const reviewPendingQueueChipEl = document.getElementById('reviewPendingQueueChip');
 const reviewCompletedQueueChipEl = document.getElementById('reviewCompletedQueueChip');
+const sessionSummaryChipEl = document.getElementById('sessionSummaryChip');
+const sessionSummaryHeadlineEl = document.getElementById('sessionSummaryHeadline');
+const sessionSummaryContextEl = document.getElementById('sessionSummaryContext');
+const sessionSummaryStrongestEl = document.getElementById('sessionSummaryStrongest');
+const sessionSummaryWeakestEl = document.getElementById('sessionSummaryWeakest');
+const sessionSummaryTomorrowEl = document.getElementById('sessionSummaryTomorrow');
+const sessionSummaryFeedbackEl = document.getElementById('sessionSummaryFeedback');
 const reviewSetupEdgeEl = document.getElementById('reviewSetupEdge');
 const reviewTimeEdgeEl = document.getElementById('reviewTimeEdge');
 const reviewScoreEdgeEl = document.getElementById('reviewScoreEdge');
@@ -1221,6 +1228,165 @@ const reviewPerformanceSummary = (reviews) => {
   };
 };
 
+const effectiveReviewOutcome = (review) =>
+  review.effectiveOutcome ??
+  review.alertSnapshot?.reviewState?.effectiveOutcome ??
+  review.outcome ??
+  review.autoOutcome;
+
+const reviewSessionKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown-session';
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const formatSessionLabel = (sessionKey) => {
+  if (!sessionKey || sessionKey === 'unknown-session') {
+    return 'Latest Session';
+  }
+
+  const [year, month, day] = sessionKey.split('-').map((part) => Number(part));
+  const sessionDate = new Date(year, (month || 1) - 1, day || 1);
+  if (Number.isNaN(sessionDate.getTime())) {
+    return 'Latest Session';
+  }
+
+  const now = new Date();
+  const nowKey = reviewSessionKey(now.toISOString());
+  if (sessionKey === nowKey) {
+    return 'Today';
+  }
+
+  return sessionDate.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
+const buildSessionSummary = (reviews) => {
+  if (!reviews.length) {
+    return {
+      chip: 'Waiting on reviews',
+      headline: 'No session summary yet',
+      context: 'The review loop will summarize the latest trading session once signals are reviewed or auto-resolved.',
+      strongest: 'Need more resolved reviews',
+      weakest: 'Need more resolved reviews',
+      tomorrow: 'Keep the review loop active so the app can learn what to tighten next.',
+      feedback: '0 manual • 0 auto'
+    };
+  }
+
+  const latestReviewedAt =
+    reviews.find((review) => review.detectedAt)?.detectedAt ??
+    reviews.find((review) => review.reviewedAt)?.reviewedAt;
+  const sessionKey = latestReviewedAt ? reviewSessionKey(latestReviewedAt) : null;
+  const sessionReviews = sessionKey
+    ? reviews.filter((review) => reviewSessionKey(review.detectedAt ?? review.reviewedAt ?? latestReviewedAt) === sessionKey)
+    : reviews;
+
+  const completed = sessionReviews.filter((review) => review.reviewStatus === 'COMPLETED').length;
+  const pending = sessionReviews.filter((review) => review.reviewStatus !== 'COMPLETED').length;
+  const wins = sessionReviews.filter((review) => effectiveReviewOutcome(review) === 'WOULD_WIN').length;
+  const losses = sessionReviews.filter((review) => effectiveReviewOutcome(review) === 'WOULD_LOSE').length;
+  const breakeven = sessionReviews.filter((review) => effectiveReviewOutcome(review) === 'BREAKEVEN').length;
+  const skipped = sessionReviews.filter((review) => {
+    const outcome = effectiveReviewOutcome(review);
+    return outcome === 'SKIPPED' || outcome === 'MISSED';
+  }).length;
+  const invalid = sessionReviews.filter((review) => review.validity === 'INVALID').length;
+  const manualFeedback = sessionReviews.filter(
+    (review) =>
+      review.reviewStatus === 'COMPLETED' ||
+      review.effectiveOutcomeSource === 'MANUAL' ||
+      review.validity ||
+      review.notes
+  ).length;
+  const autoFeedback = sessionReviews.filter(
+    (review) => review.effectiveOutcomeSource === 'AUTO' && review.reviewStatus !== 'COMPLETED'
+  ).length;
+
+  const resolvedForRanking = sessionReviews.filter((review) => {
+    const outcome = effectiveReviewOutcome(review);
+    return outcome === 'WOULD_WIN' || outcome === 'WOULD_LOSE';
+  });
+
+  const setupBuckets = new Map();
+  let readyCount = 0;
+  let blockedCount = 0;
+
+  for (const review of resolvedForRanking) {
+    const key = review.setupType;
+    const outcome = effectiveReviewOutcome(review);
+    const isWin = outcome === 'WOULD_WIN';
+    const existing = setupBuckets.get(key) ?? { wins: 0, total: 0 };
+    setupBuckets.set(key, {
+      wins: existing.wins + (isWin ? 1 : 0),
+      total: existing.total + 1
+    });
+
+    if (review.alertSnapshot?.riskDecision?.allowed) {
+      readyCount += 1;
+    } else {
+      blockedCount += 1;
+    }
+  }
+
+  const rankedBuckets = [...setupBuckets.entries()]
+    .map(([key, value]) => ({
+      key,
+      wins: value.wins,
+      total: value.total,
+      winRate: value.total > 0 ? value.wins / value.total : 0
+    }))
+    .filter((entry) => entry.total > 0)
+    .sort((a, b) => b.winRate - a.winRate || b.total - a.total);
+
+  const strongest = rankedBuckets[0]
+    ? `${setupLabel(rankedBuckets[0].key)} ${Math.round(rankedBuckets[0].winRate * 100)}% (${rankedBuckets[0].wins}/${rankedBuckets[0].total})`
+    : 'Need more resolved reviews';
+  const weakest = rankedBuckets[rankedBuckets.length - 1]
+    ? `${setupLabel(rankedBuckets[rankedBuckets.length - 1].key)} ${Math.round(rankedBuckets[rankedBuckets.length - 1].winRate * 100)}% (${rankedBuckets[rankedBuckets.length - 1].wins}/${rankedBuckets[rankedBuckets.length - 1].total})`
+    : invalid > 0
+      ? `${invalid} invalid setup${invalid === 1 ? '' : 's'} marked`
+      : 'Need more resolved reviews';
+
+  let tomorrow = 'Keep feeding manual reviews so the ranking model learns what you actually want to trade.';
+  if (pending > 0) {
+    tomorrow = `Clear ${pending} pending review${pending === 1 ? '' : 's'} before the next session so the model is not learning with blind spots.`;
+  } else if (invalid >= 2) {
+    tomorrow = `You rejected ${invalid} setup${invalid === 1 ? '' : 's'}. Tighten entry quality before trusting borderline signals tomorrow.`;
+  } else if (blockedCount > readyCount && blockedCount > 0) {
+    tomorrow = 'Most resolved ideas were blocked. Recheck your score threshold and session window before the open.';
+  } else if (rankedBuckets.length > 1) {
+    tomorrow = `Stay selective on ${setupLabel(rankedBuckets[rankedBuckets.length - 1].key)} until follow-through improves.`;
+  }
+
+  const sessionLabel = formatSessionLabel(sessionKey);
+  const chip =
+    pending > 0
+      ? `${sessionLabel} • ${pending} pending`
+      : `${sessionLabel} • ${completed} reviewed`;
+  const headlineParts = [`${wins} win${wins === 1 ? '' : 's'}`, `${losses} loss${losses === 1 ? '' : 'es'}`];
+  if (breakeven > 0) {
+    headlineParts.push(`${breakeven} BE`);
+  }
+  if (skipped > 0) {
+    headlineParts.push(`${skipped} skipped`);
+  }
+
+  return {
+    chip,
+    headline: `${sessionLabel}: ${headlineParts.join(' • ')}`,
+    context: `${completed} reviewed • ${pending} pending • Ready ${readyCount} • Blocked ${blockedCount}`,
+    strongest,
+    weakest,
+    tomorrow,
+    feedback: `${manualFeedback} manual • ${autoFeedback} auto`
+  };
+};
+
 const formatSignalWhy = (alert) => {
   const reasons = [...(alert.candidate?.eligibility?.passReasons ?? [])];
   const metadata = alert.candidate?.metadata ?? {};
@@ -1891,6 +2057,15 @@ const renderReviewInsights = () => {
   reviewTimeEdgeEl.textContent = summary.byTime;
   reviewScoreEdgeEl.textContent = summary.byScore;
   reviewBlockedVsReadyEl.textContent = summary.blockedVsReady;
+
+  const sessionSummary = buildSessionSummary(latestReviews);
+  sessionSummaryChipEl.textContent = sessionSummary.chip;
+  sessionSummaryHeadlineEl.textContent = sessionSummary.headline;
+  sessionSummaryContextEl.textContent = sessionSummary.context;
+  sessionSummaryStrongestEl.textContent = sessionSummary.strongest;
+  sessionSummaryWeakestEl.textContent = sessionSummary.weakest;
+  sessionSummaryTomorrowEl.textContent = sessionSummary.tomorrow;
+  sessionSummaryFeedbackEl.textContent = sessionSummary.feedback;
 };
 
 const renderDiagnostics = () => {

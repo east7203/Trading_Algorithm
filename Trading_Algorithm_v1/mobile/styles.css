@@ -1990,6 +1990,42 @@ h1 {
   margin-bottom: 14px;
 }
 
+.session-summary-card {
+  margin-bottom: 14px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent 12%);
+  background:
+    linear-gradient(180deg, rgba(10, 21, 35, 0.94), rgba(8, 18, 29, 0.82)),
+    radial-gradient(circle at top right, rgba(72, 170, 255, 0.14), transparent 48%);
+  box-shadow: 0 16px 28px rgba(4, 11, 20, 0.18);
+}
+
+.session-summary-headline {
+  margin: 10px 0 6px;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.session-summary-copy {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.session-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.session-summary-item {
+  min-height: 96px;
+}
+
 .system-glance-grid {
   display: grid;
   gap: 12px;
@@ -2024,6 +2060,7 @@ h1 {
 }
 
 @media (min-width: 720px) {
+  .session-summary-grid,
   .system-glance-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -2045,6 +2082,10 @@ h1 {
 }
 
 @media (max-width: 560px) {
+  .session-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .row {
     display: grid;
     grid-template-columns: 1fr;
