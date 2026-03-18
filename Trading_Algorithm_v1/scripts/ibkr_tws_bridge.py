@@ -64,6 +64,7 @@ class LiveSubscriptionState:
     req_id: int
     source_symbol: str
     target_symbol: str
+    contract: Any
     partial_bar: Optional[HistoricalBarRecord] = None
     last_emitted_ts: Optional[str] = None
     resolved_contract_summary: Optional[str] = None
@@ -352,6 +353,7 @@ class IbkrApiApp(EWrapper, EClient):
             req_id=req_id,
             source_symbol=source_symbol,
             target_symbol=target_symbol,
+            contract=contract,
             resolved_contract_summary=describe_contract(contract),
             flush_batch_size=max(1, flush_batch_size),
         )
@@ -585,6 +587,8 @@ class LiveBridgeRunner:
         ]
         self.connected_notified = False
         self.login_required_notified = False
+        self.symbol_last_ingest_monotonic: Dict[str, float] = {}
+        self.connect_started_monotonic = time.monotonic()
 
     def log(self, message: str) -> None:
         print(f'{self.args.log_prefix} {message}', flush=True)
@@ -592,8 +596,10 @@ class LiveBridgeRunner:
     def ingest_bars(self, bars: List[HistoricalBarRecord]) -> None:
         if not bars:
             return
+        now_monotonic = time.monotonic()
         for bar in bars:
             self.last_emitted_by_source[bar.symbol] = bar.timestamp
+            self.symbol_last_ingest_monotonic[bar.symbol] = now_monotonic
         with self.flush_lock:
             self.flush_buffer.extend(bars)
             if len(self.flush_buffer) < self.args.max_bars_per_ingest:
@@ -666,6 +672,67 @@ class LiveBridgeRunner:
         except Exception as exc:
             self.log(f'Failed to post IBKR login-required notification: {exc}')
 
+    def poll_recent_bars(self) -> None:
+        if self.app is None:
+            return
+
+        now_monotonic = time.monotonic()
+        for entry in self.contract_entries:
+            idle_seconds = now_monotonic - self.symbol_last_ingest_monotonic.get(
+                entry.target_symbol,
+                self.connect_started_monotonic,
+            )
+            if idle_seconds < self.args.poll_gap_seconds:
+                continue
+
+            subscription = next(
+                (
+                    sub
+                    for sub in self.app.live_subscriptions.values()
+                    if sub.target_symbol == entry.target_symbol
+                ),
+                None,
+            )
+            if subscription is None:
+                continue
+
+            try:
+                bars = self.app.request_historical_bars(
+                    subscription.contract,
+                    '',
+                    self.args.poll_backfill_duration,
+                    self.args.bar_size,
+                    self.args.what_to_show,
+                    1 if self.args.use_rth else 0,
+                    timeout=45.0,
+                )
+                normalized = [
+                    record
+                    for record in (
+                        normalize_ib_bar(entry.target_symbol, bar)
+                        for bar in bars
+                    )
+                    if record is not None
+                ]
+                normalized.sort(key=lambda bar: bar.timestamp)
+                if normalized:
+                    normalized = normalized[:-1]
+
+                last_seen = self.last_emitted_by_source.get(entry.target_symbol)
+                fresh = [
+                    bar
+                    for bar in normalized
+                    if last_seen is None or bar.timestamp > last_seen
+                ]
+                if fresh:
+                    self.ingest_bars(fresh)
+                    self.flush_remaining()
+                    self.log(
+                        f'Polled {len(fresh)} catch-up bars for {entry.target_symbol} after {int(idle_seconds)}s without live updates.'
+                    )
+            except Exception as exc:
+                self.log(f'Catch-up poll failed for {entry.target_symbol}: {exc}')
+
     def run(self) -> None:
         signal.signal(signal.SIGINT, lambda *_: self.stop_event.set())
         signal.signal(signal.SIGTERM, lambda *_: self.stop_event.set())
@@ -678,6 +745,8 @@ class LiveBridgeRunner:
                 self.log(
                     f'Connecting to IBKR host={self.args.host} port={self.args.port} clientId={self.args.client_id}'
                 )
+                self.connect_started_monotonic = time.monotonic()
+                self.symbol_last_ingest_monotonic = {}
                 self.app.connect(self.args.host, self.args.port, self.args.client_id)
                 self.app.start_network_loop()
                 self.app.wait_until_connected(timeout=20)
@@ -718,6 +787,7 @@ class LiveBridgeRunner:
                         self.log(
                             f'status ingest_calls={self.ingest_calls} ingested_bars={self.ingested_bars} symbols={symbols}'
                         )
+                        self.poll_recent_bars()
                 self.flush_remaining()
                 self.app.disconnect_and_join()
                 if self.stop_event.is_set():
@@ -872,6 +942,8 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument('--startup-ready-timeout-seconds', type=float, default=90.0)
     live.add_argument('--contract-lookup-retries', type=int, default=6)
     live.add_argument('--contract-lookup-retry-sleep-seconds', type=float, default=10.0)
+    live.add_argument('--poll-gap-seconds', type=int, default=120)
+    live.add_argument('--poll-backfill-duration', default='1800 S')
     live.add_argument('--log-prefix', default='[ibkr-bridge]')
 
     fetch_history = subparsers.add_parser('fetch-history', help='Fetch historical IBKR futures bars to CSV')

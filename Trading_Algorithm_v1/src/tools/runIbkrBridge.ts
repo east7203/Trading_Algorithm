@@ -171,6 +171,10 @@ const run = async (): Promise<void> => {
     String(parseIntOr(process.env.IBKR_CONTRACT_LOOKUP_RETRIES, 6, 1)),
     '--contract-lookup-retry-sleep-seconds',
     String(parseIntOr(process.env.IBKR_CONTRACT_LOOKUP_RETRY_SLEEP_SECONDS, 10, 1)),
+    '--poll-gap-seconds',
+    String(parseIntOr(process.env.IBKR_POLL_GAP_SECONDS, 120, 15)),
+    '--poll-backfill-duration',
+    process.env.IBKR_POLL_BACKFILL_DURATION ?? '1800 S',
     '--log-prefix',
     '[ibkr-bridge]'
   ];

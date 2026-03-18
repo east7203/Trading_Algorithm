@@ -52,8 +52,13 @@ env_path = Path('.pm2.env')
 content = env_path.read_text()
 legacy = 'IBKR_LOGIN_ENV_JSON=/opt/trading-algorithm/.ibkr-login.json'
 current = 'IBKR_LOGIN_ENV_JSON=/opt/ibkr-runtime/run/ibkr-login.json'
+heap_key = 'NODE_OPTIONS='
+heap_value = 'NODE_OPTIONS=--max-old-space-size=1536'
 if legacy in content:
-    env_path.write_text(content.replace(legacy, current))
+    content = content.replace(legacy, current)
+if heap_key not in content:
+    content = content.rstrip('\n') + '\n' + heap_value + '\n'
+env_path.write_text(content)
 PY
     eval \"\$(
       python3 - <<'PY'
@@ -71,7 +76,11 @@ PY
   fi
   for app in ${PM2_APPS}; do
     if pm2 describe \"\${app}\" >/dev/null 2>&1; then
-      pm2 restart \"\${app}\" --update-env
+      if [ \"\${app}\" = \"trading-api\" ]; then
+        pm2 restart \"\${app}\" --update-env --node-args='--max-old-space-size=1536'
+      else
+        pm2 restart \"\${app}\" --update-env
+      fi
     fi
   done
   python3 - <<'PY'
