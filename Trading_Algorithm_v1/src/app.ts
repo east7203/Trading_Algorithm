@@ -196,6 +196,83 @@ const parseFloatEnv = (name: string, fallback: number, min?: number, max?: numbe
   return max === undefined ? lowChecked : Math.min(max, lowChecked);
 };
 
+type CmeEquitySessionState = 'OPEN' | 'DAILY_BREAK' | 'WEEKEND_CLOSED';
+
+const getTimeZoneClockParts = (
+  value: Date | string,
+  timeZone: string
+): { weekday: string; hour: number; minute: number } => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(typeof value === 'string' ? new Date(value) : value);
+  return {
+    weekday: parts.find((part) => part.type === 'weekday')?.value ?? 'Mon',
+    hour: Number(parts.find((part) => part.type === 'hour')?.value ?? '0'),
+    minute: Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
+  };
+};
+
+const getCmeEquitySessionState = (now: Date): CmeEquitySessionState => {
+  const { weekday, hour, minute } = getTimeZoneClockParts(now, 'America/Chicago');
+  const minuteOfDay = hour * 60 + minute;
+  const dailyClose = 16 * 60;
+  const dailyReopen = 17 * 60;
+
+  switch (weekday) {
+    case 'Sun':
+      return minuteOfDay >= dailyReopen ? 'OPEN' : 'WEEKEND_CLOSED';
+    case 'Mon':
+    case 'Tue':
+    case 'Wed':
+    case 'Thu':
+      if (minuteOfDay < dailyClose) {
+        return 'OPEN';
+      }
+      if (minuteOfDay < dailyReopen) {
+        return 'DAILY_BREAK';
+      }
+      return 'OPEN';
+    case 'Fri':
+      return minuteOfDay < dailyClose ? 'OPEN' : 'WEEKEND_CLOSED';
+    default:
+      return 'WEEKEND_CLOSED';
+  }
+};
+
+const classifyLiveFeedStatus = (
+  started: boolean,
+  latestBarTimestamp: string | undefined
+): {
+  status: 'OFFLINE' | 'WAITING' | 'LIVE' | 'DELAYED' | 'STALE' | 'AFTER_HOURS';
+  barAgeMs?: number;
+  sessionState: CmeEquitySessionState;
+} => {
+  const sessionState = getCmeEquitySessionState(new Date());
+  if (!started) {
+    return { status: 'OFFLINE', sessionState };
+  }
+  if (!latestBarTimestamp) {
+    return { status: 'WAITING', sessionState };
+  }
+
+  const barAgeMs = Math.max(0, Date.now() - Date.parse(latestBarTimestamp));
+  if (barAgeMs <= 5 * 60 * 1000) {
+    return { status: 'LIVE', barAgeMs, sessionState };
+  }
+  if (sessionState !== 'OPEN') {
+    return { status: 'AFTER_HOURS', barAgeMs, sessionState };
+  }
+  if (barAgeMs <= 20 * 60 * 1000) {
+    return { status: 'DELAYED', barAgeMs, sessionState };
+  }
+  return { status: 'STALE', barAgeMs, sessionState };
+};
+
 const parseOptionalPathEnv = (name: string, fallback?: string): string | undefined => {
   const value = process.env[name];
   if (value === undefined) {
@@ -1165,7 +1242,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.get('/diagnostics', async (_request, reply) => {
     const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
-    const latestBarTimestamp =
+    const monitorLatestBarTimestamp =
       'latestBarTimestampBySymbol' in monitor
         ? Object.values(monitor.latestBarTimestampBySymbol ?? {})
             .filter((value): value is string => Boolean(value))
@@ -1190,7 +1267,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const learningPerformance = summarizeLearningPerformance(allReviews);
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
-    const barAgeMs = latestBarTimestamp ? Math.max(0, Date.now() - Date.parse(latestBarTimestamp)) : undefined;
+    const trainingLatestBarTimestamp =
+      'latestBarTimestamp' in training && typeof training.latestBarTimestamp === 'string'
+        ? training.latestBarTimestamp
+        : undefined;
+    const latestBarTimestamp = [monitorLatestBarTimestamp, trainingLatestBarTimestamp]
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1);
     const ibkrRecovery = {
       autoLoginEnabled: ibkrAutoLoginEnabled,
       pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,
@@ -1210,18 +1294,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         detail: entry.detail
       }))
     };
-    const liveFeedStatus = !('started' in monitor) || !monitor.started
-      ? 'OFFLINE'
-      : latestBarTimestamp === undefined
-        ? 'WAITING'
-        : barAgeMs !== undefined && barAgeMs <= 5 * 60 * 1000
-          ? 'LIVE'
-          : 'STALE';
+    const liveFeed = classifyLiveFeedStatus(Boolean('started' in monitor && monitor.started), latestBarTimestamp);
 
     return reply.status(200).send({
       diagnostics: {
-        liveFeedStatus,
+        liveFeedStatus: liveFeed.status,
+        liveFeedBarAgeMs: liveFeed.barAgeMs,
+        marketSessionState: liveFeed.sessionState,
         latestBarTimestamp,
+        signalMonitorLatestBarTimestamp: monitorLatestBarTimestamp,
+        trainingLatestBarTimestamp,
         lastAlertAt: 'lastAlertAt' in monitor ? monitor.lastAlertAt : undefined,
         signalMonitor: monitor,
         rankingModel: {

@@ -491,6 +491,17 @@ const getFeedStateMeta = (diagnostics) => {
       };
     }
 
+    if (diagnostics.liveFeedStatus === 'DELAYED') {
+      return {
+        tone: 'warn',
+        segment: 'Delayed',
+        summary: 'IBKR connected but delayed',
+        detail: diagnostics.latestBarTimestamp
+          ? `${lastBarText} The session is up, but market data is lagging. Check IBKR market-data subscriptions and API access.`
+          : 'The session is up, but market data is lagging. Check IBKR market-data subscriptions and API access.'
+      };
+    }
+
     if (diagnostics.liveFeedStatus === 'WAITING') {
       return {
         tone: 'warn',
@@ -500,15 +511,26 @@ const getFeedStateMeta = (diagnostics) => {
       };
     }
 
+    if (diagnostics.liveFeedStatus === 'AFTER_HOURS') {
+      return {
+        tone: 'warn',
+        segment: 'After Hours',
+        summary: 'IBKR connected after hours',
+        detail: diagnostics.latestBarTimestamp
+          ? `${lastBarText} The market is likely idle or closed, not disconnected.`
+          : recovery?.lastConnectedAt
+            ? `Gateway auth was confirmed ${fmtRelativeMinutes(recovery.lastConnectedAt)}. The market is likely idle or closed.`
+            : 'The market is likely idle or closed, not disconnected.'
+      };
+    }
+
     return {
-      tone: 'warn',
-      segment: 'After Hours',
-      summary: 'IBKR connected after hours',
+      tone: 'bad',
+      segment: 'Stalled',
+      summary: 'IBKR connected but stalled',
       detail: diagnostics.latestBarTimestamp
-        ? `${lastBarText} The market is likely idle or closed, not disconnected.`
-        : recovery?.lastConnectedAt
-          ? `Gateway auth was confirmed ${fmtRelativeMinutes(recovery.lastConnectedAt)}. The market is likely idle or closed.`
-          : 'The market is likely idle or closed, not disconnected.'
+        ? `${lastBarText} This is beyond normal delay. Use the recovery controls below.`
+        : 'The bridge is connected, but no confirmed bars are coming through.'
     };
   }
 
@@ -530,10 +552,32 @@ const getFeedStateMeta = (diagnostics) => {
     };
   }
 
-  if (diagnostics.liveFeedStatus === 'STALE') {
+  if (diagnostics.liveFeedStatus === 'DELAYED') {
     return {
       tone: 'warn',
-      segment: 'No Recent Bars',
+      segment: 'Delayed',
+      summary: 'Market data delayed',
+      detail: diagnostics.latestBarTimestamp
+        ? `${lastBarText} The feed is behind live market time. Check IBKR market-data subscriptions and API access.`
+        : 'The feed is behind live market time. Check IBKR market-data subscriptions and API access.'
+    };
+  }
+
+  if (diagnostics.liveFeedStatus === 'AFTER_HOURS') {
+    return {
+      tone: 'warn',
+      segment: 'After Hours',
+      summary: 'Market closed or idle',
+      detail: diagnostics.latestBarTimestamp
+        ? `${lastBarText} The desk is connected, but the CME session is not actively trading.`
+        : 'The desk is connected, but the CME session is not actively trading.'
+    };
+  }
+
+  if (diagnostics.liveFeedStatus === 'STALE') {
+    return {
+      tone: 'bad',
+      segment: 'Stalled',
       summary: 'No recent bars confirmed',
       detail: diagnostics.latestBarTimestamp
         ? `${lastBarText} If you expected live market data, use the recovery controls below.`
