@@ -1920,7 +1920,10 @@ const acknowledgeAlert = async (alertId, buttonEl) => {
 const apiFetch = async (path, options = {}) => {
   const base = getApiBase();
   const response = await fetch(`${base}${path}`, {
+    cache: 'no-store',
     headers: {
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
       'Content-Type': 'application/json',
       ...(options.headers || {})
     },
