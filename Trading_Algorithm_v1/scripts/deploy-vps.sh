@@ -6,7 +6,7 @@ REMOTE_HOST="${DEPLOY_HOST:-root@167.172.252.171}"
 REMOTE_PATH="${DEPLOY_PATH:-/opt/trading-algorithm}"
 SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
 SSH_PORT="${DEPLOY_PORT:-22}"
-PM2_APPS="${DEPLOY_PM2_APPS:-trading-api yahoo-bridge ibkr-fallback-watchdog}"
+PM2_APPS="${DEPLOY_PM2_APPS:-trading-api ibkr-bridge yahoo-bridge ibkr-fallback-watchdog}"
 
 echo "Deploying ${PROJECT_ROOT} -> ${REMOTE_HOST}:${REMOTE_PATH}"
 

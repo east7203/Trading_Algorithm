@@ -100,6 +100,7 @@ class IbkrApiApp(EWrapper, EClient):
         self.historical_data_ready = False
         self.secdef_ready = False
         self.services_ready_event = threading.Event()
+        self.current_market_data_type: Optional[int] = None
 
     def log(self, message: str) -> None:
         print(f'{self.log_prefix} {message}', flush=True)
@@ -211,6 +212,16 @@ class IbkrApiApp(EWrapper, EClient):
         if error_code == 2157:
             self._set_service_status(secdef=False)
 
+    def marketDataType(self, reqId: int, marketDataType: int) -> None:  # noqa: N802
+        self.current_market_data_type = marketDataType
+        label = {
+            1: 'LIVE',
+            2: 'FROZEN',
+            3: 'DELAYED',
+            4: 'DELAYED_FROZEN',
+        }.get(marketDataType, str(marketDataType))
+        self.log(f'IBKR market data type for reqId={reqId}: {label}')
+
     def services_status_summary(self) -> str:
         return (
             f'market={"ready" if self.market_data_ready else "waiting"} '
@@ -238,7 +249,8 @@ class IbkrApiApp(EWrapper, EClient):
 
     def historicalData(self, reqId: int, bar: Any) -> None:  # noqa: N802
         if reqId in self.live_subscriptions:
-            self._process_live_bar(reqId, bar)
+            record = normalize_ib_bar(self.live_subscriptions[reqId].target_symbol, bar)
+            self._process_live_record(reqId, record)
             return
         state = self.requests.get(reqId)
         if state:
@@ -254,24 +266,57 @@ class IbkrApiApp(EWrapper, EClient):
 
     def historicalDataUpdate(self, reqId: int, bar: Any) -> None:  # noqa: N802
         if reqId in self.live_subscriptions:
-            self._process_live_bar(reqId, bar)
+            record = normalize_ib_bar(self.live_subscriptions[reqId].target_symbol, bar)
+            self._process_live_record(reqId, record)
             self._flush_live_buffer(reqId)
+
+    def realtimeBar(  # noqa: N802
+        self,
+        reqId: int,
+        time_: int,
+        open_: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: float,
+        wap: float,
+        count: int,
+    ) -> None:
+        sub = self.live_subscriptions.get(reqId)
+        if sub is None:
+            return
+        minute = datetime.fromtimestamp(float(time_), tz=timezone.utc).replace(second=0, microsecond=0)
+        record = HistoricalBarRecord(
+            symbol=sub.target_symbol,
+            timestamp=minute.isoformat().replace('+00:00', 'Z'),
+            open=float(open_),
+            high=float(high),
+            low=float(low),
+            close=float(close),
+            volume=float(volume),
+        )
+        self._process_live_record(reqId, record)
 
     def register_live_subscription(self, sub: LiveSubscriptionState) -> None:
         self.live_subscriptions[sub.req_id] = sub
 
-    def _process_live_bar(self, req_id: int, bar: Any) -> None:
+    def _process_live_record(self, req_id: int, record: Optional[HistoricalBarRecord]) -> None:
         sub = self.live_subscriptions.get(req_id)
-        if sub is None:
-            return
-        record = normalize_ib_bar(sub.target_symbol, bar)
-        if record is None:
+        if sub is None or record is None:
             return
         if sub.partial_bar is None:
             sub.partial_bar = record
             return
         if record.timestamp == sub.partial_bar.timestamp:
-            sub.partial_bar = record
+            sub.partial_bar = HistoricalBarRecord(
+                symbol=sub.partial_bar.symbol,
+                timestamp=sub.partial_bar.timestamp,
+                open=sub.partial_bar.open,
+                high=max(sub.partial_bar.high, record.high),
+                low=min(sub.partial_bar.low, record.low),
+                close=record.close,
+                volume=(sub.partial_bar.volume or 0.0) + (record.volume or 0.0),
+            )
             return
         if record.timestamp > sub.partial_bar.timestamp:
             if sub.partial_bar.timestamp != sub.last_emitted_ts:
@@ -337,7 +382,7 @@ class IbkrApiApp(EWrapper, EClient):
             raise RuntimeError(state.error)
         return state.historical_bars
 
-    def subscribe_historical_keep_up_to_date(
+    def subscribe_realtime_minutes(
         self,
         contract: Contract,
         duration_str: str,
@@ -358,16 +403,36 @@ class IbkrApiApp(EWrapper, EClient):
             flush_batch_size=max(1, flush_batch_size),
         )
         self.register_live_subscription(sub)
-        self.reqHistoricalData(
-            req_id,
+        history = self.request_historical_bars(
             contract,
             '',
             duration_str,
             bar_size_setting,
             what_to_show,
             use_rth,
-            2,
-            True,
+            timeout=60.0,
+        )
+        normalized = [
+            record
+            for record in (
+                normalize_ib_bar(target_symbol, bar)
+                for bar in history
+            )
+            if record is not None
+        ]
+        normalized.sort(key=lambda bar: bar.timestamp)
+        if normalized:
+            seed = normalized[:-1]
+            if seed and self.live_ingest_callback is not None:
+                self.live_ingest_callback(seed)
+                sub.last_emitted_ts = seed[-1].timestamp
+            sub.partial_bar = normalized[-1]
+        self.reqRealTimeBars(
+            req_id,
+            contract,
+            5,
+            what_to_show,
+            bool(use_rth),
             [],
         )
         return sub
@@ -750,6 +815,8 @@ class LiveBridgeRunner:
                 self.app.connect(self.args.host, self.args.port, self.args.client_id)
                 self.app.start_network_loop()
                 self.app.wait_until_connected(timeout=20)
+                self.app.reqMarketDataType(self.args.market_data_type)
+                self.log(f'Requested IBKR market data type={self.args.market_data_type}.')
                 try:
                     self.app.wait_for_data_services(timeout=self.args.startup_ready_timeout_seconds)
                 except TimeoutError as exc:
@@ -762,7 +829,7 @@ class LiveBridgeRunner:
                         retries=self.args.contract_lookup_retries,
                         retry_sleep_seconds=self.args.contract_lookup_retry_sleep_seconds,
                     )
-                    sub = self.app.subscribe_historical_keep_up_to_date(
+                    sub = self.app.subscribe_realtime_minutes(
                         contract,
                         self.args.initial_duration,
                         self.args.bar_size,
@@ -917,7 +984,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='IBKR TWS / IB Gateway bridge utilities')
     subparsers = parser.add_subparsers(dest='command', required=True)
 
-    live = subparsers.add_parser('live-bridge', help='Run live 1-minute bridge via historical keepUpToDate')
+    live = subparsers.add_parser('live-bridge', help='Run live 1-minute bridge via real-time bars with historical seeding')
     live.add_argument('--host', required=True)
     live.add_argument('--port', required=True, type=int)
     live.add_argument('--client-id', required=True, type=int)
@@ -944,6 +1011,7 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument('--contract-lookup-retry-sleep-seconds', type=float, default=10.0)
     live.add_argument('--poll-gap-seconds', type=int, default=120)
     live.add_argument('--poll-backfill-duration', default='1800 S')
+    live.add_argument('--market-data-type', type=int, default=1)
     live.add_argument('--log-prefix', default='[ibkr-bridge]')
 
     fetch_history = subparsers.add_parser('fetch-history', help='Fetch historical IBKR futures bars to CSV')

@@ -175,6 +175,8 @@ const run = async (): Promise<void> => {
     String(parseIntOr(process.env.IBKR_POLL_GAP_SECONDS, 120, 15)),
     '--poll-backfill-duration',
     process.env.IBKR_POLL_BACKFILL_DURATION ?? '1800 S',
+    '--market-data-type',
+    String(parseIntOr(process.env.IBKR_MARKET_DATA_TYPE, 1, 1)),
     '--log-prefix',
     '[ibkr-bridge]'
   ];
