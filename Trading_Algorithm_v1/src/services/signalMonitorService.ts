@@ -646,7 +646,21 @@ export class SignalMonitorService {
 
     for (const [symbol, symbolBars] of grouped.entries()) {
       const sorted = symbolBars.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-      const keep = takeLast(sorted, this.config.maxBarsPerSymbol);
+      const existing = this.barsBySymbol.get(symbol) ?? [];
+      const merged = [...existing, ...sorted];
+      const deduped = new Map<string, OneMinuteBar>();
+      for (const bar of merged) {
+        deduped.set(bar.timestamp, bar);
+      }
+      const keep = takeLast(
+        [...deduped.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp)),
+        this.config.maxBarsPerSymbol
+      );
+
+      for (const bar of existing) {
+        this.barKeys.delete(`${bar.symbol}|${bar.timestamp}`);
+      }
+
       this.barsBySymbol.set(symbol, keep);
       for (const bar of keep) {
         this.barKeys.add(`${bar.symbol}|${bar.timestamp}`);
