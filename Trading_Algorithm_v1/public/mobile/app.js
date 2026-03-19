@@ -840,6 +840,18 @@ const renderStatusRail = () => {
     renderRecoveryTimeline(recovery);
     return;
   }
+  if (recovery?.lastConnectedAt) {
+    const apiTone = feedState.tone === 'bad' ? 'warn' : feedState.tone;
+    const connectedText = `Gateway auth was confirmed ${fmtRelativeMinutes(recovery.lastConnectedAt)}.`;
+    setRecoveryState(
+      apiTone,
+      'IBKR API Connected',
+      `${connectedText} ${feedState.detail}`
+    );
+    renderRecoveryTimeline(recovery);
+    return;
+  }
+
   setRecoveryState(feedState.tone, feedState.summary, feedState.detail);
   renderRecoveryTimeline(recovery);
 };
