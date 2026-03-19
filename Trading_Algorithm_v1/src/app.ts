@@ -901,6 +901,37 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       })
     ]);
   };
+  const notifyIbkrRecoveryRequest = async (
+    title: string,
+    source: string,
+    symbols: string[],
+    detail: string
+  ): Promise<void> => {
+    if (!canNotifyIbkrRecovery(source)) {
+      return;
+    }
+
+    const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
+    const bodyText = `${title}${symbolText}. The server received your request and is starting the recovery flow now.`;
+    await Promise.allSettled([
+      webPushNotificationService?.notifyGeneric({
+        title,
+        body: bodyText,
+        url: ibkrStatusUrl,
+        tag: 'ibkr-recovery-requested'
+      }),
+      telegramAlertService?.notifyGeneric({
+        title,
+        lines: [
+          bodyText,
+          detail,
+          `Source: ${source}`,
+          'You will get another update when the server finishes the next recovery step.'
+        ],
+        buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
+      })
+    ]);
+  };
 
   const sendIbkrReconnectFallback = async (
     requestedAtMs: number,
@@ -1700,6 +1731,19 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.post('/ibkr/recovery/retry-login', async (_request, reply) => {
     const symbols = [...ibkrReconnectState.lastSymbols];
+    await appendIbkrReconnectHistory({
+      kind: 'RECOVERY_REQUESTED',
+      atMs: Date.now(),
+      source: 'manual-phone-retry',
+      symbols,
+      detail: 'Manual full recovery request received from the app.'
+    });
+    await notifyIbkrRecoveryRequest(
+      'IBKR recovery request received',
+      'manual-phone-retry',
+      symbols,
+      'The server is starting the full IB Gateway recovery routine.'
+    );
     const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
       ignoreCooldown: true
     });
@@ -1729,6 +1773,19 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.post('/ibkr/recovery/resend-push', async (_request, reply) => {
     const symbols = [...ibkrReconnectState.lastSymbols];
+    await appendIbkrReconnectHistory({
+      kind: 'RECOVERY_REQUESTED',
+      atMs: Date.now(),
+      source: 'manual-phone-resend',
+      symbols,
+      detail: 'Manual broker fallback request received from the app.'
+    });
+    await notifyIbkrRecoveryRequest(
+      'IBKR broker fallback request received',
+      'manual-phone-resend',
+      symbols,
+      'The server is starting the broker-only fallback routine now.'
+    );
     const result = await runIbkrResendPush('manual-phone-resend');
     await appendIbkrReconnectHistory({
       kind: 'RECOVERY_ATTEMPT',

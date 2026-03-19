@@ -662,6 +662,7 @@ const renderQuietModeState = () => {
 const recoveryEventTitle = (kind) => {
   const map = {
     LOGIN_REQUIRED: 'Login required',
+    RECOVERY_REQUESTED: 'Recovery request received',
     RECOVERY_ATTEMPT: 'Server recovery started',
     REMINDER: 'Recovery retry sent',
     CONNECTED: 'IBKR connected',

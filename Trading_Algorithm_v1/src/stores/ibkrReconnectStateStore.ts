@@ -12,6 +12,7 @@ export interface IbkrReconnectStateSnapshot {
 
 export type IbkrReconnectHistoryKind =
   | 'LOGIN_REQUIRED'
+  | 'RECOVERY_REQUESTED'
   | 'RECOVERY_ATTEMPT'
   | 'REMINDER'
   | 'CONNECTED'
@@ -72,6 +73,7 @@ const normalizeHistoryEntry = (value: unknown): IbkrReconnectHistoryEntry | null
   const candidate = value as Partial<IbkrReconnectHistoryEntry>;
   const kind =
     candidate.kind === 'LOGIN_REQUIRED'
+      || candidate.kind === 'RECOVERY_REQUESTED'
       || candidate.kind === 'RECOVERY_ATTEMPT'
       || candidate.kind === 'REMINDER'
       || candidate.kind === 'CONNECTED'

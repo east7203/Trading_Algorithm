@@ -73,10 +73,12 @@ describe('IBKR reconnect fallback notifications', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(webPushMessages).toHaveLength(1);
-    expect(webPushMessages[0].title).toBe('IBKR recovery started');
-    expect(telegramMessages).toHaveLength(1);
-    expect(telegramMessages[0].title).toBe('IBKR recovery started');
+    expect(webPushMessages).toHaveLength(2);
+    expect(webPushMessages[0].title).toBe('IBKR recovery request received');
+    expect(webPushMessages[1].title).toBe('IBKR recovery started');
+    expect(telegramMessages).toHaveLength(2);
+    expect(telegramMessages[0].title).toBe('IBKR recovery request received');
+    expect(telegramMessages[1].title).toBe('IBKR recovery started');
 
     const diagnosticsResponse = await ctx.app.inject({
       method: 'GET',
@@ -85,6 +87,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(diagnosticsResponse.statusCode).toBe(200);
     expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.history).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ kind: 'RECOVERY_REQUESTED', source: 'manual-phone-retry' }),
         expect.objectContaining({ kind: 'RECOVERY_ATTEMPT', source: 'manual-phone-retry' })
       ])
     );
