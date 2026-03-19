@@ -24,6 +24,72 @@ afterEach(async () => {
 });
 
 describe('IBKR reconnect fallback notifications', () => {
+  it('sends visible progress updates when manual recovery is triggered from the app', async () => {
+    const webPushMessages: Array<Record<string, unknown>> = [];
+    const telegramMessages: Array<Record<string, unknown>> = [];
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-manual-recovery-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      ibkrLoginTrigger: async () => ({ ok: true }),
+      ibkrResendPushTrigger: async () => ({ ok: true }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          webPushMessages.push(message);
+          return { attempted: 1, delivered: 1, removed: 0 };
+        }
+      } as never,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          telegramMessages.push(message);
+          return { sent: true };
+        }
+      } as never
+    });
+    contexts.push(ctx);
+
+    await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/login-required',
+      payload: {
+        symbols: ['NQ', 'ES'],
+        source: 'ibkr-bridge',
+        reason: 'Manual recovery test',
+        fallbackDelaySeconds: 30
+      }
+    });
+
+    webPushMessages.length = 0;
+    telegramMessages.length = 0;
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/ibkr/recovery/retry-login'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(webPushMessages).toHaveLength(1);
+    expect(webPushMessages[0].title).toBe('IBKR recovery started');
+    expect(telegramMessages).toHaveLength(1);
+    expect(telegramMessages[0].title).toBe('IBKR recovery started');
+
+    const diagnosticsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/diagnostics'
+    });
+    expect(diagnosticsResponse.statusCode).toBe(200);
+    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'RECOVERY_ATTEMPT', source: 'manual-phone-retry' })
+      ])
+    );
+  });
+
   it('sends an approval follow-up alert if login-required does not recover in time', async () => {
     const webPushMessages: Array<Record<string, unknown>> = [];
     const telegramMessages: Array<Record<string, unknown>> = [];

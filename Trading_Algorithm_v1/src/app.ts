@@ -736,6 +736,57 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     (async (source: string): Promise<IbkrLoginTriggerResult> => await runIbkrScript(ibkrResendPushScriptPath, source));
   const canNotifyIbkrRecovery = (source: string): boolean =>
     shouldNotifyIbkrRecovery(source, new Date().toISOString(), riskConfigStore.get().tradingWindow);
+  const compactIbkrRecoveryDetail = (value?: string): string | undefined => {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+  };
+  const describeIbkrLoginAttempt = (attempt: IbkrLoginTriggerResult): string => {
+    if (attempt.ok) {
+      return 'The server submitted the IB Gateway username/password.';
+    }
+    if (attempt.skipped) {
+      if (attempt.reason === 'manual-resend-only') {
+        return 'This fallback run did not resubmit the IB Gateway username/password.';
+      }
+      if (attempt.reason === 'cooldown') {
+        return 'The server skipped the login retry because the recovery flow is cooling down.';
+      }
+      if (attempt.reason === 'disabled') {
+        return 'The server skipped the login retry because IBKR auto-login is disabled.';
+      }
+      return 'The server skipped the IB Gateway login retry.';
+    }
+
+    const detail = compactIbkrRecoveryDetail(attempt.stderr || attempt.stdout || attempt.reason);
+    return detail
+      ? `The server could not resubmit the IB Gateway login automatically: ${detail}`
+      : 'The server could not resubmit the IB Gateway login automatically.';
+  };
+  const describeIbkrResendAttempt = (attempt: IbkrLoginTriggerResult): string => {
+    if (attempt.ok) {
+      return 'The server ran the built-in broker fallback controls: resend notification, challenge/response, and QR code.';
+    }
+    if (attempt.skipped) {
+      return 'The server skipped the broker fallback controls.';
+    }
+
+    const detail = compactIbkrRecoveryDetail(attempt.stderr || attempt.stdout || attempt.reason);
+    return detail
+      ? `The server could not run the broker fallback controls from the current auth screen: ${detail}`
+      : 'The server could not run the broker fallback controls from the current auth screen.';
+  };
+  const buildIbkrRecoveryAttemptDetail = (
+    loginAttempt: IbkrLoginTriggerResult,
+    resendAttempt: IbkrLoginTriggerResult
+  ): string => `${describeIbkrLoginAttempt(loginAttempt)} ${describeIbkrResendAttempt(resendAttempt)}`;
   const runIbkrRecoveryAttempt = async (
     source: string,
     recoveryOptions: { ignoreCooldown?: boolean } = {}
@@ -799,6 +850,57 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       .slice(0, ibkrRecoveryHistoryLimit);
     await persistIbkrReconnectState();
   };
+  const recordIbkrRecoveryAttempt = async (
+    source: string,
+    symbols: string[],
+    loginAttempt: IbkrLoginTriggerResult,
+    resendAttempt: IbkrLoginTriggerResult
+  ): Promise<void> => {
+    await appendIbkrReconnectHistory({
+      kind: 'RECOVERY_ATTEMPT',
+      atMs: Date.now(),
+      source,
+      symbols,
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt)
+    });
+  };
+  const notifyIbkrRecoveryAttempt = async (
+    title: string,
+    source: string,
+    symbols: string[],
+    loginAttempt: IbkrLoginTriggerResult,
+    resendAttempt: IbkrLoginTriggerResult
+  ): Promise<void> => {
+    if (!canNotifyIbkrRecovery(source)) {
+      return;
+    }
+
+    const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
+    const bodyText = `${title}${symbolText}. The server is actively trying to restore the IBKR session.`;
+    await Promise.allSettled([
+      webPushNotificationService?.notifyGeneric({
+        title,
+        body: bodyText,
+        url: ibkrStatusUrl,
+        tag: 'ibkr-recovery-progress'
+      }),
+      telegramAlertService?.notifyGeneric({
+        title,
+        lines: [
+          bodyText,
+          describeIbkrLoginAttempt(loginAttempt),
+          describeIbkrResendAttempt(resendAttempt),
+          'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
+          `Source: ${source}`,
+          'You will get another message when the bridge reconnects.'
+        ],
+        buttons: [
+          { text: 'Open Status', url: ibkrStatusUrl },
+          { text: 'Last-Resort Website', url: ibkrMobileUrl }
+        ]
+      })
+    ]);
+  };
 
   const sendIbkrReconnectFallback = async (
     requestedAtMs: number,
@@ -816,14 +918,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const title = 'IBKR still not connected';
     const bodyText = `The server-side IBKR bridge still is not connected${symbolText}. The server is still waiting for IBKR approval.`;
     const { loginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(`${source}-reminder`);
-    const triggerLine = loginAttempt.ok
-      ? 'The server retried the IB Gateway username/password submission.'
-      : loginAttempt.skipped
-        ? 'The server-side IB Gateway retry was skipped.'
-        : 'The server could not retry the IB Gateway login automatically.';
-    const resendLine = resendAttempt.ok
-      ? 'The server also ran IB Gateway fallback controls: resend notification, challenge/response, and QR code.'
-      : 'The server could not run the IB Gateway fallback controls from the current auth screen.';
+    const triggerLine = describeIbkrLoginAttempt(loginAttempt);
+    const resendLine = describeIbkrResendAttempt(resendAttempt);
     const notifyUsers = canNotifyIbkrRecovery(source);
 
     if (notifyUsers) {
@@ -859,7 +955,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       atMs: ibkrReconnectState.lastFallbackAtMs,
       source,
       symbols,
-      detail: `${triggerLine} ${resendLine}`
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt)
     });
     scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, ibkrReconnectReminderIntervalMs);
   };
@@ -1551,14 +1647,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       detail: reason
     });
     const { loginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(source);
-    const triggerLine = loginAttempt.ok
-      ? 'The server has already submitted the IB Gateway username/password.'
-      : loginAttempt.skipped
-        ? 'The server-side IB Gateway auto-login was skipped.'
-        : 'The server could not submit the IB Gateway login automatically.';
-    const resendLine = resendAttempt.ok
-      ? 'The server also ran IB Gateway fallback controls: resend notification, challenge/response, and QR code.'
-      : 'The server could not run the IB Gateway fallback controls from the current auth screen.';
+    await recordIbkrRecoveryAttempt(source, symbols, loginAttempt, resendAttempt);
+    const triggerLine = describeIbkrLoginAttempt(loginAttempt);
+    const resendLine = describeIbkrResendAttempt(resendAttempt);
     const notifyUsers = canNotifyIbkrRecovery(source);
 
     const deliveries = notifyUsers
@@ -1608,9 +1699,18 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.post('/ibkr/recovery/retry-login', async (_request, reply) => {
+    const symbols = [...ibkrReconnectState.lastSymbols];
     const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
       ignoreCooldown: true
     });
+    await recordIbkrRecoveryAttempt('manual-phone-retry', symbols, result.loginAttempt, result.resendAttempt);
+    await notifyIbkrRecoveryAttempt(
+      'IBKR recovery started',
+      'manual-phone-retry',
+      symbols,
+      result.loginAttempt,
+      result.resendAttempt
+    );
     const ok = result.loginAttempt.ok || result.resendAttempt.ok;
     return reply.status(ok ? 200 : 202).send({
       ok: result.loginAttempt.ok || result.resendAttempt.ok,
@@ -1628,7 +1728,26 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.post('/ibkr/recovery/resend-push', async (_request, reply) => {
+    const symbols = [...ibkrReconnectState.lastSymbols];
     const result = await runIbkrResendPush('manual-phone-resend');
+    await appendIbkrReconnectHistory({
+      kind: 'RECOVERY_ATTEMPT',
+      atMs: Date.now(),
+      source: 'manual-phone-resend',
+      symbols,
+      detail: describeIbkrResendAttempt(result)
+    });
+    await notifyIbkrRecoveryAttempt(
+      'IBKR broker fallback started',
+      'manual-phone-resend',
+      symbols,
+      {
+        ok: false,
+        skipped: true,
+        reason: 'manual-resend-only'
+      },
+      result
+    );
     return reply.status(result.ok ? 200 : 202).send({
       ok: result.ok,
       result,

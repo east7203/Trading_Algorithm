@@ -662,6 +662,7 @@ const renderQuietModeState = () => {
 const recoveryEventTitle = (kind) => {
   const map = {
     LOGIN_REQUIRED: 'Login required',
+    RECOVERY_ATTEMPT: 'Server recovery started',
     REMINDER: 'Recovery retry sent',
     CONNECTED: 'IBKR connected',
     FALLBACK_ACTIVATED: 'Yahoo fallback activated'
@@ -3012,7 +3013,7 @@ const bindStatusRecoveryControls = () => {
       const resendReason = getRecoveryAttemptReason(resendAttempt);
       setStatus(
         response?.ok
-          ? 'Status: server recovery submitted. Gateway retried login and ran the built-in broker fallback controls.'
+          ? 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.'
           : loginAttempt.skipped
             ? `Status: server login retry skipped. ${loginReason || 'Please wait a few seconds and try again.'}`
             : resendAttempt.ok
@@ -3040,7 +3041,7 @@ const bindStatusRecoveryControls = () => {
       const resendReason = getRecoveryAttemptReason(result);
       setStatus(
         result.ok
-          ? 'Status: broker fallback ran on the server. Gateway attempted resend, challenge/response, and QR recovery links.'
+          ? 'Status: broker fallback ran on the server. Telegram and the recovery timeline will show the next step.'
           : `Status: broker fallback could not be triggered.${resendReason ? ` ${resendReason}.` : ''}`,
         !result.ok
       );
