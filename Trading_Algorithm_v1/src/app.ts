@@ -426,10 +426,10 @@ const resolveContinuousTrainingConfig = (
 ): ContinuousTrainingConfig => {
   const defaults: ContinuousTrainingConfig = {
     enabled: parseBooleanEnv('CONTINUOUS_TRAINING_ENABLED', false),
-    retrainIntervalMs: parseIntEnv('CONTINUOUS_TRAINING_RETRAIN_MINUTES', 10, 1) * 60 * 1000,
+    retrainIntervalMs: parseIntEnv('CONTINUOUS_TRAINING_RETRAIN_MINUTES', 60, 1) * 60 * 1000,
     minBarsToTrain: parseIntEnv('CONTINUOUS_TRAINING_MIN_BARS', 300, 50),
     minExamplesToTrain: parseIntEnv('CONTINUOUS_TRAINING_MIN_EXAMPLES', 120, 20),
-    minNewBarsForRetrain: parseIntEnv('CONTINUOUS_TRAINING_MIN_NEW_BARS', 10, 1),
+    minNewBarsForRetrain: parseIntEnv('CONTINUOUS_TRAINING_MIN_NEW_BARS', 120, 1),
     maxBarsRetained: parseIntEnv('CONTINUOUS_TRAINING_MAX_BARS', 300_000, 1_000),
     validationPct: parseFloatEnv('CONTINUOUS_TRAINING_VALIDATION_PCT', 20, 0, 99.9),
     bootstrapCsvDir: parseOptionalPathEnv(
