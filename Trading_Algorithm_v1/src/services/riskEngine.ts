@@ -1,5 +1,5 @@
 import type { RiskCheckInput, RiskConfig, RiskDecision } from '../domain/types.js';
-import { isInBlockedNewsWindow } from './newsBlockService.js';
+import { evaluateNewsContext } from './newsContextService.js';
 import { isWithinTradingWindow } from './tradingWindowService.js';
 
 const clamp = (value: number, min: number, max: number): number => {
@@ -43,10 +43,15 @@ export const evaluateRisk = (input: RiskCheckInput, config: RiskConfig): RiskDec
     reasonCodes.push('POLICY_CONFIRMATION_REQUIRED');
   }
 
-  const blockedByNewsWindow = isInBlockedNewsWindow(input.newsEvents, input.now, 15, 30);
+  const newsContext = evaluateNewsContext(input.newsEvents, input.now, input.candidate.symbol);
+  const blockedByNewsWindow = newsContext.blocked;
   if (blockedByNewsWindow) {
     blocked = true;
-    reasonCodes.push('HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK');
+    for (const code of newsContext.reasonCodes) {
+      if (!reasonCodes.includes(code)) {
+        reasonCodes.push(code);
+      }
+    }
   }
 
   const blockedByTradingWindow = !isWithinTradingWindow(input.now, config.tradingWindow);

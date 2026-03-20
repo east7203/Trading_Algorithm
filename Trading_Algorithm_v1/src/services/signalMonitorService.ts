@@ -25,6 +25,7 @@ import {
 } from '../training/historicalTrainer.js';
 import { rankCandidates } from './ranker.js';
 import type { RankingModelStore } from './rankingModelStore.js';
+import { evaluateNewsContext } from './newsContextService.js';
 import { evaluateRisk } from './riskEngine.js';
 import type { ExecutionService } from './executionService.js';
 import type { JournalStore } from '../stores/journalStore.js';
@@ -134,6 +135,16 @@ const barToCandle = (bar: OneMinuteBar): Candle => ({
 
 const takeLast = <T>(items: T[], count: number): T[] =>
   items.length <= count ? items : items.slice(items.length - count);
+
+const clamp = (value: number, min: number, max: number): number => {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+};
 
 const buildAlertKey = (candidate: SetupCandidate): string =>
   `${candidate.symbol}|${candidate.setupType}|${candidate.side}|${candidate.generatedAt}`;
@@ -957,21 +968,49 @@ export class SignalMonitorService {
       return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
+    const newsEvents = await this.calendarClient.listUpcomingEvents();
+    const newsContext = evaluateNewsContext(newsEvents, currentBar.timestamp, symbol);
+    const contextualCandidates = candidates.map((candidate) => {
+      const regimeAiContextScore =
+        typeof candidate.metadata.aiContextScore === 'number' ? candidate.metadata.aiContextScore : 0;
+      const newsAiContextScore = newsContext.scoreAdjustment;
+
+      return {
+        ...candidate,
+        metadata: {
+          ...candidate.metadata,
+          regimeAiContextScore,
+          newsAiContextScore,
+          aiContextScore: clamp(regimeAiContextScore + newsAiContextScore, -6, 6),
+          macroBlocked: newsContext.blocked,
+          macroContextSummary: newsContext.summary,
+          macroRelevantEventCount: newsContext.relevantEvents.length,
+          macroEventTitle: newsContext.primaryEvent?.event.title ?? newsContext.primaryEvent?.event.category,
+          macroEventStartsAt: newsContext.primaryEvent?.event.startsAt,
+          macroEventImpact: newsContext.primaryEvent?.event.impact,
+          macroEventCurrency: newsContext.primaryEvent?.event.currency
+        }
+      };
+    });
+
     if (options.recordJournal) {
       this.journalStore.addEvent({
         type: 'SIGNAL_GENERATED',
         timestamp: currentBar.timestamp,
         symbol,
         payload: {
-          candidateCount: candidates.length,
-          setupTypes: candidates.map((candidate) => candidate.setupType),
+          candidateCount: contextualCandidates.length,
+          setupTypes: contextualCandidates.map((candidate) => candidate.setupType),
+          macroBlocked: newsContext.blocked,
+          macroContextSummary: newsContext.summary,
+          macroRelevantEventCount: newsContext.relevantEvents.length,
           source: options.source
         }
       });
     }
 
     const activeModel = this.rankingModelStore.get();
-    const ranked = rankCandidates({ candidates }, activeModel);
+    const ranked = rankCandidates({ candidates: contextualCandidates }, activeModel);
     const minScoreThreshold =
       settings.aPlusOnlyAfterFirstHour && localNow.minuteOfDay >= rangeEnd
         ? Math.max(settings.minFinalScore, settings.aPlusMinScore)
@@ -998,7 +1037,6 @@ export class SignalMonitorService {
         }
       });
     }
-    const newsEvents = await this.calendarClient.listUpcomingEvents();
     let matchedAlerts = 0;
     let publishedAlerts = 0;
     let skippedAlerts = 0;

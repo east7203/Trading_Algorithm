@@ -655,7 +655,7 @@ export const trainRankingModelFromExamples = (examples: TrainingExample[]): Rank
 
   const defaults = defaultRankingModel();
   const setupAdjustments = emptySetupAdjustments();
-  const symbols: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'YM', 'MNQ', 'MYM'];
+  const symbols: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM'];
   const symbolAdjustments: Partial<Record<SymbolCode, number>> = {};
 
   const targets = examples.map(target);

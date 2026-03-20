@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type AppContext } from '../../src/app.js';
+import { InMemoryEconomicCalendarClient } from '../../src/integrations/news/EconomicCalendarClient.js';
 
 const contexts: AppContext[] = [];
 const tempDirs: string[] = [];
@@ -103,6 +104,23 @@ const relaxSignalSettings = async (ctx: AppContext) => {
   expect(response.statusCode).toBe(200);
 };
 
+const confirmPolicy = async (ctx: AppContext) => {
+  const response = await ctx.app.inject({
+    method: 'PATCH',
+    path: '/risk/config',
+    payload: {
+      policyConfirmation: {
+        firmUsageApproved: true,
+        platformUsageApproved: true,
+        confirmedBy: 'integration-test',
+        confirmedAt: '2026-01-06T13:29:00.000Z'
+      }
+    }
+  });
+
+  expect(response.statusCode).toBe(200);
+};
+
 describe('signal monitor integration', () => {
   it('creates live signal alerts from ingested one-minute bars', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-'));
@@ -152,6 +170,62 @@ describe('signal monitor integration', () => {
     expect(top.riskDecision.reasonCodes).toContain('POLICY_CONFIRMATION_REQUIRED');
     expect(top.chartSnapshot.timeframe).toBe('5m');
     expect(top.chartSnapshot.bars.length).toBeGreaterThan(3);
+  });
+
+  it('adds macro-news context to ranked candidates and blocks setups during critical windows', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-macro-news-'));
+    tempDirs.push(tempDir);
+
+    const calendarClient = new InMemoryEconomicCalendarClient([
+      {
+        currency: 'USD',
+        impact: 'high',
+        startsAt: '2026-01-06T14:45:00.000Z',
+        source: 'economic-calendar',
+        title: 'US CPI'
+      }
+    ]);
+
+    const ctx = buildApp({
+      calendarClient,
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+    await confirmPolicy(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const alertsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+
+    expect(alertsResponse.statusCode).toBe(200);
+    const top = alertsResponse.json().alerts[0];
+    expect(top.candidate.metadata.newsAiContextScore).toBeLessThan(0);
+    expect(top.candidate.metadata.macroContextSummary).toContain('US CPI');
+    expect(top.riskDecision.blockedByNewsWindow).toBe(true);
+    expect(top.riskDecision.reasonCodes).toContain('CRITICAL_MACRO_EVENT_WINDOW_BLOCK');
   });
 
   it('updates signal settings and suppresses disabled symbols', async () => {

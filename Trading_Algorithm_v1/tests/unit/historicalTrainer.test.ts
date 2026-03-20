@@ -137,6 +137,27 @@ describe('historical trainer', () => {
     expect(model.aiContextWeight).toBeGreaterThan(defaultRankingModel().aiContextWeight);
   });
 
+  it('learns symbol adjustments for ES when ES outcomes differ materially', () => {
+    const examples: TrainingExample[] = [];
+
+    for (let i = 0; i < 24; i += 1) {
+      examples.push({
+        snapshotId: `es-win-${i}`,
+        candidate: baseCandidate(`es-${i}`, 'NY_BREAK_RETEST_MOMENTUM', 'ES', 0.7),
+        outcome: i < 18 ? 'WIN' : 'LOSS'
+      });
+      examples.push({
+        snapshotId: `nq-loss-${i}`,
+        candidate: baseCandidate(`nq-${i}`, 'NY_BREAK_RETEST_MOMENTUM', 'NQ', 0.7),
+        outcome: i < 8 ? 'WIN' : 'LOSS'
+      });
+    }
+
+    const model = trainRankingModelFromExamples(examples);
+    expect(model.symbolAdjustments.ES ?? 0).toBeGreaterThan(0);
+    expect(model.symbolAdjustments.ES ?? 0).toBeGreaterThan(model.symbolAdjustments.NQ ?? 0);
+  });
+
   it('parses Databento-style ts_event timestamp column', () => {
     const csv = [
       'ts_event,open,high,low,close,volume,symbol',

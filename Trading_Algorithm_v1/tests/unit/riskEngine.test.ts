@@ -141,6 +141,44 @@ describe('evaluateRisk', () => {
     expect(decision.reasonCodes).toContain('HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK');
   });
 
+  it('blocks around broader high-impact macro events that can move ES and NQ', () => {
+    const store = new RiskConfigStore();
+    store.patch({
+      policyConfirmation: {
+        firmUsageApproved: true,
+        platformUsageApproved: true,
+        confirmedBy: 'tester',
+        confirmedAt: '2026-03-07T14:00:00.000Z'
+      }
+    });
+
+    const decision = evaluateRisk(
+      {
+        ...baseInput(),
+        candidate: {
+          ...candidate,
+          symbol: 'ES'
+        },
+        now: '2026-03-07T15:10:00.000Z',
+        newsEvents: [
+          {
+            currency: 'EUR',
+            country: 'Euro Area',
+            impact: 'high',
+            startsAt: '2026-03-07T15:20:00.000Z',
+            source: 'paid-economic-calendar-api',
+            title: 'Euro Area CPI'
+          }
+        ]
+      },
+      store.get()
+    );
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.blockedByNewsWindow).toBe(true);
+    expect(decision.reasonCodes).toContain('CRITICAL_MACRO_EVENT_WINDOW_BLOCK');
+  });
+
   it('blocks outside configured morning trading window', () => {
     const store = new RiskConfigStore();
     store.patch({

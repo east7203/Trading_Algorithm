@@ -269,15 +269,24 @@ const signalEvidenceTags = (alert) => {
 
 const humanizeRiskReason = (code) => {
   const friendly = {
+    CRITICAL_MACRO_EVENT_WINDOW_BLOCK: 'a critical macro event window is active',
+    HIGH_IMPACT_MACRO_WINDOW_BLOCK: 'a high-impact macro event window is active',
+    HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK: 'a high-impact U.S. news window is active',
+    MEDIUM_IMPACT_USD_NEWS_WINDOW_BLOCK: 'a medium-impact U.S. news window is active',
     HIGH_IMPACT_NEWS_WINDOW: 'the news blackout is active',
     TRADING_WINDOW_CLOSED: 'it is outside your morning window',
+    OUTSIDE_ALLOWED_TRADING_WINDOW: 'it is outside your morning window',
     DAILY_LOSS_CAP_REACHED: 'the daily loss brake is active',
     SESSION_LOSS_CAP_REACHED: 'the session loss brake is active',
     MAX_CONSECUTIVE_LOSSES_REACHED: 'the consecutive-loss brake is active',
     SPREAD_GUARD_ACTIVE: 'the spread guard is active',
+    SPREAD_GUARD_TRIGGERED: 'the spread guard is active',
     SLIPPAGE_GUARD_ACTIVE: 'the slippage guard is active',
+    SLIPPAGE_GUARD_TRIGGERED: 'the slippage guard is active',
+    POLICY_CONFIRMATION_REQUIRED: 'policy confirmation is still required',
     POLICY_GUARD_BLOCKED: 'policy guard is blocking entries',
-    KILL_SWITCH_ACTIVE: 'the kill switch is on'
+    KILL_SWITCH_ACTIVE: 'the kill switch is on',
+    INVALID_STOP_DISTANCE: 'the stop distance is invalid'
   };
 
   if (friendly[code]) {
