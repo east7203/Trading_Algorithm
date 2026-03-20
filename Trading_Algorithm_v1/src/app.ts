@@ -10,6 +10,7 @@ import { ExecutionService } from './services/executionService.js';
 import { InMemoryTradeLockerClient, type TradeLockerClient } from './integrations/tradelocker/TradeLockerClient.js';
 import {
   InMemoryEconomicCalendarClient,
+  ForexFactoryCalendarClient,
   TradingEconomicsCalendarClient,
   type EconomicCalendarClient
 } from './integrations/news/EconomicCalendarClient.js';
@@ -688,9 +689,22 @@ const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalen
     return new InMemoryEconomicCalendarClient();
   }
 
-  const provider = (process.env.ECONOMIC_CALENDAR_PROVIDER ?? 'tradingeconomics').trim().toLowerCase();
+  const provider = (process.env.ECONOMIC_CALENDAR_PROVIDER ?? 'forexfactory').trim().toLowerCase();
   if (provider === 'memory' || provider === 'stub' || provider === 'inmemory') {
     return new InMemoryEconomicCalendarClient();
+  }
+
+  if (provider === 'forexfactory' || provider === 'ff') {
+    return new ForexFactoryCalendarClient({
+      exportUrl:
+        process.env.FOREX_FACTORY_EXPORT_URL ??
+        'https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=918c104dd11c656d8e7462980fbf329c',
+      lookbackHours: parseIntEnv('FOREX_FACTORY_LOOKBACK_HOURS', 6, 1, 48),
+      lookaheadHours: parseIntEnv('FOREX_FACTORY_LOOKAHEAD_HOURS', 120, 1, 240),
+      cacheTtlMs: parseIntEnv('FOREX_FACTORY_CACHE_TTL_SECONDS', 180, 30, 3600) * 1000,
+      requestTimeoutMs: parseIntEnv('FOREX_FACTORY_TIMEOUT_MS', 10_000, 1_000, 60_000),
+      maxEvents: parseIntEnv('FOREX_FACTORY_MAX_EVENTS', 200, 10, 500)
+    });
   }
 
   if (provider === 'tradingeconomics' || provider === 'te') {

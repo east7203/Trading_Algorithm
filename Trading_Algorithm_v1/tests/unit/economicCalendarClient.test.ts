@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TradingEconomicsCalendarClient } from '../../src/integrations/news/EconomicCalendarClient.js';
+import {
+  ForexFactoryCalendarClient,
+  TradingEconomicsCalendarClient
+} from '../../src/integrations/news/EconomicCalendarClient.js';
 
 describe('TradingEconomicsCalendarClient', () => {
   afterEach(() => {
@@ -84,6 +87,74 @@ describe('TradingEconomicsCalendarClient', () => {
     });
     expect(client.status()).toMatchObject({
       sourceName: 'tradingeconomics',
+      mode: 'live',
+      cachedEventCount: 2
+    });
+  });
+});
+
+describe('ForexFactoryCalendarClient', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('maps and caches calendar events from Forex Factory weekly export', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-20T14:00:00.000Z'));
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          title: 'Core Retail Sales m/m',
+          country: 'USD',
+          date: '2026-03-20T09:00:00-04:00',
+          impact: 'High',
+          forecast: '0.3%',
+          previous: '0.2%',
+          actual: '0.4%'
+        },
+        {
+          title: 'German ZEW Economic Sentiment',
+          country: 'EUR',
+          date: '2026-03-21T06:00:00-04:00',
+          impact: 'Low',
+          forecast: '39.0',
+          previous: '58.3%'
+        }
+      ]
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new ForexFactoryCalendarClient({
+      exportUrl: 'https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=test',
+      lookbackHours: 2,
+      lookaheadHours: 48,
+      cacheTtlMs: 60_000,
+      maxEvents: 20
+    });
+
+    const first = await client.listUpcomingEvents();
+    const second = await client.listUpcomingEvents();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toHaveLength(2);
+    expect(second).toHaveLength(2);
+    expect(first[0]).toMatchObject({
+      currency: 'USD',
+      impact: 'high',
+      title: 'Core Retail Sales m/m',
+      category: 'Core Retail Sales m/m',
+      actual: '0.4%',
+      forecast: '0.3%',
+      previous: '0.2%',
+      importanceScore: 3
+    });
+    expect(client.status()).toMatchObject({
+      sourceName: 'forexfactory',
       mode: 'live',
       cachedEventCount: 2
     });

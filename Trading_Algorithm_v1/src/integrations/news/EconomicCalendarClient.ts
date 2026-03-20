@@ -29,6 +29,15 @@ export interface TradingEconomicsCalendarClientConfig {
   maxEvents?: number;
 }
 
+export interface ForexFactoryCalendarClientConfig {
+  exportUrl?: string;
+  lookbackHours?: number;
+  lookaheadHours?: number;
+  cacheTtlMs?: number;
+  requestTimeoutMs?: number;
+  maxEvents?: number;
+}
+
 interface TradingEconomicsCalendarItem {
   CalendarId?: string | number;
   Date?: string;
@@ -50,6 +59,16 @@ interface TradingEconomicsCalendarItem {
   Unit?: string;
 }
 
+interface ForexFactoryCalendarItem {
+  title?: string;
+  country?: string;
+  date?: string;
+  impact?: string;
+  actual?: string;
+  forecast?: string;
+  previous?: string;
+}
+
 interface CalendarCacheState {
   events: NewsEvent[];
   fetchedAtMs: number;
@@ -58,6 +77,9 @@ interface CalendarCacheState {
 
 const DEFAULT_SOURCE_NAME = 'tradingeconomics';
 const DEFAULT_BASE_URL = 'https://api.tradingeconomics.com';
+const DEFAULT_FOREX_FACTORY_SOURCE_NAME = 'forexfactory';
+const DEFAULT_FOREX_FACTORY_EXPORT_URL =
+  'https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=918c104dd11c656d8e7462980fbf329c';
 const DEFAULT_COUNTRIES = ['All'];
 const COUNTRY_TO_CURRENCY: Record<string, string> = {
   Australia: 'AUD',
@@ -142,6 +164,42 @@ const buildTradingEconomicsUrl = (
   url.searchParams.set('c', apiKey);
   url.searchParams.set('f', 'json');
   return url.toString();
+};
+
+const mapForexFactoryImpact = (value: string | undefined): { impact: 'low' | 'medium' | 'high'; importanceScore: number } => {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (normalized === 'high') {
+    return { impact: 'high', importanceScore: 3 };
+  }
+  if (normalized === 'medium') {
+    return { impact: 'medium', importanceScore: 2 };
+  }
+  return { impact: 'low', importanceScore: 1 };
+};
+
+const mapForexFactoryEvent = (sourceName: string, row: ForexFactoryCalendarItem): NewsEvent | null => {
+  if (!row.date || !row.country) {
+    return null;
+  }
+
+  const startsAtMs = Date.parse(row.date);
+  if (!Number.isFinite(startsAtMs)) {
+    return null;
+  }
+
+  const impact = mapForexFactoryImpact(row.impact);
+  return {
+    currency: row.country.trim().toUpperCase(),
+    impact: impact.impact,
+    startsAt: new Date(startsAtMs).toISOString(),
+    source: sourceName,
+    title: normalizeOptionalText(row.title) ?? undefined,
+    category: normalizeOptionalText(row.title) ?? undefined,
+    actual: normalizeOptionalText(row.actual),
+    forecast: normalizeOptionalText(row.forecast),
+    previous: normalizeOptionalText(row.previous),
+    importanceScore: impact.importanceScore
+  };
 };
 
 const mapTradingEconomicsEvent = (sourceName: string, row: TradingEconomicsCalendarItem): NewsEvent | null => {
@@ -324,6 +382,104 @@ export class TradingEconomicsCalendarClient implements EconomicCalendarClient {
       newestRawEventMs < nowMs - 24 * 60 * 60 * 1000
         ? 'Provider returned stale calendar data; supply a dedicated API key.'
         : undefined;
+    this.cache = {
+      events,
+      fetchedAtMs: nowMs,
+      expiresAtMs: nowMs + this.cacheTtlMs
+    };
+    return events;
+  }
+}
+
+export class ForexFactoryCalendarClient implements EconomicCalendarClient {
+  sourceName = DEFAULT_FOREX_FACTORY_SOURCE_NAME;
+
+  private readonly exportUrl: string;
+  private readonly lookbackHours: number;
+  private readonly lookaheadHours: number;
+  private readonly cacheTtlMs: number;
+  private readonly requestTimeoutMs: number;
+  private readonly maxEvents: number;
+  private cache: CalendarCacheState | null = null;
+  private refreshPromise: Promise<NewsEvent[]> | null = null;
+  private lastError?: string;
+
+  constructor(config: ForexFactoryCalendarClientConfig = {}) {
+    this.exportUrl = (config.exportUrl ?? DEFAULT_FOREX_FACTORY_EXPORT_URL).trim();
+    this.lookbackHours = Math.max(1, Math.trunc(config.lookbackHours ?? 6));
+    this.lookaheadHours = Math.max(1, Math.trunc(config.lookaheadHours ?? 120));
+    this.cacheTtlMs = Math.max(30_000, Math.trunc(config.cacheTtlMs ?? 180_000));
+    this.requestTimeoutMs = Math.max(1_000, Math.trunc(config.requestTimeoutMs ?? 10_000));
+    this.maxEvents = Math.max(1, Math.trunc(config.maxEvents ?? 200));
+  }
+
+  status(): EconomicCalendarClientStatus {
+    const nextEventAt = this.cache?.events
+      .map((event) => event.startsAt)
+      .filter((value) => Date.parse(value) >= Date.now())
+      .sort()
+      .at(0);
+
+    return {
+      sourceName: this.sourceName,
+      mode: 'live',
+      cachedEventCount: this.cache?.events.length ?? 0,
+      nextEventAt,
+      lastFetchedAt: this.cache ? new Date(this.cache.fetchedAtMs).toISOString() : undefined,
+      cacheExpiresAt: this.cache ? new Date(this.cache.expiresAtMs).toISOString() : undefined,
+      lastError: this.lastError
+    };
+  }
+
+  async listUpcomingEvents(): Promise<NewsEvent[]> {
+    const nowMs = Date.now();
+    if (this.cache && this.cache.expiresAtMs > nowMs) {
+      return [...this.cache.events];
+    }
+
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.refresh(nowMs).finally(() => {
+        this.refreshPromise = null;
+      });
+    }
+
+    try {
+      return [...(await this.refreshPromise)];
+    } catch {
+      return this.cache ? [...this.cache.events] : [];
+    }
+  }
+
+  private async refresh(nowMs: number): Promise<NewsEvent[]> {
+    const signal = AbortSignal.timeout(this.requestTimeoutMs);
+    const response = await fetch(this.exportUrl, {
+      method: 'GET',
+      signal,
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
+
+    if (!response.ok) {
+      this.lastError = `Forex Factory request failed (${response.status})`;
+      throw new Error(this.lastError);
+    }
+
+    const payload = (await response.json()) as ForexFactoryCalendarItem[];
+    const minWindowMs = nowMs - this.lookbackHours * 60 * 60 * 1000;
+    const maxWindowMs = nowMs + this.lookaheadHours * 60 * 60 * 1000;
+    const events = payload
+      .map((row) => mapForexFactoryEvent(this.sourceName, row))
+      .filter((event): event is NewsEvent => Boolean(event))
+      .filter((event) => {
+        const eventMs = Date.parse(event.startsAt);
+        return Number.isFinite(eventMs) && eventMs >= minWindowMs && eventMs <= maxWindowMs;
+      })
+      .sort((left, right) => left.startsAt.localeCompare(right.startsAt))
+      .slice(0, this.maxEvents);
+
+    this.lastError = events.length === 0 ? 'Forex Factory export returned no events in the current window.' : undefined;
     this.cache = {
       events,
       fetchedAtMs: nowMs,
