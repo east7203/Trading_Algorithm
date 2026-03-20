@@ -1385,6 +1385,47 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.post('/signals/replay-history', async (request, reply) => {
+    if (!signalMonitorService) {
+      return reply.status(409).send({
+        message: 'Signal monitor is disabled'
+      });
+    }
+
+    const body = (request.body as {
+      since?: string;
+      until?: string;
+      publishAlerts?: boolean;
+      notifyChannels?: boolean;
+      maxAlerts?: number;
+    } | undefined) ?? {};
+
+    const normalizedMaxAlerts =
+      typeof body.maxAlerts === 'number' && Number.isFinite(body.maxAlerts) && body.maxAlerts > 0
+        ? Math.floor(body.maxAlerts)
+        : undefined;
+
+    try {
+      const replay = await signalMonitorService.replayHistoricalAlerts({
+        since: typeof body.since === 'string' && body.since.trim().length > 0 ? body.since : undefined,
+        until: typeof body.until === 'string' && body.until.trim().length > 0 ? body.until : undefined,
+        publishAlerts: body.publishAlerts ?? true,
+        notifyChannels: body.notifyChannels ?? true,
+        maxAlerts: normalizedMaxAlerts
+      });
+
+      return reply.status(200).send({
+        ok: true,
+        replay,
+        monitor: signalMonitorService.status()
+      });
+    } catch (error) {
+      return reply.status(400).send({
+        message: (error as Error).message
+      });
+    }
+  });
+
   app.get('/learning/performance', async (_request, reply) => {
     const reviews = await signalReviewStore.listAllReviews();
     const performance = summarizeLearningPerformance(reviews);

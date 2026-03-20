@@ -53,6 +53,25 @@ interface SignalMonitorConfig {
   marketConditions: MarketConditions;
 }
 
+interface EvaluateSymbolOptions {
+  source: string;
+  publishAlerts: boolean;
+  notifyChannels: boolean;
+  recordJournal: boolean;
+  seenAlertKeys: Set<string>;
+}
+
+interface EvaluateSymbolResult {
+  matchedAlerts: number;
+  publishedAlerts: number;
+  skippedAlerts: number;
+}
+
+const REPLAY_HISTORY_DIRS = [
+  path.resolve(process.cwd(), 'data', 'historical', 'ibkr-auto'),
+  path.resolve(process.cwd(), 'data', 'historical', 'ibkr')
+] as const;
+
 export interface SignalMonitorStatus {
   enabled: boolean;
   started: boolean;
@@ -115,6 +134,9 @@ const barToCandle = (bar: OneMinuteBar): Candle => ({
 
 const takeLast = <T>(items: T[], count: number): T[] =>
   items.length <= count ? items : items.slice(items.length - count);
+
+const buildAlertKey = (candidate: SetupCandidate): string =>
+  `${candidate.symbol}|${candidate.setupType}|${candidate.side}|${candidate.generatedAt}`;
 
 const listCsvFiles = async (dirPath: string, recursive: boolean): Promise<string[]> => {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -220,6 +242,7 @@ export class SignalMonitorService {
     this.started = true;
 
     try {
+      await this.hydrateRecordedAlertKeys();
       await this.loadBootstrapCsv();
       await this.loadArchiveBars();
       this.startEscalationLoop();
@@ -262,6 +285,66 @@ export class SignalMonitorService {
 
   listAlerts(limit = 50): SignalAlert[] {
     return this.alerts.slice(0, Math.max(1, limit));
+  }
+
+  async replayHistoricalAlerts(options: {
+    since?: string;
+    until?: string;
+    publishAlerts?: boolean;
+    notifyChannels?: boolean;
+    maxAlerts?: number;
+  } = {}): Promise<{
+    scannedBars: number;
+    matchedAlerts: number;
+    publishedAlerts: number;
+    skippedAlerts: number;
+  }> {
+    const settings = this.getSettings();
+    const replayBarsBySymbol = await this.loadReplayBars(settings.enabledSymbols);
+    const seenAlertKeys = new Set(this.alertKeys);
+    const since = options.since;
+    const until = options.until;
+    const publishAlerts = options.publishAlerts ?? true;
+    const notifyChannels = options.notifyChannels ?? true;
+    const maxAlerts = options.maxAlerts;
+
+    let scannedBars = 0;
+    let matchedAlerts = 0;
+    let publishedAlerts = 0;
+    let skippedAlerts = 0;
+
+    for (const symbol of settings.enabledSymbols) {
+      const bars = replayBarsBySymbol.get(symbol) ?? [];
+      for (const bar of bars) {
+        if (since && bar.timestamp < since) {
+          continue;
+        }
+        if (until && bar.timestamp > until) {
+          continue;
+        }
+        scannedBars += 1;
+        const result = await this.evaluateSymbolAtBarFromState(replayBarsBySymbol, symbol, bar.timestamp, {
+          source: 'historical-replay',
+          publishAlerts,
+          notifyChannels,
+          recordJournal: publishAlerts,
+          seenAlertKeys
+        });
+        matchedAlerts += result.matchedAlerts;
+        publishedAlerts += result.publishedAlerts;
+        skippedAlerts += result.skippedAlerts;
+        if (publishAlerts && maxAlerts !== undefined && publishedAlerts >= maxAlerts) {
+          this.alertKeys = seenAlertKeys;
+          return { scannedBars, matchedAlerts, publishedAlerts, skippedAlerts };
+        }
+      }
+    }
+
+    if (publishAlerts) {
+      this.alertKeys = seenAlertKeys;
+    }
+
+    return { scannedBars, matchedAlerts, publishedAlerts, skippedAlerts };
   }
 
   async triggerTestAlert(symbol: SymbolCode = 'NQ'): Promise<SignalAlert> {
@@ -537,6 +620,17 @@ export class SignalMonitorService {
     }
   }
 
+  private async hydrateRecordedAlertKeys(): Promise<void> {
+    const reviews = await this.signalReviewStore.listAllReviews();
+    for (const review of reviews) {
+      const candidate = review.alertSnapshot?.candidate;
+      if (!candidate) {
+        continue;
+      }
+      this.alertKeys.add(buildAlertKey(candidate));
+    }
+  }
+
   async ingestBars(rawBars: OneMinuteBar[]): Promise<{ accepted: number }> {
     if (!this.config.enabled || rawBars.length === 0) {
       return { accepted: 0 };
@@ -578,6 +672,80 @@ export class SignalMonitorService {
     }
 
     return { accepted: accepted.length };
+  }
+
+  private async loadReplayBars(enabledSymbols: SymbolCode[]): Promise<Map<SymbolCode, OneMinuteBar[]>> {
+    const dedupedBySymbol = new Map<SymbolCode, Map<string, OneMinuteBar>>();
+    for (const symbol of enabledSymbols) {
+      dedupedBySymbol.set(symbol, new Map());
+    }
+
+    for (const dirPath of REPLAY_HISTORY_DIRS) {
+      const exists = await fs
+        .stat(dirPath)
+        .then((stats) => stats.isDirectory())
+        .catch(() => false);
+      if (!exists) {
+        continue;
+      }
+
+      const files = await listCsvFiles(dirPath, true);
+      for (const file of files) {
+        const raw = await fs.readFile(file, 'utf8');
+        const bars = parseOneMinuteCsv(raw).filter((bar) => enabledSymbols.includes(bar.symbol));
+        for (const bar of bars) {
+          let bucket = dedupedBySymbol.get(bar.symbol);
+          if (!bucket) {
+            bucket = new Map<string, OneMinuteBar>();
+            dedupedBySymbol.set(bar.symbol, bucket);
+          }
+          bucket.set(bar.timestamp, bar);
+        }
+      }
+    }
+
+    if (this.config.archivePath) {
+      const archiveExists = await fs
+        .stat(this.config.archivePath)
+        .then((stats) => stats.isFile())
+        .catch(() => false);
+
+      if (archiveExists) {
+        const raw = await fs.readFile(this.config.archivePath, 'utf8');
+        const lines = raw
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        for (const line of lines) {
+          try {
+            const bar = JSON.parse(line) as OneMinuteBar;
+            if (!enabledSymbols.includes(bar.symbol)) {
+              continue;
+            }
+            let bucket = dedupedBySymbol.get(bar.symbol);
+            if (!bucket) {
+              bucket = new Map<string, OneMinuteBar>();
+              dedupedBySymbol.set(bar.symbol, bucket);
+            }
+            bucket.set(bar.timestamp, bar);
+          } catch {
+            // Ignore malformed archive rows.
+          }
+        }
+      }
+    }
+
+    const result = new Map<SymbolCode, OneMinuteBar[]>();
+    for (const symbol of enabledSymbols) {
+      const bucket = dedupedBySymbol.get(symbol);
+      result.set(
+        symbol,
+        bucket ? [...bucket.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp)) : []
+      );
+    }
+
+    return result;
   }
 
   private async loadBootstrapCsv(): Promise<void> {
@@ -668,25 +836,44 @@ export class SignalMonitorService {
     }
   }
 
-  private async evaluateSymbolAtBar(symbol: SymbolCode, timestamp: string): Promise<void> {
+  private async evaluateSymbolAtBar(
+    symbol: SymbolCode,
+    timestamp: string,
+    options: EvaluateSymbolOptions = {
+      source: 'signal-monitor',
+      publishAlerts: true,
+      notifyChannels: true,
+      recordJournal: true,
+      seenAlertKeys: this.alertKeys
+    }
+  ): Promise<EvaluateSymbolResult> {
+    return this.evaluateSymbolAtBarFromState(this.barsBySymbol, symbol, timestamp, options);
+  }
+
+  private async evaluateSymbolAtBarFromState(
+    barsBySymbol: Map<SymbolCode, OneMinuteBar[]>,
+    symbol: SymbolCode,
+    timestamp: string,
+    options: EvaluateSymbolOptions
+  ): Promise<EvaluateSymbolResult> {
     const settings = this.getSettings();
     if (!settings.enabledSymbols.includes(symbol)) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
-    const symbolBars = this.barsBySymbol.get(symbol);
+    const symbolBars = barsBySymbol.get(symbol);
     if (!symbolBars || symbolBars.length < this.config.lookbackBars1m) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const currentIndex = symbolBars.findIndex((bar) => bar.timestamp === timestamp);
     if (currentIndex < 0) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const currentBar = symbolBars[currentIndex];
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const barsUntilNow = symbolBars.slice(0, currentIndex + 1);
@@ -696,16 +883,16 @@ export class SignalMonitorService {
     const localNow = getLocalTimeParts(currentBar.timestamp, settings.timezone);
 
     if (!inWindow(localNow.minuteOfDay, sessionStart, sessionEnd)) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     if (settings.requireOpeningRangeComplete && localNow.minuteOfDay < rangeEnd) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const candles1m = takeLast(barsUntilNow, this.config.lookbackBars1m).map(barToCandle);
     if (candles1m.length < this.config.lookbackBars1m) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const candles5m = completeCandles(barsUntilNow, currentBar.timestamp, 5, 20);
@@ -716,7 +903,7 @@ export class SignalMonitorService {
     const candlesW1 = completeCandles(barsUntilNow, currentBar.timestamp, 10080, 20);
 
     if (candles5m.length < 3 || candles15m.length < 5) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const dayScan = takeLast(barsUntilNow, 12 * 60);
@@ -726,7 +913,7 @@ export class SignalMonitorService {
     });
 
     if (sessionBarsToday.length < 30) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
     const latest15mStart = candles15m[candles15m.length - 1]?.timestamp;
@@ -767,19 +954,21 @@ export class SignalMonitorService {
       settings.enabledSetups.includes(candidate.setupType)
     );
     if (candidates.length === 0) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
-    this.journalStore.addEvent({
-      type: 'SIGNAL_GENERATED',
-      timestamp: currentBar.timestamp,
-      symbol,
-      payload: {
-        candidateCount: candidates.length,
-        setupTypes: candidates.map((candidate) => candidate.setupType),
-        source: 'signal-monitor'
-      }
-    });
+    if (options.recordJournal) {
+      this.journalStore.addEvent({
+        type: 'SIGNAL_GENERATED',
+        timestamp: currentBar.timestamp,
+        symbol,
+        payload: {
+          candidateCount: candidates.length,
+          setupTypes: candidates.map((candidate) => candidate.setupType),
+          source: options.source
+        }
+      });
+    }
 
     const activeModel = this.rankingModelStore.get();
     const ranked = rankCandidates({ candidates }, activeModel);
@@ -790,31 +979,38 @@ export class SignalMonitorService {
     const qualifyingCandidates = ranked.filter((candidate) => (candidate.finalScore ?? 0) >= minScoreThreshold);
     const topCandidate = qualifyingCandidates[0];
     if (!topCandidate) {
-      return;
+      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
 
-    this.journalStore.addEvent({
-      type: 'SIGNAL_RANKED',
-      timestamp: currentBar.timestamp,
-      candidateId: topCandidate.id,
-      symbol,
-      payload: {
-        rankedCount: ranked.length,
-        qualifyingCount: qualifyingCandidates.length,
-        topCandidateId: topCandidate.id,
-        topFinalScore: topCandidate.finalScore ?? null,
-        rankingModelId: activeModel.modelId,
-        source: 'signal-monitor'
-      }
-    });
+    if (options.recordJournal) {
+      this.journalStore.addEvent({
+        type: 'SIGNAL_RANKED',
+        timestamp: currentBar.timestamp,
+        candidateId: topCandidate.id,
+        symbol,
+        payload: {
+          rankedCount: ranked.length,
+          qualifyingCount: qualifyingCandidates.length,
+          topCandidateId: topCandidate.id,
+          topFinalScore: topCandidate.finalScore ?? null,
+          rankingModelId: activeModel.modelId,
+          source: options.source
+        }
+      });
+    }
     const newsEvents = await this.calendarClient.listUpcomingEvents();
+    let matchedAlerts = 0;
+    let publishedAlerts = 0;
+    let skippedAlerts = 0;
 
     for (const candidate of qualifyingCandidates) {
-      const alertKey = `${candidate.symbol}|${candidate.setupType}|${candidate.side}|${candidate.generatedAt}`;
-      if (this.alertKeys.has(alertKey)) {
+      const alertKey = buildAlertKey(candidate);
+      if (options.seenAlertKeys.has(alertKey)) {
+        skippedAlerts += 1;
         continue;
       }
-      this.alertKeys.add(alertKey);
+      options.seenAlertKeys.add(alertKey);
+      matchedAlerts += 1;
 
       const riskDecision = evaluateRisk(
         {
@@ -827,18 +1023,20 @@ export class SignalMonitorService {
         this.getRiskConfig()
       );
 
-      this.journalStore.addEvent({
-        type: 'RISK_CHECKED',
-        timestamp: currentBar.timestamp,
-        candidateId: candidate.id,
-        symbol,
-        payload: {
-          allowed: riskDecision.allowed,
-          reasonCodes: riskDecision.reasonCodes,
-          finalRiskPct: riskDecision.finalRiskPct,
-          source: 'signal-monitor'
-        }
-      });
+      if (options.recordJournal) {
+        this.journalStore.addEvent({
+          type: 'RISK_CHECKED',
+          timestamp: currentBar.timestamp,
+          candidateId: candidate.id,
+          symbol,
+          payload: {
+            allowed: riskDecision.allowed,
+            reasonCodes: riskDecision.reasonCodes,
+            finalRiskPct: riskDecision.finalRiskPct,
+            source: options.source
+          }
+        });
+      }
 
       let executionIntentId: string | undefined;
       if (riskDecision.allowed) {
@@ -861,15 +1059,24 @@ export class SignalMonitorService {
         chartSnapshot: createChartSnapshot(candles5m, candidate, input.sessionLevels)
       };
 
-      await this.publishAlert(alert, {
-        timestamp: currentBar.timestamp,
-        candidateId: candidate.id,
-        symbol,
-        executionIntentId,
-        finalScore: candidate.finalScore ?? null,
-        source: 'signal-monitor'
-      });
+      if (options.publishAlerts) {
+        await this.publishAlert(
+          alert,
+          {
+            timestamp: currentBar.timestamp,
+            candidateId: candidate.id,
+            symbol,
+            executionIntentId,
+            finalScore: candidate.finalScore ?? null,
+            source: options.source
+          },
+          options.notifyChannels
+        );
+        publishedAlerts += 1;
+      }
     }
+
+    return { matchedAlerts, publishedAlerts, skippedAlerts };
   }
 
   private async publishAlert(
@@ -881,7 +1088,8 @@ export class SignalMonitorService {
       executionIntentId?: string;
       finalScore: number | null;
       source: string;
-    }
+    },
+    notifyChannels = true
   ): Promise<void> {
     this.alerts.unshift(alert);
     this.alerts = this.alerts.slice(0, this.config.maxAlerts);
@@ -912,10 +1120,12 @@ export class SignalMonitorService {
       outcome: reviewEntry.outcome
     };
 
-    await this.notifyAlertChannels(alert, {
-      reason: 'initial',
-      reminderCount: alert.reviewState?.escalationCount ?? 0
-    });
+    if (notifyChannels) {
+      await this.notifyAlertChannels(alert, {
+        reason: 'initial',
+        reminderCount: alert.reviewState?.escalationCount ?? 0
+      });
+    }
   }
 
   private async notifyAlertChannels(
