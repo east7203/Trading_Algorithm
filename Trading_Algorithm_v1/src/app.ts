@@ -10,6 +10,7 @@ import { ExecutionService } from './services/executionService.js';
 import { InMemoryTradeLockerClient, type TradeLockerClient } from './integrations/tradelocker/TradeLockerClient.js';
 import {
   InMemoryEconomicCalendarClient,
+  TradingEconomicsCalendarClient,
   type EconomicCalendarClient
 } from './integrations/news/EconomicCalendarClient.js';
 import { defaultRankingModel, loadRankingModelFromPath, type RankingModel } from './services/rankingModel.js';
@@ -196,6 +197,20 @@ const parseFloatEnv = (name: string, fallback: number, min?: number, max?: numbe
   }
   const lowChecked = min === undefined ? parsed : Math.max(min, parsed);
   return max === undefined ? lowChecked : Math.min(max, lowChecked);
+};
+
+const parseCsvEnv = (name: string, fallback: string[]): string[] => {
+  const value = process.env[name];
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const parsed = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  return parsed.length > 0 ? parsed : fallback;
 };
 
 const formatWinRateDelta = (value?: number): string => {
@@ -664,6 +679,37 @@ const resolveIbkrReconnectStateStorePath = (override?: string): string => {
   return fromEnv ?? path.resolve(process.cwd(), 'data', 'notifications', 'ibkr-reconnect-state.json');
 };
 
+const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalendarClient => {
+  if (override) {
+    return override;
+  }
+
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true') {
+    return new InMemoryEconomicCalendarClient();
+  }
+
+  const provider = (process.env.ECONOMIC_CALENDAR_PROVIDER ?? 'tradingeconomics').trim().toLowerCase();
+  if (provider === 'memory' || provider === 'stub' || provider === 'inmemory') {
+    return new InMemoryEconomicCalendarClient();
+  }
+
+  if (provider === 'tradingeconomics' || provider === 'te') {
+    return new TradingEconomicsCalendarClient({
+      apiKey: process.env.TRADING_ECONOMICS_API_KEY ?? 'guest:guest',
+      baseUrl: process.env.TRADING_ECONOMICS_BASE_URL ?? 'https://api.tradingeconomics.com',
+      countries: parseCsvEnv('TRADING_ECONOMICS_COUNTRIES', ['All']),
+      minImportance: parseIntEnv('TRADING_ECONOMICS_MIN_IMPORTANCE', 2, 1, 3) as 1 | 2 | 3,
+      lookbackHours: parseIntEnv('TRADING_ECONOMICS_LOOKBACK_HOURS', 6, 1, 48),
+      lookaheadHours: parseIntEnv('TRADING_ECONOMICS_LOOKAHEAD_HOURS', 72, 1, 168),
+      cacheTtlMs: parseIntEnv('TRADING_ECONOMICS_CACHE_TTL_SECONDS', 180, 30, 3600) * 1000,
+      requestTimeoutMs: parseIntEnv('TRADING_ECONOMICS_TIMEOUT_MS', 10_000, 1_000, 60_000),
+      maxEvents: parseIntEnv('TRADING_ECONOMICS_MAX_EVENTS', 120, 10, 500)
+    });
+  }
+
+  return new InMemoryEconomicCalendarClient();
+};
+
 export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const app = Fastify({ logger: false });
 
@@ -678,7 +724,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     options.ibkrReconnectStateStore ??
     new IbkrReconnectStateStore(resolveIbkrReconnectStateStorePath(options.ibkrReconnectStateStorePath));
   const tradeLockerClient = options.tradeLockerClient ?? new InMemoryTradeLockerClient();
-  const calendarClient = options.calendarClient ?? new InMemoryEconomicCalendarClient();
+  const calendarClient = resolveCalendarClient(options.calendarClient);
   const rankingModelStore = options.rankingModelStore ?? new RankingModelStore(resolveInitialRankingModel(options.rankingModel));
   const executionService = new ExecutionService(journalStore, tradeLockerClient, () => riskConfigStore.get());
   const resolvedNativePushConfig = resolveNativePushConfig(options.nativePushConfig);
@@ -1539,6 +1585,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         timezone: 'America/Chicago',
         sundayTime: '16:30'
       } satisfies OperationalReminderStatus);
+    const calendarEvents = await calendarClient.listUpcomingEvents();
+    const calendarStatus = calendarClient.status();
+    const upcomingCalendarEvents = calendarEvents
+      .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
+      .slice(0, 8);
     const reviews = await signalReviewStore.summary();
     const allReviews = await signalReviewStore.listAllReviews();
     const learningPerformance = summarizeLearningPerformance(allReviews);
@@ -1605,6 +1656,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           ibkrLoginReminderEnabled: operationalReminder.enabled,
           ibkrLoginReminderStarted: operationalReminder.started
         },
+        calendar: {
+          ...calendarStatus,
+          upcomingEvents: upcomingCalendarEvents
+        },
         ibkrRecovery,
         operationalReminder,
         training,
@@ -1622,6 +1677,27 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               allowed: lastAlert.riskDecision.allowed
             }
           : null
+      }
+    });
+  });
+
+  app.get('/calendar/events', async (request, reply) => {
+    const limitParam = (request.query as { limit?: string | number } | undefined)?.limit;
+    const parsedLimit =
+      typeof limitParam === 'number'
+        ? limitParam
+        : typeof limitParam === 'string'
+          ? Number.parseInt(limitParam, 10)
+          : 12;
+    const limit = Number.isFinite(parsedLimit) ? Math.min(50, Math.max(1, parsedLimit)) : 12;
+    const events = (await calendarClient.listUpcomingEvents())
+      .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
+      .slice(0, limit);
+
+    return reply.status(200).send({
+      calendar: {
+        ...calendarClient.status(),
+        events
       }
     });
   });

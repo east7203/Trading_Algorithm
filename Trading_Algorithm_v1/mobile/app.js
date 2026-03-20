@@ -102,6 +102,10 @@ const diagModelEl = document.getElementById('diagModel');
 const diagSubscribersEl = document.getElementById('diagSubscribers');
 const diagSignalMonitorEl = document.getElementById('diagSignalMonitor');
 const diagLastAlertEl = document.getElementById('diagLastAlert');
+const diagCalendarSourceEl = document.getElementById('diagCalendarSource');
+const diagCalendarCoverageEl = document.getElementById('diagCalendarCoverage');
+const diagCalendarNextEl = document.getElementById('diagCalendarNext');
+const calendarEventsListEl = document.getElementById('calendarEventsList');
 const diagTrainingCadenceEl = document.getElementById('diagTrainingCadence');
 const diagTrainingLastRunEl = document.getElementById('diagTrainingLastRun');
 const diagTrainingActiveModelEl = document.getElementById('diagTrainingActiveModel');
@@ -425,8 +429,11 @@ const updateSystemSummary = () => {
   const learning = diagnostics?.training?.enabled
     ? `Learning is running every ${diagnostics.training.cadence?.retrainIntervalMinutes ?? '--'} minutes.`
     : 'Learning is currently paused.';
+  const calendar = diagnostics?.calendar?.sourceName
+    ? `Macro calendar source: ${diagnostics.calendar.sourceName}.`
+    : 'Macro calendar source is not configured.';
 
-  systemOverviewEl.textContent = `${connection} ${rules} ${alerts} ${learning}`;
+  systemOverviewEl.textContent = `${connection} ${rules} ${alerts} ${learning} ${calendar}`;
   apiBaseSummaryEl.textContent = describeApiBase(getApiBase());
 };
 
@@ -2134,6 +2141,57 @@ const renderInsights = () => {
   journalSummaryEl.textContent = `${approved} approved • ${rejected} rejected • ${latestEvents.length} events`;
 };
 
+const renderCalendarEvents = (calendar) => {
+  if (!calendarEventsListEl) {
+    return;
+  }
+
+  calendarEventsListEl.innerHTML = '';
+  const events = calendar?.upcomingEvents ?? [];
+
+  if (!events.length) {
+    renderEmpty(calendarEventsListEl, 'No upcoming macro events in the current calendar window.');
+    return;
+  }
+
+  events.forEach((event) => {
+    const card = document.createElement('article');
+    card.className = 'insight-card calendar-event-card';
+
+    const title = document.createElement('p');
+    title.className = 'stat-label';
+    title.textContent = `${(event.impact ?? 'low').toUpperCase()} • ${event.country ?? event.currency ?? 'Macro event'}`;
+    card.appendChild(title);
+
+    const headline = document.createElement('p');
+    headline.className = 'insight-text';
+    headline.textContent = event.title ?? event.category ?? 'Economic event';
+    card.appendChild(headline);
+
+    const meta = document.createElement('p');
+    meta.className = 'hint';
+    const metaParts = [
+      fmtDateTimeCompact(event.startsAt),
+      event.category ?? null,
+      event.reference ?? null
+    ].filter(Boolean);
+    meta.textContent = metaParts.join(' • ');
+    card.appendChild(meta);
+
+    const figures = [event.actual ? `Actual ${event.actual}` : null, event.forecast ? `Forecast ${event.forecast}` : null, event.previous ? `Prev ${event.previous}` : null]
+      .filter(Boolean)
+      .join(' • ');
+    if (figures) {
+      const figuresEl = document.createElement('p');
+      figuresEl.className = 'hint';
+      figuresEl.textContent = figures;
+      card.appendChild(figuresEl);
+    }
+
+    calendarEventsListEl.appendChild(card);
+  });
+};
+
 const renderReviewInsights = () => {
   const summary = reviewPerformanceSummary(latestReviews);
   reviewSetupEdgeEl.textContent = summary.bySetup;
@@ -2160,6 +2218,10 @@ const renderDiagnostics = () => {
     diagSubscribersEl.textContent = '--';
     diagSignalMonitorEl.textContent = '--';
     diagLastAlertEl.textContent = '--';
+    diagCalendarSourceEl.textContent = '--';
+    diagCalendarCoverageEl.textContent = '--';
+    diagCalendarNextEl.textContent = '--';
+    renderCalendarEvents(null);
     diagTrainingCadenceEl.textContent = '--';
     diagTrainingLastRunEl.textContent = '--';
     diagTrainingActiveModelEl.textContent = '--';
@@ -2181,6 +2243,7 @@ const renderDiagnostics = () => {
   const training = diagnostics.training ?? null;
   const learningPerformance = diagnostics.learningPerformance ?? null;
   const recovery = diagnostics.ibkrRecovery ?? null;
+  const calendar = diagnostics.calendar ?? null;
   const feedState = getFeedStateMeta(diagnostics);
   const cadence = training?.cadence ?? null;
   const analysisFrames = training?.data?.analysisTimeframes ?? [];
@@ -2199,6 +2262,16 @@ const renderDiagnostics = () => {
   diagLastAlertEl.textContent = diagnostics.lastAlert
     ? `${diagnostics.lastAlert.symbol} ${diagnostics.lastAlert.side} • ${fmtTime(diagnostics.lastAlert.detectedAt)}`
     : 'No alert yet';
+  diagCalendarSourceEl.textContent = calendar?.sourceName
+    ? `${calendar.sourceName}${calendar.lastError ? ' • degraded' : ''}`
+    : 'Not configured';
+  diagCalendarCoverageEl.textContent = calendar
+    ? `${calendar.cachedEventCount ?? 0} cached • ${calendar.filteredCountryCount ? `${calendar.filteredCountryCount} countries` : 'global'}`
+    : '--';
+  diagCalendarNextEl.textContent = calendar?.nextEventAt
+    ? `${fmtDateTimeCompact(calendar.nextEventAt)} • ${fmtRelativeMinutes(calendar.nextEventAt)}`
+    : 'No upcoming event';
+  renderCalendarEvents(calendar);
   diagTrainingCadenceEl.textContent = training?.enabled
     ? `${cadence?.retrainIntervalMinutes ?? '--'}m cadence • ${cadence?.minNewBarsForRetrain ?? '--'} bars`
     : 'Disabled';

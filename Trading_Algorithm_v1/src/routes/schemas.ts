@@ -109,7 +109,19 @@ export const riskCheckBodySchema = z.object({
         currency: z.string(),
         impact: z.enum(['low', 'medium', 'high']),
         startsAt: z.string().datetime(),
-        source: z.string()
+        source: z.string(),
+        country: z.string().optional(),
+        title: z.string().optional(),
+        category: z.string().optional(),
+        officialSource: z.string().optional(),
+        officialSourceUrl: z.string().url().optional(),
+        actual: z.string().nullable().optional(),
+        forecast: z.string().nullable().optional(),
+        previous: z.string().nullable().optional(),
+        revised: z.string().nullable().optional(),
+        reference: z.string().nullable().optional(),
+        importanceScore: z.number().int().min(1).max(3).optional(),
+        unit: z.string().nullable().optional()
       })
     )
     .optional()

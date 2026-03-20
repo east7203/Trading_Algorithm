@@ -118,6 +118,18 @@ export interface NewsEvent {
   impact: 'low' | 'medium' | 'high';
   startsAt: string;
   source: string;
+  country?: string;
+  title?: string;
+  category?: string;
+  officialSource?: string;
+  officialSourceUrl?: string;
+  actual?: string | null;
+  forecast?: string | null;
+  previous?: string | null;
+  revised?: string | null;
+  reference?: string | null;
+  importanceScore?: number;
+  unit?: string | null;
 }
 
 export interface RiskCheckInput {
