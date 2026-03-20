@@ -198,6 +198,15 @@ const parseFloatEnv = (name: string, fallback: number, min?: number, max?: numbe
   return max === undefined ? lowChecked : Math.min(max, lowChecked);
 };
 
+const formatWinRateDelta = (value?: number): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '--';
+  }
+  const points = value * 100;
+  const sign = points > 0 ? '+' : '';
+  return `${sign}${points.toFixed(2)} pts`;
+};
+
 type CmeEquitySessionState = 'OPEN' | 'DAILY_BREAK' | 'WEEKEND_CLOSED';
 
 const getTimeZoneClockParts = (
@@ -709,6 +718,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
   const ibkrStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=status&focus=ibkr-connection`;
+  const trainingStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=status&focus=learning`;
   const ibkrReconnectFallbackDelayMs =
     parseIntEnv('IBKR_RECONNECT_FALLBACK_DELAY_SECONDS', 45, 5, 600) * 1000;
   const ibkrReconnectReminderIntervalMs =
@@ -1092,7 +1102,30 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedContinuousConfig,
             enabled: true,
             feedbackDatasetProvider: async () =>
-              buildLearningFeedbackDataset(await signalReviewStore.listAllReviews())
+              buildLearningFeedbackDataset(await signalReviewStore.listAllReviews()),
+            onRunRecorded: async (run) => {
+              if (!run.executed || run.trigger === 'startup') {
+                return;
+              }
+
+              const improvementDelta = run.promotionDelta;
+              const improved = typeof improvementDelta === 'number' && improvementDelta > 0;
+              const title = improved ? 'Model improving' : 'Model retrained';
+              const reason = run.promotionReason ?? 'LATEST_RETRAIN_LIVE';
+              const modelId = run.activeModelId ?? run.modelId ?? 'unknown-model';
+
+              await telegramAlertService?.notifyGeneric({
+                title,
+                lines: [
+                  `Trigger: ${run.trigger}`,
+                  `Live model: ${modelId}`,
+                  `Bars: ${run.barCount.toLocaleString()} • Samples: ${run.sampleCount.toLocaleString()}`,
+                  `Delta vs prior model: ${formatWinRateDelta(improvementDelta)}`,
+                  `Promotion decision: ${reason}`
+                ],
+                buttons: [{ text: 'Open Status', url: trainingStatusUrl }]
+              });
+            }
           })
         : null
       : options.continuousTrainingService;

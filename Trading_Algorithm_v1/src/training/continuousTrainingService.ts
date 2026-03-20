@@ -145,6 +145,7 @@ export interface ContinuousTrainingConfig {
   pollIntervalMs: number;
   pollApiKey?: string;
   pollApiKeyHeader?: string;
+  onRunRecorded?: (run: TrainingRunHistoryEntry) => Promise<void> | void;
 }
 
 const knownSymbols = new Set<SymbolCode>(['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM']);
@@ -671,11 +672,13 @@ export class ContinuousTrainingService {
   }
 
   private async recordRun(run: TrainingRunResult): Promise<void> {
+    const recordedRun: TrainingRunHistoryEntry = {
+      ...run,
+      recordedAt: new Date().toISOString()
+    };
+
     this.history = [
-      {
-        ...run,
-        recordedAt: new Date().toISOString()
-      },
+      recordedRun,
       ...this.history
     ].slice(0, this.historyLimit());
 
@@ -683,6 +686,12 @@ export class ContinuousTrainingService {
       await this.persistTrainingHistory();
     } catch (error) {
       this.lastError = `Failed to persist training history: ${(error as Error).message}`;
+    }
+
+    try {
+      await this.config.onRunRecorded?.(recordedRun);
+    } catch (error) {
+      this.lastError = `Failed to run training notification hook: ${(error as Error).message}`;
     }
   }
 
