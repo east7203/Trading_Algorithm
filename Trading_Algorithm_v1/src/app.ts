@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
@@ -45,6 +46,7 @@ import {
   buildLearningFeedbackDataset,
   summarizeLearningPerformance
 } from './training/liveLearning.js';
+import type { OneMinuteBar } from './training/historicalTrainer.js';
 import {
   executionApproveBodySchema,
   executionProposeBodySchema,
@@ -244,11 +246,82 @@ const getCmeEquitySessionState = (now: Date): CmeEquitySessionState => {
   }
 };
 
+const readRecentArchiveBars = async (archivePath: string | undefined, maxLines = 40): Promise<OneMinuteBar[]> => {
+  if (!archivePath) {
+    return [];
+  }
+  try {
+    const stats = await fs.stat(archivePath);
+    if (!stats.isFile()) {
+      return [];
+    }
+    const bytesToRead = Math.min(stats.size, 64 * 1024);
+    const handle = await fs.open(archivePath, 'r');
+    try {
+      const buffer = Buffer.alloc(bytesToRead);
+      await handle.read(buffer, 0, bytesToRead, Math.max(0, stats.size - bytesToRead));
+      const lines = buffer
+        .toString('utf8')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .slice(-maxLines);
+      const parsed: OneMinuteBar[] = [];
+      for (const line of lines) {
+        try {
+          parsed.push(JSON.parse(line) as OneMinuteBar);
+        } catch {
+          // Ignore malformed rows.
+        }
+      }
+      return parsed;
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return [];
+  }
+};
+
+const detectFrozenArchiveFeed = (
+  bars: OneMinuteBar[],
+  symbols: string[],
+  latestBarTimestamp: string | undefined
+): boolean => {
+  if (!latestBarTimestamp || symbols.length === 0) {
+    return false;
+  }
+  const latestBarMs = Date.parse(latestBarTimestamp);
+  if (!Number.isFinite(latestBarMs)) {
+    return false;
+  }
+
+  return symbols.every((symbol) => {
+    const recent = bars
+      .filter((bar) => bar.symbol === symbol && latestBarMs - Date.parse(bar.timestamp) <= 6 * 60 * 1000)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .slice(-4);
+    if (recent.length < 4) {
+      return false;
+    }
+    const first = recent[0];
+    return recent.every(
+      (bar) =>
+        bar.open === first.open &&
+        bar.high === first.high &&
+        bar.low === first.low &&
+        bar.close === first.close &&
+        Number(bar.volume ?? 0) === 0
+    );
+  });
+};
+
 const classifyLiveFeedStatus = (
   started: boolean,
-  latestBarTimestamp: string | undefined
+  latestBarTimestamp: string | undefined,
+  frozenFeed = false
 ): {
-  status: 'OFFLINE' | 'WAITING' | 'LIVE' | 'DELAYED' | 'STALE' | 'AFTER_HOURS';
+  status: 'OFFLINE' | 'WAITING' | 'LIVE' | 'FROZEN' | 'DELAYED' | 'STALE' | 'AFTER_HOURS';
   barAgeMs?: number;
   sessionState: CmeEquitySessionState;
 } => {
@@ -261,6 +334,9 @@ const classifyLiveFeedStatus = (
   }
 
   const barAgeMs = Math.max(0, Date.now() - Date.parse(latestBarTimestamp));
+  if (sessionState === 'OPEN' && frozenFeed && barAgeMs <= 10 * 60 * 1000) {
+    return { status: 'FROZEN', barAgeMs, sessionState };
+  }
   if (barAgeMs <= 5 * 60 * 1000) {
     return { status: 'LIVE', barAgeMs, sessionState };
   }
@@ -1421,7 +1497,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         detail: entry.detail
       }))
     };
-    const liveFeed = classifyLiveFeedStatus(Boolean('started' in monitor && monitor.started), latestBarTimestamp);
+    const recentArchiveBars = await readRecentArchiveBars(resolvedContinuousConfig.liveArchivePath);
+    const frozenFeed = detectFrozenArchiveFeed(
+      recentArchiveBars,
+      Object.keys(('latestBarTimestampBySymbol' in monitor ? monitor.latestBarTimestampBySymbol ?? {} : {}) || {}),
+      latestBarTimestamp
+    );
+    const liveFeed = classifyLiveFeedStatus(
+      Boolean('started' in monitor && monitor.started),
+      latestBarTimestamp,
+      frozenFeed
+    );
 
     return reply.status(200).send({
       diagnostics: {

@@ -555,14 +555,32 @@ def resolve_live_contract(
             if not details:
                 raise RuntimeError(f'No IBKR contracts returned for {entry.source_symbol}')
 
-            today_token = datetime.now(timezone.utc).strftime('%Y%m')
+            today_utc = datetime.now(timezone.utc).date()
 
             def expiry_token(detail: Any) -> str:
                 raw = getattr(detail.contract, 'lastTradeDateOrContractMonth', '') or ''
                 digits = ''.join(ch for ch in str(raw) if ch.isdigit())
                 return digits[:8] if digits else '99999999'
 
-            filtered = [detail for detail in details if expiry_token(detail)[:6] >= today_token]
+            def expiry_date(detail: Any) -> Optional[datetime.date]:
+                token = expiry_token(detail)
+                if len(token) >= 8:
+                    try:
+                        return datetime.strptime(token[:8], '%Y%m%d').date()
+                    except ValueError:
+                        return None
+                if len(token) >= 6:
+                    try:
+                        return datetime.strptime(f'{token[:6]}01', '%Y%m%d').date()
+                    except ValueError:
+                        return None
+                return None
+
+            filtered = [
+                detail
+                for detail in details
+                if (expiry := expiry_date(detail)) is None or expiry > today_utc
+            ]
             candidates = filtered or details
             candidates.sort(key=expiry_token)
             return candidates[0].contract

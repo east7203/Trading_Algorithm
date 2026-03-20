@@ -491,6 +491,17 @@ const getFeedStateMeta = (diagnostics) => {
       };
     }
 
+    if (diagnostics.liveFeedStatus === 'FROZEN') {
+      return {
+        tone: 'bad',
+        segment: 'Frozen',
+        summary: 'IBKR connected but quotes are frozen',
+        detail: diagnostics.latestBarTimestamp
+          ? `${lastBarText} The timestamps are recent, but prices are not moving normally. Treat this as invalid market data.`
+          : 'The session is connected, but the quote stream appears frozen.'
+      };
+    }
+
     if (diagnostics.liveFeedStatus === 'DELAYED') {
       return {
         tone: 'warn',
@@ -540,6 +551,17 @@ const getFeedStateMeta = (diagnostics) => {
       segment: 'Live',
       summary: 'Feed updating',
       detail: lastBarText
+    };
+  }
+
+  if (diagnostics.liveFeedStatus === 'FROZEN') {
+    return {
+      tone: 'bad',
+      segment: 'Frozen',
+      summary: 'Quotes look frozen',
+      detail: diagnostics.latestBarTimestamp
+        ? `${lastBarText} Prices are repeating without real movement. Do not trust this feed yet.`
+        : 'Prices are repeating without real movement. Do not trust this feed yet.'
     };
   }
 
