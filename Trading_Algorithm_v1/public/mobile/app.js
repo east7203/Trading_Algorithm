@@ -1970,14 +1970,16 @@ const acknowledgeAlert = async (alertId, buttonEl) => {
 
 const apiFetch = async (path, options = {}) => {
   const base = getApiBase();
+  const hasBody = options.body !== undefined && options.body !== null;
+  const headers = {
+    'Cache-Control': 'no-store',
+    Pragma: 'no-cache',
+    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.headers || {})
+  };
   const response = await fetch(`${base}${path}`, {
     cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-store',
-      Pragma: 'no-cache',
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    },
+    headers,
     ...options
   });
 
@@ -3122,6 +3124,7 @@ const bindStatusRecoveryControls = () => {
   ibkrRetryLoginEl?.addEventListener('click', async () => {
     ibkrRetryLoginEl.disabled = true;
     ibkrRetryLoginEl.textContent = 'Retrying...';
+    setStatus('Status: sending full recovery request to the server...');
     try {
       const response = await apiFetch('/ibkr/recovery/retry-login', {
         method: 'POST'
@@ -3153,6 +3156,7 @@ const bindStatusRecoveryControls = () => {
   ibkrResendPushEl?.addEventListener('click', async () => {
     ibkrResendPushEl.disabled = true;
     ibkrResendPushEl.textContent = 'Running...';
+    setStatus('Status: asking the server to run the broker fallback...');
     try {
       const response = await apiFetch('/ibkr/recovery/resend-push', {
         method: 'POST'
