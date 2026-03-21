@@ -1,13 +1,15 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp, type AppContext } from '../../src/app.js';
+import { RiskConfigStore } from '../../src/stores/riskConfigStore.js';
 
 const contexts: AppContext[] = [];
 const tempDirs: string[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   while (contexts.length > 0) {
     const ctx = contexts.pop();
     if (ctx) {
@@ -233,5 +235,87 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(second.json().notifiedUsers).toBe(false);
     expect(webPushMessages).toHaveLength(1);
     expect(telegramMessages).toHaveLength(1);
+  });
+
+  it('sends the connected notification after a manual recovery request even when the bridge source completes the reconnect', async () => {
+    const webPushMessages: Array<Record<string, unknown>> = [];
+    const telegramMessages: Array<Record<string, unknown>> = [];
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-manual-connect-'));
+    tempDirs.push(tempDir);
+    const now = new Date();
+    const blockedHour = (now.getUTCHours() + 1) % 24;
+    const blockedMinute = now.getUTCMinutes();
+    const riskConfigStore = new RiskConfigStore();
+    riskConfigStore.patch({
+      tradingWindow: {
+        timezone: 'UTC',
+        startHour: blockedHour,
+        startMinute: blockedMinute,
+        endHour: blockedHour,
+        endMinute: blockedMinute
+      }
+    });
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      riskConfigStore,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      ibkrLoginTrigger: async () => ({ ok: true }),
+      ibkrResendPushTrigger: async () => ({ ok: false, reason: 'no prompt' }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          webPushMessages.push(message);
+          return { attempted: 1, delivered: 1, removed: 0 };
+        }
+      } as never,
+      telegramAlertService: {
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          telegramMessages.push(message);
+          return { sent: true };
+        }
+      } as never
+    });
+    contexts.push(ctx);
+
+    await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/login-required',
+      payload: {
+        symbols: ['NQ', 'ES'],
+        source: 'ibkr-bridge',
+        reason: 'Manual reconnect completion test',
+        fallbackDelaySeconds: 30
+      }
+    });
+
+    webPushMessages.length = 0;
+    telegramMessages.length = 0;
+
+    await ctx.app.inject({
+      method: 'POST',
+      path: '/ibkr/recovery/retry-login'
+    });
+
+    webPushMessages.length = 0;
+    telegramMessages.length = 0;
+
+    const connected = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/connected',
+      payload: {
+        symbols: ['NQ', 'ES'],
+        source: 'ibkr-bridge',
+        connectedAt: '2026-03-15T01:02:00.000Z'
+      }
+    });
+
+    expect(connected.statusCode).toBe(200);
+    expect(connected.json().notifiedUsers).toBe(true);
+    expect(webPushMessages).toHaveLength(1);
+    expect(webPushMessages[0].title).toBe('IBKR connected');
+    expect(telegramMessages).toHaveLength(1);
+    expect(telegramMessages[0].title).toBe('IBKR connected');
   });
 });

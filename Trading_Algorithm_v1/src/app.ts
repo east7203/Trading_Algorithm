@@ -996,6 +996,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       .slice(0, ibkrRecoveryHistoryLimit);
     await persistIbkrReconnectState();
   };
+  const hasManualRecoveryActivitySince = (sinceAtMs: number): boolean =>
+    ibkrReconnectState.history.some(
+      (entry) =>
+        entry.atMs >= sinceAtMs
+        && (entry.kind === 'RECOVERY_REQUESTED' || entry.kind === 'RECOVERY_ATTEMPT')
+        && (entry.source ?? '').trim().toLowerCase().startsWith('manual-')
+    );
   const recordIbkrRecoveryAttempt = async (
     source: string,
     symbols: string[],
@@ -1864,8 +1871,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       detail: yahooCutover.message
     });
     const shouldNotifyUsers = (hadPendingReconnect || previousConnectedAtMs === 0) && canNotifyIbkrRecovery(source);
+    const shouldNotifyManualRecoveryCompletion =
+      hadPendingReconnect && hasManualRecoveryActivitySince(ibkrReconnectState.lastLoginRequiredAtMs);
+    const notifyUsers = shouldNotifyUsers || shouldNotifyManualRecoveryCompletion;
 
-    const deliveries = shouldNotifyUsers
+    const deliveries = notifyUsers
       ? await Promise.allSettled([
           webPushNotificationService?.notifyGeneric({
             title,
@@ -1891,7 +1901,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       source,
       symbols,
       connectedAt,
-      notifiedUsers: shouldNotifyUsers,
+      notifiedUsers: notifyUsers,
       yahooCutover,
       deliveries: deliveries.map((result) => (result.status === 'fulfilled' ? result.value : { error: result.reason?.message ?? 'failed' }))
     });
