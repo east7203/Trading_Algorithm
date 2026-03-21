@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trading-assist-mobile-v10';
+const CACHE_NAME = 'trading-assist-mobile-v11';
 const ASSETS = [
   './',
   'index.html',
@@ -127,7 +127,7 @@ self.addEventListener('push', (event) => {
         return;
       }
 
-      await self.registration.showNotification(payload.title || 'Trading Assist', {
+      await self.registration.showNotification(payload.title || 'East Futures Desk', {
         body: payload.body || 'A new signal is ready to review.',
         tag: payload.tag || 'trading-assist-signal',
         icon: 'icon.svg',

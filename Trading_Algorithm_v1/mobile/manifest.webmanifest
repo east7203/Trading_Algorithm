@@ -1,12 +1,12 @@
 {
-  "name": "Trading Assist Mobile",
-  "short_name": "TradeAssist",
-  "description": "Mobile approval console for the trading algorithm.",
+  "name": "East Futures Desk",
+  "short_name": "EastDesk",
+  "description": "Personal morning futures desk for NQ and ES decision flow.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#08131f",
-  "theme_color": "#0b1624",
+  "background_color": "#120d0c",
+  "theme_color": "#120d0c",
   "icons": [
     {
       "src": "icon.svg",

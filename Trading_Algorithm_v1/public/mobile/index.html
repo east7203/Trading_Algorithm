@@ -6,14 +6,15 @@
       name="viewport"
       content="width=device-width, initial-scale=1, minimum-scale=0.75, maximum-scale=5, user-scalable=yes, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#0b1624" />
-    <title>Trading Assist</title>
+    <meta name="theme-color" content="#120d0c" />
+    <title>East Futures Desk</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <span hidden>Trading Assist</span>
     <div class="ambient ambient-a"></div>
     <div class="ambient ambient-b"></div>
 
@@ -31,32 +32,32 @@
           <div class="brand-cluster">
             <span class="brand-mark" aria-hidden="true"></span>
             <div>
-              <p class="eyebrow">TRADING ASSIST</p>
-              <h1>Execution Desk</h1>
+              <p class="eyebrow">EAST FUTURES DESK</p>
+              <h1>Opening Range Control</h1>
             </div>
           </div>
           <div class="masthead-tags">
             <span class="micro-pill micro-pill-strong">Manual</span>
-            <span class="micro-pill">NY Session</span>
+            <span class="micro-pill">NQ + ES</span>
           </div>
         </div>
-        <p class="subtitle">Morning setup intelligence for NQ and ES. Review, decide, and execute manually in Tradovate.</p>
+        <p class="subtitle">Built for your morning NQ + ES workflow: read the board, approve in the app, and execute manually in Tradovate.</p>
         <div class="chip-row">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
           <button id="refreshAll" class="chip-btn" type="button">Sync</button>
         </div>
         <div class="ops-ribbon">
-          <span class="ops-item">Portfolio: NQ + ES</span>
+          <span class="ops-item">NQ + ES only</span>
           <span class="ops-dot" aria-hidden="true"></span>
-          <span class="ops-item">Rule-first ranking</span>
+          <span class="ops-item">08:30-11:30 ET window</span>
           <span class="ops-dot" aria-hidden="true"></span>
-          <span class="ops-item">Human approval required</span>
+          <span class="ops-item">Tradovate manual execution</span>
         </div>
 
         <section class="hero-grid">
           <article class="hero-panel hero-panel-primary">
-            <p class="panel-label">Desk Focus</p>
+            <p class="panel-label">Kill-Zone Focus</p>
             <div class="hero-primary">
               <div>
                 <p id="heroFocus" class="hero-title">Waiting for structure</p>
@@ -70,12 +71,12 @@
           </article>
           <div class="hero-side-stack">
             <article class="hero-panel hero-panel-compact">
-              <p class="panel-label">Morning Window</p>
+              <p class="panel-label">Attack Window</p>
               <p id="heroWindow" class="panel-value">08:30-11:30 ET</p>
               <p class="panel-note">Manual execution only</p>
             </article>
             <article class="hero-panel hero-panel-compact hero-panel-muted">
-              <p class="panel-label">Delivery Stack</p>
+              <p class="panel-label">Broadcast Stack</p>
               <p id="heroStack" class="panel-value">Web Push • Mac • Telegram</p>
               <p id="heroLastAlert" class="panel-note">No alert yet</p>
             </article>
@@ -83,10 +84,10 @@
         </section>
 
         <div class="quick-actions" aria-label="Section shortcuts">
-          <button class="quick-action" type="button" data-target-tab="signals">Desk</button>
-          <button class="quick-action" type="button" data-target-tab="pending">Queue</button>
-          <button class="quick-action" type="button" data-target-tab="reviews">Review</button>
-          <button class="quick-action" type="button" data-target-tab="settings">System</button>
+          <button class="quick-action" type="button" data-target-tab="signals">Board</button>
+          <button class="quick-action" type="button" data-target-tab="pending">Approve</button>
+          <button class="quick-action" type="button" data-target-tab="reviews">Replay</button>
+          <button class="quick-action" type="button" data-target-tab="status">Engine</button>
         </div>
       </header>
 
@@ -94,37 +95,37 @@
         <button class="tab-btn is-active" type="button" data-tab="signals" aria-current="page">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">D</span>
-            <span class="tab-label">Desk</span>
+            <span class="tab-label">Board</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="pending">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">Q</span>
-            <span class="tab-label">Queue</span>
+            <span class="tab-label">Action</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="trades">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">T</span>
-            <span class="tab-label">Trades</span>
+            <span class="tab-label">Tape</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="reviews">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">R</span>
-            <span class="tab-label">Review</span>
+            <span class="tab-label">Replay</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="settings">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">S</span>
-            <span class="tab-label">Prefs</span>
+            <span class="tab-label">Control</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="status">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">H</span>
-            <span class="tab-label">Status</span>
+            <span class="tab-label">Engine</span>
           </span>
         </button>
       </nav>
@@ -160,8 +161,8 @@
         <section id="view-signals" class="view view-signals is-active">
           <div class="section-head">
             <div>
-              <h2>Signals</h2>
-              <p class="section-kicker">Ranked ideas, chart context, and execution-ready review in one place.</p>
+              <h2>Trade Board</h2>
+              <p class="section-kicker">Your live NQ/ES decision board with ranking, trigger structure, and next-action guidance.</p>
             </div>
             <span id="signalFilterSummary" class="chip chip-neutral">All signals</span>
           </div>
@@ -205,8 +206,8 @@
           </section>
           <div class="section-subhead">
             <div>
-              <h3>Live Queue</h3>
-              <p class="section-kicker">Newest ranked ideas with the saved trigger snapshot and review actions.</p>
+              <h3>Live Board</h3>
+              <p class="section-kicker">Newest ranked ideas with saved trigger snapshots, plan levels, and one-tap review actions.</p>
             </div>
           </div>
           <div id="alertsList" class="stack"></div>
@@ -214,7 +215,7 @@
 
         <section id="view-pending" class="view view-pending">
           <div class="section-head">
-            <h2>Approvals</h2>
+            <h2>Action Queue</h2>
           </div>
           <div class="row">
             <label class="inline-label" for="approvedBy">Approver</label>
@@ -230,7 +231,7 @@
 
         <section id="view-trades" class="view view-trades">
           <div class="section-head">
-            <h2>Recent Trades</h2>
+            <h2>Trade Tape</h2>
           </div>
           <section class="insights-grid">
             <article class="insight-card">
@@ -254,7 +255,7 @@
             <h2>Review Loop</h2>
             <span id="reviewSummaryChip" class="chip chip-neutral">0 pending</span>
           </div>
-          <p class="hint">Review the saved trigger chart, mark whether the setup was clean, and record what price likely did next.</p>
+          <p class="hint">Replay the signal, judge whether it deserved your attention, and record what price actually did next.</p>
 
           <section class="session-summary-card">
             <div class="section-subhead">
@@ -304,7 +305,7 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Pending Queue</h3>
+              <h3>Replay Queue</h3>
               <span id="reviewPendingQueueChip" class="chip chip-neutral">0 pending</span>
             </div>
             <div id="reviewsPendingList" class="stack"></div>
@@ -312,7 +313,7 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Completed Archive</h3>
+              <h3>Archive</h3>
               <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 completed</span>
             </div>
             <div id="reviewsCompletedList" class="stack"></div>
@@ -322,14 +323,14 @@
         <section id="view-settings" class="view view-settings">
           <div class="section-head">
             <div>
-              <h2>Settings</h2>
-              <p class="section-kicker">What is running, how alerts reach you, and where to adjust your desk.</p>
+              <h2>Desk Control</h2>
+              <p class="section-kicker">Tune the desk, the app feel, and the delivery path without touching the core workflow.</p>
             </div>
           </div>
           <section class="settings-block settings-block-accent system-summary-block">
             <div class="block-head">
               <div>
-                <h3>What This Desk Is Doing</h3>
+                <h3>Your Desk In Plain English</h3>
                 <p class="section-kicker">A plain-language snapshot so you do not need to read raw diagnostics.</p>
               </div>
             </div>
@@ -507,7 +508,7 @@
         <section id="view-status" class="view view-status">
           <div class="section-head">
             <div>
-              <h2>Status</h2>
+              <h2>Engine Room</h2>
               <p class="section-kicker">Operational Status and Diagnostics for the desk, server, model, alerts, and training loop.</p>
             </div>
           </div>

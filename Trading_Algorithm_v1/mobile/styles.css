@@ -2631,3 +2631,567 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* East Futures Desk makeover */
+:root {
+  --display-font: 'Baskerville', 'Iowan Old Style', 'Palatino Linotype', serif;
+  --body-font: 'Avenir Next', 'Segoe UI', sans-serif;
+  --bg: #050709;
+  --bg2: #261713;
+  --card: rgba(18, 16, 15, 0.84);
+  --card-strong: rgba(14, 12, 12, 0.96);
+  --line: rgba(232, 163, 103, 0.18);
+  --text: #f5efe8;
+  --text-soft: #d9cdbf;
+  --muted: #b8a694;
+  --accent: #8bf0d3;
+  --accent-alt: #ff9b67;
+  --accent-ink: #0f1714;
+  --good: #9bf3bd;
+  --good-bg: rgba(16, 70, 45, 0.34);
+  --warn: #ffd59b;
+  --warn-bg: rgba(121, 74, 16, 0.32);
+  --danger: #ffb7aa;
+  --danger-bg: rgba(109, 29, 19, 0.34);
+  --shadow-lg: 0 26px 60px rgba(0, 0, 0, 0.42);
+}
+
+html,
+body {
+  background:
+    radial-gradient(110% 120% at 0% 0%, rgba(255, 155, 103, 0.14), transparent 34%),
+    radial-gradient(90% 80% at 100% 0%, rgba(139, 240, 211, 0.1), transparent 26%),
+    linear-gradient(180deg, #120d0c 0%, #090b0d 48%, #050709 100%);
+}
+
+body::before {
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(180deg, rgba(0,0,0,0.94), transparent 92%);
+}
+
+body::after {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 155, 103, 0.13), transparent 28%),
+    radial-gradient(circle at 88% 0%, rgba(139, 240, 211, 0.11), transparent 24%),
+    radial-gradient(circle at 50% 120%, rgba(53, 39, 33, 0.3), transparent 32%);
+}
+
+.ambient-a {
+  background: color-mix(in srgb, var(--accent-alt) 72%, #ffffff 28%);
+  opacity: 0.18;
+}
+
+.ambient-b {
+  background: color-mix(in srgb, var(--accent) 62%, #8f6d52 38%);
+  opacity: 0.15;
+}
+
+.phone-shell {
+  width: min(1180px, 100%);
+  padding: max(16px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+}
+
+.top-card {
+  padding: 22px 18px 18px;
+  border-radius: 30px;
+  border: 1px solid rgba(232, 163, 103, 0.16);
+  background:
+    linear-gradient(180deg, rgba(34, 24, 21, 0.95), rgba(13, 12, 12, 0.98)),
+    linear-gradient(120deg, rgba(255,255,255,0.04), transparent 38%);
+  box-shadow: var(--shadow-lg);
+}
+
+.top-card::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 194, 149, 0.34), transparent);
+}
+
+.brand-mark {
+  width: 12px;
+  height: 34px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--accent-alt), var(--accent));
+  box-shadow: 0 0 0 8px rgba(255, 155, 103, 0.08);
+}
+
+.eyebrow {
+  color: color-mix(in srgb, var(--accent-alt) 58%, #ffd8bf 42%);
+}
+
+h1 {
+  font-size: clamp(1.8rem, 6vw, 2.5rem);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  max-width: 50rem;
+  color: var(--text-soft);
+  font-size: 0.96rem;
+  line-height: 1.5;
+}
+
+.masthead-tags,
+.chip-row,
+.ops-ribbon {
+  margin-top: 14px;
+}
+
+.micro-pill,
+.chip,
+.chip-btn,
+.pill {
+  border-color: rgba(232, 163, 103, 0.16);
+}
+
+.micro-pill {
+  background: rgba(19, 18, 18, 0.92);
+}
+
+.micro-pill-strong {
+  color: #f4fff9;
+  background: linear-gradient(135deg, rgba(23, 65, 54, 0.94), rgba(18, 35, 31, 0.92));
+  border-color: rgba(139, 240, 211, 0.34);
+}
+
+.chip-btn {
+  background: linear-gradient(180deg, rgba(33, 27, 24, 0.94), rgba(17, 16, 15, 0.96));
+  color: var(--text);
+}
+
+.ops-ribbon {
+  border-radius: 18px;
+  border: 1px solid rgba(232, 163, 103, 0.12);
+  background: linear-gradient(90deg, rgba(31, 22, 20, 0.9), rgba(16, 16, 16, 0.86));
+}
+
+.ops-item {
+  color: var(--text-soft);
+}
+
+.hero-grid {
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.hero-panel,
+.stat-card,
+.view,
+.item-card,
+.insight-card,
+.desk-card,
+.settings-block,
+.training-panel,
+.recovery-panel,
+.status-segment {
+  border: 1px solid rgba(232, 163, 103, 0.14);
+  background: linear-gradient(180deg, rgba(24, 20, 18, 0.94), rgba(11, 11, 12, 0.96));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.hero-panel-primary,
+.desk-card-spotlight,
+.session-summary-card,
+.settings-block-accent {
+  background:
+    radial-gradient(circle at top right, rgba(139, 240, 211, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(32, 25, 22, 0.97), rgba(11, 11, 12, 0.98));
+}
+
+.hero-title,
+.panel-value,
+.desk-value,
+.stat-value,
+.status-segment-value,
+.training-panel-value {
+  letter-spacing: -0.02em;
+}
+
+.quick-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quick-action {
+  min-height: 54px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(28, 22, 20, 0.95), rgba(13, 12, 12, 0.96));
+  color: var(--text-soft);
+}
+
+.quick-action.is-active,
+.quick-action:active {
+  border-color: rgba(139, 240, 211, 0.28);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.tabbar-top {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 12px);
+  bottom: auto;
+  z-index: 12;
+  margin-top: 16px;
+  padding: 8px;
+  border-radius: 22px;
+  border: 1px solid rgba(232, 163, 103, 0.14);
+  background: rgba(12, 11, 11, 0.92);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
+.tabbar-top .tab-btn {
+  min-height: 58px;
+  border-radius: 16px;
+}
+
+.tab-btn.is-active {
+  background: linear-gradient(135deg, rgba(70, 45, 33, 0.98), rgba(17, 42, 37, 0.96));
+}
+
+.tab-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: rgba(18, 18, 18, 0.86);
+}
+
+.stats-grid {
+  grid-auto-columns: minmax(152px, 44vw);
+  gap: 12px;
+  margin-top: 16px;
+  padding-bottom: 6px;
+}
+
+.stat-card {
+  min-height: 100px;
+  border-radius: 22px;
+}
+
+.views {
+  margin-top: 18px;
+}
+
+.view {
+  padding: 22px 16px;
+  border-radius: 28px;
+}
+
+.section-head {
+  align-items: end;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(232, 163, 103, 0.1);
+}
+
+.section-head h2 {
+  font-size: 1.18rem;
+}
+
+.section-subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.signal-workspace {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.signal-toolbar,
+.recovery-actions,
+.settings-inline-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.segmented-control {
+  padding: 7px;
+  border-radius: 18px;
+  border-color: rgba(232, 163, 103, 0.12);
+  background: rgba(11, 11, 11, 0.82);
+}
+
+.segment-btn {
+  border-radius: 13px;
+  color: var(--muted);
+}
+
+.segment-btn.is-active {
+  background: linear-gradient(135deg, rgba(70, 45, 33, 0.98), rgba(17, 42, 37, 0.96));
+}
+
+.stack {
+  gap: 14px;
+}
+
+.item-card {
+  border-radius: 24px;
+  padding: 16px;
+}
+
+.signal-card,
+.pending-card,
+.trade-card,
+.review-card {
+  border-left: 3px solid rgba(255, 155, 103, 0.58);
+}
+
+.signal-card::after {
+  display: none;
+}
+
+.signal-guidance,
+.projection-grid,
+.item-meta,
+.signal-actions,
+.training-panel-grid,
+.system-glance-grid,
+.insights-grid {
+  gap: 10px;
+}
+
+.signal-guidance,
+.projection-grid,
+.signal-actions,
+.system-glance-grid,
+.training-panel-grid,
+.insights-grid {
+  display: grid;
+}
+
+.signal-guidance,
+.projection-grid,
+.signal-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.card-section-label,
+.review-section-label,
+.group-label {
+  margin: 0 0 8px;
+  color: color-mix(in srgb, var(--accent-alt) 64%, #f4d8c5 36%);
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.signalSummary,
+.signalNextStep,
+.review-section-copy,
+.session-summary-headline,
+.system-overview-copy {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.signalChart {
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(8, 8, 9, 0.96), rgba(21, 17, 16, 0.92));
+}
+
+.level-chip,
+.evidence-chip,
+.toggle-chip {
+  background: rgba(17, 16, 16, 0.92);
+  border-color: rgba(232, 163, 103, 0.14);
+}
+
+.projection-card {
+  padding: 14px;
+  border: 1px solid rgba(232, 163, 103, 0.14);
+  border-radius: 18px;
+  background: rgba(16, 14, 14, 0.9);
+}
+
+.projection-card-target {
+  box-shadow: inset 0 0 0 1px rgba(139, 240, 211, 0.08);
+}
+
+.projection-card-stop {
+  box-shadow: inset 0 0 0 1px rgba(255, 155, 103, 0.08);
+}
+
+.projection-value {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+}
+
+.projection-note,
+.panel-note,
+.desk-note,
+.hint,
+.status,
+.item-meta,
+.section-kicker,
+.review-chart-legend,
+.reviewSnapshotNote,
+.training-panel-note,
+.quiet-mode-copy,
+.recovery-copy,
+.recovery-event-meta,
+.recovery-event-time,
+.recovery-event-detail,
+.insight-text {
+  color: var(--text-soft);
+}
+
+.signal-actions .chip-btn,
+.recovery-actions .chip-btn,
+.settings-inline-actions .chip-btn {
+  margin-top: 0;
+  width: 100%;
+  min-height: 46px;
+  border-radius: 16px;
+}
+
+.pending-card .approveBtn,
+.review-card .saveReviewBtn,
+#saveSignalSettings,
+#saveApiBase {
+  min-height: 48px;
+  border-radius: 16px;
+}
+
+.review-form,
+.controls-stack {
+  gap: 12px;
+}
+
+.review-form select,
+.review-form textarea,
+.controls-stack input,
+.controls-stack select {
+  width: 100%;
+}
+
+.control-row {
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(232, 163, 103, 0.08);
+}
+
+.control-row:last-child {
+  border-bottom: 0;
+}
+
+.system-glance-grid,
+.insights-grid,
+.training-panel-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.session-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.recovery-panel {
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 155, 103, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(32, 21, 18, 0.97), rgba(11, 11, 12, 0.98));
+}
+
+.status-rail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.status-segment {
+  border-radius: 18px;
+}
+
+.calendar-event-card,
+.system-glance-card,
+.training-panel-card,
+.session-summary-item {
+  border-radius: 18px;
+}
+
+.empty-state {
+  padding: 18px 16px;
+  border: 1px dashed rgba(232, 163, 103, 0.2);
+  border-radius: 18px;
+  color: var(--text-soft);
+  text-align: center;
+  background: rgba(13, 12, 12, 0.78);
+}
+
+@media (max-width: 680px) {
+  .signal-guidance,
+  .projection-grid,
+  .signal-actions,
+  .session-summary-grid,
+  .system-glance-grid,
+  .training-panel-grid,
+  .insights-grid,
+  .status-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 760px) {
+  .phone-shell {
+    width: min(1240px, calc(100% - 40px));
+  }
+
+  .quick-actions {
+    grid-template-columns: repeat(4, max-content);
+    justify-content: start;
+  }
+
+  .stats-grid {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1.5fr 1fr;
+  }
+
+  .desk-grid {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+
+  .signal-workspace {
+    grid-template-columns: 1.25fr 0.95fr;
+    align-items: start;
+  }
+
+  .signal-toolbar {
+    align-content: start;
+  }
+
+  .system-glance-grid,
+  .training-panel-grid,
+  .insights-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .session-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .status-rail {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
