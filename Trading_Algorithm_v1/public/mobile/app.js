@@ -95,6 +95,7 @@ const setupSweepMssToggleEl = document.getElementById('setupSweepMssToggle');
 const setupSweepRevToggleEl = document.getElementById('setupSweepRevToggle');
 const setupObToggleEl = document.getElementById('setupObToggle');
 const setupBreakRetestToggleEl = document.getElementById('setupBreakRetestToggle');
+const setupWerleinToggleEl = document.getElementById('setupWerleinToggle');
 const saveSignalSettingsEl = document.getElementById('saveSignalSettings');
 const diagLiveFeedEl = document.getElementById('diagLiveFeed');
 const diagLastBarEl = document.getElementById('diagLastBar');
@@ -196,7 +197,8 @@ const setupToggleMap = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: setupSweepMssToggleEl,
   LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES: setupSweepRevToggleEl,
   DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION: setupObToggleEl,
-  NY_BREAK_RETEST_MOMENTUM: setupBreakRetestToggleEl
+  NY_BREAK_RETEST_MOMENTUM: setupBreakRetestToggleEl,
+  WERLEIN_FOREVER_MODEL: setupWerleinToggleEl
 };
 
 const fallbackApiBase = window.location.origin;
@@ -206,7 +208,8 @@ const setupLabels = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: 'Sweep -> MSS -> FVG',
   LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES: 'Sweep Reversal Extremes',
   DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION: 'Displacement + OB Retest',
-  NY_BREAK_RETEST_MOMENTUM: 'NY Break & Retest'
+  NY_BREAK_RETEST_MOMENTUM: 'NY Break & Retest',
+  WERLEIN_FOREVER_MODEL: 'Werlein Forever Model'
 };
 
 const reviewValidityLabels = {
@@ -3083,7 +3086,8 @@ const bindSignalSettingsControls = () => {
           'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION',
           'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES',
           'DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION',
-          'NY_BREAK_RETEST_MOMENTUM'
+          'NY_BREAK_RETEST_MOMENTUM',
+          'WERLEIN_FOREVER_MODEL'
         ]
     });
     setStatus('Status: optimal morning preset loaded. Save to apply.');

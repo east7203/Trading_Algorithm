@@ -47,6 +47,26 @@ const averageRange = (candles: Candle[]): number => {
   return candles.reduce((sum, candle) => sum + Math.abs(candle.high - candle.low), 0) / candles.length;
 };
 
+const nearestLiquidityTargets = (
+  side: Side,
+  entry: number,
+  stopLoss: number,
+  sessionLevels: SignalGenerationInput['sessionLevels']
+): number[] => {
+  const riskDistance = Math.abs(entry - stopLoss);
+  const fallbackInternal = side === 'LONG' ? entry + riskDistance * 2 : entry - riskDistance * 2;
+  const fallbackExternal = side === 'LONG' ? entry + riskDistance * 2.5 : entry - riskDistance * 2.5;
+  const pools =
+    side === 'LONG'
+      ? [sessionLevels.nyRangeHigh, sessionLevels.high].filter((level) => level > entry).sort((a, b) => a - b)
+      : [sessionLevels.nyRangeLow, sessionLevels.low].filter((level) => level < entry).sort((a, b) => b - a);
+
+  const internal = pools[0] ?? fallbackInternal;
+  const external = pools[1] ?? (side === 'LONG' ? Math.max(fallbackExternal, internal) : Math.min(fallbackExternal, internal));
+
+  return [internal, external];
+};
+
 const timeframeTrendScore = (candles: Candle[]): number => {
   if (candles.length < 3) {
     return 0;
@@ -146,6 +166,35 @@ const createCandidate = (
     generatedAt: input.now
   };
 };
+
+const createDerivedCandidate = (
+  input: SignalGenerationInput,
+  trigger: SetupCandidate,
+  setupType: SetupCandidate['setupType'],
+  baseScore: number,
+  passReasons: string[],
+  metadata: Record<string, unknown>
+): SetupCandidate => ({
+  id: uuidv4(),
+  setupType,
+  symbol: input.symbol,
+  session: input.session,
+  detectionTimeframe: '15m',
+  executionTimeframe: '5m',
+  side: trigger.side,
+  entry: trigger.entry,
+  stopLoss: trigger.stopLoss,
+  takeProfit: nearestLiquidityTargets(trigger.side, trigger.entry, trigger.stopLoss, input.sessionLevels),
+  baseScore,
+  oneMinuteConfidence: trigger.oneMinuteConfidence,
+  eligibility: {
+    passed: true,
+    passReasons,
+    failReasons: []
+  },
+  metadata,
+  generatedAt: input.now
+});
 
 export const detectLiquiditySweepMssFvgContinuation = (
   input: SignalGenerationInput
@@ -375,12 +424,249 @@ export const detectNyBreakRetestMomentum = (input: SignalGenerationInput): Setup
   return null;
 };
 
+const recentFvgZone = (
+  candles: Candle[],
+  side: Side
+): { low: number; high: number; midpoint: number; createdAt: string } | null => {
+  for (let index = candles.length - 3; index >= Math.max(0, candles.length - 8); index -= 1) {
+    const first = candles[index];
+    const third = candles[index + 2];
+    if (!first || !third) {
+      continue;
+    }
+
+    if (side === 'LONG' && first.high < third.low) {
+      const low = first.high;
+      const high = third.low;
+      return {
+        low,
+        high,
+        midpoint: (low + high) / 2,
+        createdAt: third.timestamp
+      };
+    }
+
+    if (side === 'SHORT' && first.low > third.high) {
+      const low = third.high;
+      const high = first.low;
+      return {
+        low,
+        high,
+        midpoint: (low + high) / 2,
+        createdAt: third.timestamp
+      };
+    }
+  }
+
+  return null;
+};
+
+const inferWerleinDrawSide = (
+  candles: Candle[]
+): { side: Side; rangeHigh: number; rangeLow: number; midpoint: number; trendScore: number } | null => {
+  if (candles.length < 4) {
+    return null;
+  }
+
+  const sample = candles.slice(-8);
+  const rangeHigh = Math.max(...sample.map((candle) => candle.high));
+  const rangeLow = Math.min(...sample.map((candle) => candle.low));
+  const midpoint = (rangeHigh + rangeLow) / 2;
+  const latest = sample[sample.length - 1];
+  const trendScore = timeframeTrendScore(sample);
+
+  if (!latest) {
+    return null;
+  }
+
+  if (latest.close <= midpoint && trendScore >= -0.2) {
+    return {
+      side: 'LONG',
+      rangeHigh,
+      rangeLow,
+      midpoint,
+      trendScore
+    };
+  }
+
+  if (latest.close >= midpoint && trendScore <= 0.2) {
+    return {
+      side: 'SHORT',
+      rangeHigh,
+      rangeLow,
+      midpoint,
+      trendScore
+    };
+  }
+
+  if (trendScore > 0.3) {
+    return {
+      side: 'LONG',
+      rangeHigh,
+      rangeLow,
+      midpoint,
+      trendScore
+    };
+  }
+
+  if (trendScore < -0.3) {
+    return {
+      side: 'SHORT',
+      rangeHigh,
+      rangeLow,
+      midpoint,
+      trendScore
+    };
+  }
+
+  return null;
+};
+
+const hasHigherTimeframeFvgRejection = (
+  candles1H: Candle[],
+  candles15m: Candle[],
+  side: Side
+): { zone: { low: number; high: number; midpoint: number; createdAt: string } } | null => {
+  const zone = recentFvgZone(candles1H, side);
+  if (!zone || candles15m.length < 2) {
+    return null;
+  }
+
+  const probe = candles15m.slice(-2);
+  const latest = probe[probe.length - 1];
+  if (!latest) {
+    return null;
+  }
+
+  const tagged = probe.some((candle) => candle.high >= zone.low && candle.low <= zone.high);
+  if (!tagged) {
+    return null;
+  }
+
+  const reclaimed = side === 'LONG' ? latest.close >= zone.midpoint : latest.close <= zone.midpoint;
+  if (!reclaimed) {
+    return null;
+  }
+
+  return { zone };
+};
+
+const detectSmtDivergence = (
+  currentCandles: Candle[],
+  relatedCandles: Candle[] | undefined,
+  side: Side
+): { confirmed: boolean; mode: string } => {
+  if (!relatedCandles || currentCandles.length < 5 || relatedCandles.length < 5) {
+    return {
+      confirmed: false,
+      mode: 'unavailable'
+    };
+  }
+
+  const currentSweep = currentCandles[currentCandles.length - 2];
+  const relatedSweep = relatedCandles[relatedCandles.length - 2];
+  const currentPrior = currentCandles.slice(-5, -2);
+  const relatedPrior = relatedCandles.slice(-5, -2);
+  if (!currentSweep || !relatedSweep || currentPrior.length === 0 || relatedPrior.length === 0) {
+    return {
+      confirmed: false,
+      mode: 'unavailable'
+    };
+  }
+
+  const currentLowSweep = currentSweep.low < Math.min(...currentPrior.map((candle) => candle.low));
+  const relatedLowSweep = relatedSweep.low < Math.min(...relatedPrior.map((candle) => candle.low));
+  const currentHighSweep = currentSweep.high > Math.max(...currentPrior.map((candle) => candle.high));
+  const relatedHighSweep = relatedSweep.high > Math.max(...relatedPrior.map((candle) => candle.high));
+
+  if (side === 'LONG' && currentLowSweep !== relatedLowSweep) {
+    return {
+      confirmed: true,
+      mode: currentLowSweep ? 'current-swept-peer-held' : 'peer-swept-current-held'
+    };
+  }
+
+  if (side === 'SHORT' && currentHighSweep !== relatedHighSweep) {
+    return {
+      confirmed: true,
+      mode: currentHighSweep ? 'current-swept-peer-held' : 'peer-swept-current-held'
+    };
+  }
+
+  return {
+    confirmed: false,
+    mode: 'none'
+  };
+};
+
+export const detectWerleinForeverModel = (input: SignalGenerationInput): SetupCandidate | null => {
+  const candles15m = input.timeframeData['15m'];
+  const candles1H = input.timeframeData['1H'] ?? [];
+  if (candles15m.length < 5 || candles1H.length < 4) {
+    return null;
+  }
+
+  const draw = inferWerleinDrawSide(candles1H);
+  if (!draw) {
+    return null;
+  }
+
+  const htfRejection = hasHigherTimeframeFvgRejection(candles1H, candles15m, draw.side);
+  if (!htfRejection) {
+    return null;
+  }
+
+  const lowerTimeframeTriggers = [
+    detectLiquiditySweepMssFvgContinuation(input),
+    detectDisplacementOrderBlockRetestContinuation(input)
+  ].filter((candidate): candidate is SetupCandidate => candidate !== null && candidate.side === draw.side);
+  const trigger = lowerTimeframeTriggers.sort((a, b) => b.baseScore - a.baseScore)[0];
+  if (!trigger) {
+    return null;
+  }
+
+  const smt = detectSmtDivergence(
+    candles15m,
+    input.relatedMarket?.timeframeData['15m'],
+    draw.side
+  );
+  const passReasons = [
+    `Higher-timeframe draw on liquidity points ${draw.side === 'LONG' ? 'higher' : 'lower'}`,
+    '1H fair value gap rejection aligned with premium/discount',
+    `Lower-timeframe ${trigger.setupType} trigger confirmed`
+  ];
+
+  if (smt.confirmed) {
+    passReasons.push(`NQ/ES SMT divergence confirmed (${smt.mode})`);
+  }
+
+  const baseScore = clamp(trigger.baseScore + 8 + (smt.confirmed ? 4 : 0), 78, 92);
+  return createDerivedCandidate(input, trigger, 'WERLEIN_FOREVER_MODEL', baseScore, passReasons, {
+    ...trigger.metadata,
+    werleinProxyVersion: 'public-v1',
+    higherTimeframeDol: draw.side === 'LONG' ? 'higher' : 'lower',
+    higherTimeframeRangeHigh: draw.rangeHigh,
+    higherTimeframeRangeLow: draw.rangeLow,
+    higherTimeframeRangeMidpoint: draw.midpoint,
+    higherTimeframeTrendScore: draw.trendScore,
+    higherTimeframeFvgLow: htfRejection.zone.low,
+    higherTimeframeFvgHigh: htfRejection.zone.high,
+    higherTimeframeFvgMidpoint: htfRejection.zone.midpoint,
+    higherTimeframeFvgCreatedAt: htfRejection.zone.createdAt,
+    lowerTimeframeTriggerSetup: trigger.setupType,
+    relatedSymbol: input.relatedMarket?.symbol,
+    smtConfirmed: smt.confirmed,
+    smtMode: smt.mode
+  });
+};
+
 export const generateSetupCandidates = (input: SignalGenerationInput): SetupCandidate[] => {
   const detectors = [
     detectLiquiditySweepMssFvgContinuation,
     detectLiquiditySweepReversalSessionExtremes,
     detectDisplacementOrderBlockRetestContinuation,
-    detectNyBreakRetestMomentum
+    detectNyBreakRetestMomentum,
+    detectWerleinForeverModel
   ];
 
   return detectors

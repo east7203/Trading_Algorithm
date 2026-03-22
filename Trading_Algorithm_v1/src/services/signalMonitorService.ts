@@ -146,6 +146,16 @@ const clamp = (value: number, min: number, max: number): number => {
   return value;
 };
 
+const relatedSymbolFor = (symbol: SymbolCode): SymbolCode | null => {
+  if (symbol === 'NQ') {
+    return 'ES';
+  }
+  if (symbol === 'ES') {
+    return 'NQ';
+  }
+  return null;
+};
+
 const buildAlertKey = (candidate: SetupCandidate): string =>
   `${candidate.symbol}|${candidate.setupType}|${candidate.side}|${candidate.generatedAt}`;
 
@@ -960,6 +970,26 @@ export class SignalMonitorService {
         nyRangeLow: Math.min(...nyRangeSource.map((bar) => bar.low))
       }
     };
+
+    const relatedSymbol = relatedSymbolFor(symbol);
+    if (relatedSymbol) {
+      const relatedBars = barsBySymbol.get(relatedSymbol) ?? [];
+      const relatedBarsUntilNow = relatedBars.filter((bar) => bar.timestamp <= currentBar.timestamp);
+      const relatedCandles15m = completeCandles(relatedBarsUntilNow, currentBar.timestamp, 15, 20);
+      const relatedCandles5m = completeCandles(relatedBarsUntilNow, currentBar.timestamp, 5, 20);
+      const relatedCandles1H = completeCandles(relatedBarsUntilNow, currentBar.timestamp, 60, 20);
+
+      if (relatedCandles15m.length >= 5) {
+        input.relatedMarket = {
+          symbol: relatedSymbol,
+          timeframeData: {
+            '15m': relatedCandles15m,
+            '5m': relatedCandles5m,
+            '1H': relatedCandles1H
+          }
+        };
+      }
+    }
 
     const candidates = generateSetupCandidates(input).filter((candidate) =>
       settings.enabledSetups.includes(candidate.setupType)

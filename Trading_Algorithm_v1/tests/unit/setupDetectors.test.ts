@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   detectDisplacementOrderBlockRetestContinuation,
+  detectWerleinForeverModel,
   generateSetupCandidates,
   detectLiquiditySweepMssFvgContinuation,
   detectLiquiditySweepReversalSessionExtremes,
@@ -188,5 +189,76 @@ describe('setup detectors', () => {
     expect(nyCandidate).toBeDefined();
     expect(typeof nyCandidate?.metadata.aiContextScore).toBe('number');
     expect((nyCandidate?.metadata.aiContextScore as number) > 0).toBe(true);
+  });
+
+  it('detects a Werlein forever-model proxy setup with HTF context and SMT support', () => {
+    const input = baseInput();
+    input.symbol = 'NQ';
+    input.timeframeData['15m'] = [
+      { timestamp: '2026-03-07T13:00:00.000Z', open: 100, high: 102, low: 100.9, close: 101.2 },
+      { timestamp: '2026-03-07T13:15:00.000Z', open: 101.2, high: 102.4, low: 100.8, close: 102 },
+      { timestamp: '2026-03-07T13:30:00.000Z', open: 102, high: 103.2, low: 101.6, close: 103 },
+      { timestamp: '2026-03-07T13:45:00.000Z', open: 103, high: 103.5, low: 100.4, close: 101.2 },
+      { timestamp: '2026-03-07T14:00:00.000Z', open: 101.2, high: 104.1, low: 103.4, close: 103.9 }
+    ];
+    input.timeframeData['5m'] = [
+      { timestamp: '2026-03-07T13:45:00.000Z', open: 101, high: 101.4, low: 100.8, close: 101.1 },
+      { timestamp: '2026-03-07T13:50:00.000Z', open: 101.1, high: 101.6, low: 101, close: 101.4 },
+      { timestamp: '2026-03-07T13:55:00.000Z', open: 101.4, high: 104.2, low: 101.3, close: 103.9 },
+      { timestamp: '2026-03-07T14:00:00.000Z', open: 103.9, high: 104, low: 101.5, close: 101.9 },
+      { timestamp: '2026-03-07T14:05:00.000Z', open: 101.9, high: 104.6, low: 101.8, close: 104.4 }
+    ];
+    input.timeframeData['1H'] = [
+      { timestamp: '2026-03-07T10:00:00.000Z', open: 106, high: 107, low: 102, close: 103 },
+      { timestamp: '2026-03-07T11:00:00.000Z', open: 103, high: 103.4, low: 101.2, close: 101.5 },
+      { timestamp: '2026-03-07T12:00:00.000Z', open: 101.5, high: 102.3, low: 101.4, close: 101.9 },
+      { timestamp: '2026-03-07T13:00:00.000Z', open: 101.9, high: 104.8, low: 103.6, close: 104.1 }
+    ];
+    input.relatedMarket = {
+      symbol: 'ES',
+      timeframeData: {
+        '15m': [
+          { timestamp: '2026-03-07T13:00:00.000Z', open: 500, high: 501, low: 499.2, close: 500.6 },
+          { timestamp: '2026-03-07T13:15:00.000Z', open: 500.6, high: 501.2, low: 500.2, close: 500.9 },
+          { timestamp: '2026-03-07T13:30:00.000Z', open: 500.9, high: 501.5, low: 500.4, close: 501.1 },
+          { timestamp: '2026-03-07T13:45:00.000Z', open: 501.1, high: 501.8, low: 500.3, close: 501.2 },
+          { timestamp: '2026-03-07T14:00:00.000Z', open: 501.2, high: 502.4, low: 501, close: 502.1 }
+        ]
+      }
+    };
+
+    const result = detectWerleinForeverModel(input);
+    expect(result).not.toBeNull();
+    expect(result?.setupType).toBe('WERLEIN_FOREVER_MODEL');
+    expect(result?.side).toBe('LONG');
+    expect(result?.metadata.smtConfirmed).toBe(true);
+  });
+
+  it('rejects Werlein forever-model proxy when higher-timeframe context is missing', () => {
+    const input = baseInput();
+    input.symbol = 'NQ';
+    input.timeframeData['15m'] = [
+      { timestamp: '2026-03-07T13:00:00.000Z', open: 100, high: 102, low: 99.4, close: 101.2 },
+      { timestamp: '2026-03-07T13:15:00.000Z', open: 101.2, high: 102.4, low: 100.8, close: 102 },
+      { timestamp: '2026-03-07T13:30:00.000Z', open: 102, high: 103.2, low: 101.6, close: 103 },
+      { timestamp: '2026-03-07T13:45:00.000Z', open: 103, high: 103.5, low: 100.4, close: 101.2 },
+      { timestamp: '2026-03-07T14:00:00.000Z', open: 101.2, high: 104.1, low: 103.4, close: 103.9 }
+    ];
+    input.timeframeData['5m'] = [
+      { timestamp: '2026-03-07T13:45:00.000Z', open: 101, high: 101.4, low: 100.8, close: 101.1 },
+      { timestamp: '2026-03-07T13:50:00.000Z', open: 101.1, high: 101.6, low: 101, close: 101.4 },
+      { timestamp: '2026-03-07T13:55:00.000Z', open: 101.4, high: 104.2, low: 101.3, close: 103.9 },
+      { timestamp: '2026-03-07T14:00:00.000Z', open: 103.9, high: 104, low: 101.5, close: 101.9 },
+      { timestamp: '2026-03-07T14:05:00.000Z', open: 101.9, high: 104.6, low: 101.8, close: 104.4 }
+    ];
+    input.timeframeData['1H'] = [
+      { timestamp: '2026-03-07T10:00:00.000Z', open: 104, high: 104.3, low: 103.9, close: 104.1 },
+      { timestamp: '2026-03-07T11:00:00.000Z', open: 104.1, high: 104.4, low: 103.8, close: 104 },
+      { timestamp: '2026-03-07T12:00:00.000Z', open: 104, high: 104.2, low: 103.7, close: 103.95 },
+      { timestamp: '2026-03-07T13:00:00.000Z', open: 103.95, high: 104.1, low: 103.8, close: 103.9 }
+    ];
+
+    const result = detectWerleinForeverModel(input);
+    expect(result).toBeNull();
   });
 });

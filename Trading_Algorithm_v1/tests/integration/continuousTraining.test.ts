@@ -195,7 +195,7 @@ describe('continuous training integration', () => {
   });
 
   it('only promotes a challenger when validation beats the active model', async () => {
-    const makeCandidate = (id: string, setupType: 'NY_BREAK_RETEST_MOMENTUM' | 'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES') => ({
+    const makeCandidate = (id: string, setupType: 'NY_BREAK_RETEST_MOMENTUM' | 'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES' | 'WERLEIN_FOREVER_MODEL') => ({
       id,
       setupType,
       symbol: 'NQ' as const,
@@ -292,7 +292,7 @@ describe('continuous training integration', () => {
 
     const makeCandidate = (
       id: string,
-      setupType: 'NY_BREAK_RETEST_MOMENTUM' | 'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES'
+      setupType: 'NY_BREAK_RETEST_MOMENTUM' | 'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES' | 'WERLEIN_FOREVER_MODEL'
     ) => ({
       id,
       setupType,

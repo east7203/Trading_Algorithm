@@ -10,7 +10,8 @@ export type SetupType =
   | 'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION'
   | 'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES'
   | 'DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION'
-  | 'NY_BREAK_RETEST_MOMENTUM';
+  | 'NY_BREAK_RETEST_MOMENTUM'
+  | 'WERLEIN_FOREVER_MODEL';
 
 export interface Candle {
   timestamp: string;
@@ -219,6 +220,14 @@ export interface SignalGenerationInput {
     '4H'?: Candle[];
     D1?: Candle[];
     W1?: Candle[];
+  };
+  relatedMarket?: {
+    symbol: SymbolCode;
+    timeframeData: {
+      '15m': Candle[];
+      '5m'?: Candle[];
+      '1H'?: Candle[];
+    };
   };
   sessionLevels: {
     high: number;

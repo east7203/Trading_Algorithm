@@ -18,7 +18,8 @@ export const emptySetupAdjustments = (): Record<SetupType, number> => ({
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: 0,
   LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES: 0,
   DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION: 0,
-  NY_BREAK_RETEST_MOMENTUM: 0
+  NY_BREAK_RETEST_MOMENTUM: 0,
+  WERLEIN_FOREVER_MODEL: 0
 });
 
 export const defaultRankingModel = (): RankingModel => ({

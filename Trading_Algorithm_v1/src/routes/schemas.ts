@@ -8,7 +8,8 @@ export const setupTypeSchema = z.enum([
   'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION',
   'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES',
   'DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION',
-  'NY_BREAK_RETEST_MOMENTUM'
+  'NY_BREAK_RETEST_MOMENTUM',
+  'WERLEIN_FOREVER_MODEL'
 ]);
 
 export const candleSchema = z.object({
@@ -77,6 +78,16 @@ export const signalGenerateBodySchema = z.object({
     D1: z.array(candleSchema).optional(),
     W1: z.array(candleSchema).optional()
   }),
+  relatedMarket: z
+    .object({
+      symbol: symbolSchema,
+      timeframeData: z.object({
+        '15m': z.array(candleSchema),
+        '5m': z.array(candleSchema).optional(),
+        '1H': z.array(candleSchema).optional()
+      })
+    })
+    .optional(),
   sessionLevels: z.object({
     high: z.number(),
     low: z.number(),
