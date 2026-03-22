@@ -36,7 +36,7 @@ export const setupCandidateSchema = z.object({
   setupType: setupTypeSchema,
   symbol: symbolSchema,
   session: sessionSchema,
-  detectionTimeframe: z.literal('15m'),
+  detectionTimeframe: z.literal('5m'),
   executionTimeframe: z.literal('5m'),
   side: sideSchema,
   entry: z.number(),

@@ -168,6 +168,8 @@ describe('signal monitor integration', () => {
     expect(top.setupType).toBe('NY_BREAK_RETEST_MOMENTUM');
     expect(top.riskDecision.allowed).toBe(false);
     expect(top.riskDecision.reasonCodes).toContain('POLICY_CONFIRMATION_REQUIRED');
+    expect(top.candidate.detectionTimeframe).toBe('5m');
+    expect(top.candidate.executionTimeframe).toBe('5m');
     expect(top.chartSnapshot.timeframe).toBe('5m');
     expect(top.chartSnapshot.bars.length).toBeGreaterThan(3);
   });

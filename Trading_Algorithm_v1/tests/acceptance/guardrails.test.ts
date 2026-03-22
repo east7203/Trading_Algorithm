@@ -6,7 +6,7 @@ const candidate = {
   setupType: 'NY_BREAK_RETEST_MOMENTUM',
   symbol: 'NQ',
   session: 'NY',
-  detectionTimeframe: '15m',
+  detectionTimeframe: '5m',
   executionTimeframe: '5m',
   side: 'LONG',
   entry: 100,

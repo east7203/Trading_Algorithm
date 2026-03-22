@@ -19,7 +19,7 @@ const baseCandidate = (
   setupType,
   symbol,
   session: 'NY',
-  detectionTimeframe: '15m',
+  detectionTimeframe: '5m',
   executionTimeframe: '5m',
   side: 'LONG',
   entry: 100,

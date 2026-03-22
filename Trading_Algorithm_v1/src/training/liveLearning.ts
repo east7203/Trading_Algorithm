@@ -99,6 +99,14 @@ const labelForScoreBucket = (score: number): string => {
   return '70-77.9';
 };
 
+const normalizeAlertTimeframe = (value: string | undefined): string => {
+  if (!value || value === '15m' || value === '5m') {
+    return '5m';
+  }
+
+  return value;
+};
+
 const pushBucket = (
   map: Map<string, { wins: number; losses: number }>,
   key: string,
@@ -269,7 +277,7 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
       pushBucket(byScoreBucket, labelForScoreBucket(score), isWin);
       pushBucket(
         byDetectionTimeframe,
-        review.alertSnapshot?.candidate?.detectionTimeframe ?? '15m',
+        normalizeAlertTimeframe(review.alertSnapshot?.candidate?.detectionTimeframe),
         isWin
       );
       pushBucket(

@@ -23,7 +23,7 @@ const candidate = {
   setupType: 'DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION',
   symbol: 'YM',
   session: 'NY',
-  detectionTimeframe: '15m',
+  detectionTimeframe: '5m',
   executionTimeframe: '5m',
   side: 'SHORT',
   entry: 39000,

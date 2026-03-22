@@ -7,7 +7,7 @@ const baseCandidate = (overrides: Partial<SetupCandidate>): SetupCandidate => ({
   setupType: 'NY_BREAK_RETEST_MOMENTUM',
   symbol: 'NAS100',
   session: 'NY',
-  detectionTimeframe: '15m',
+  detectionTimeframe: '5m',
   executionTimeframe: '5m',
   side: 'LONG',
   entry: 100,

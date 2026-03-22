@@ -8,7 +8,7 @@ const candidate: SetupCandidate = {
   setupType: 'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION',
   symbol: 'NAS100',
   session: 'NY',
-  detectionTimeframe: '15m',
+  detectionTimeframe: '5m',
   executionTimeframe: '5m',
   side: 'LONG',
   entry: 100,

@@ -33,7 +33,7 @@ export interface SetupCandidate {
   setupType: SetupType;
   symbol: SymbolCode;
   session: SessionName;
-  detectionTimeframe: '15m';
+  detectionTimeframe: '5m';
   executionTimeframe: '5m';
   side: Side;
   entry: number;
