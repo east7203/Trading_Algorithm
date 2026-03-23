@@ -1,6 +1,6 @@
-# Trading Algorithm v1 (E8 Futures, Manual-Only Assist)
+# Trading Algorithm v1
 
-Rule-first, AI-assisted daytrading service focused on funded-account survival.
+Runtime and operator documentation for the active futures signal platform. The portfolio overview lives at the repository root README.
 
 ## What is implemented
 
@@ -58,10 +58,13 @@ Implemented detectors:
 2. Liquidity sweep reversal from session highs/lows
 3. Displacement + order-block retest continuation
 4. NY break-and-retest momentum
+5. Werlein-style higher-timeframe liquidity + SMT setup
+
+All alert payloads are now emitted as `5m` alerts, while setup context can still use `15m` and `1H` structure internally.
 
 ## News source
 
-`EconomicCalendarClient` interface is included and currently backed by an in-memory adapter with source label `paid-economic-calendar-api`, ready to replace with a paid calendar provider.
+`EconomicCalendarClient` is now wired to a live Forex Factory-backed provider on the VPS, with the app and signal engine consuming that calendar context for macro blocking and scoring. The client interface remains provider-pluggable if you later swap to a paid macro feed.
 
 ## Morning window config
 
@@ -264,8 +267,8 @@ This mode keeps retraining automatically while the API runs:
 ```bash
 CONTINUOUS_TRAINING_ENABLED=true \
 CONTINUOUS_TRAINING_BOOTSTRAP_DIR=data/historical \
-CONTINUOUS_TRAINING_RETRAIN_MINUTES=30 \
-CONTINUOUS_TRAINING_MIN_NEW_BARS=30 \
+CONTINUOUS_TRAINING_RETRAIN_MINUTES=60 \
+CONTINUOUS_TRAINING_MIN_NEW_BARS=120 \
 npm run dev
 ```
 
@@ -276,8 +279,8 @@ Useful environment variables:
 - `CONTINUOUS_TRAINING_BOOTSTRAP_RECURSIVE=true|false`
 - `CONTINUOUS_TRAINING_ARCHIVE_PATH=data/live/one-minute-bars.ndjson`
 - `CONTINUOUS_TRAINING_MODEL_OUTPUT=data/models/latest-live-model.json`
-- `CONTINUOUS_TRAINING_RETRAIN_MINUTES=30`
-- `CONTINUOUS_TRAINING_MIN_NEW_BARS=30`
+- `CONTINUOUS_TRAINING_RETRAIN_MINUTES=60`
+- `CONTINUOUS_TRAINING_MIN_NEW_BARS=120`
 - `CONTINUOUS_TRAINING_MIN_BARS=300`
 - `CONTINUOUS_TRAINING_MIN_EXAMPLES=120`
 - `CONTINUOUS_TRAINING_MAX_BARS=300000`
@@ -313,7 +316,7 @@ Push new 1-minute bars continuously from your market-data bridge:
 
 ### IBKR TWS / IB Gateway live bridge
 
-The project now includes a dedicated IBKR bridge for futures live data. It uses the TWS API historical-bar subscription mode (`reqHistoricalData(... keepUpToDate=true)`) so it can emit finalized 1-minute candles directly into the training/signal engine.
+The project now includes a dedicated IBKR bridge for futures live data. It seeds state from recent history, uses IBKR real-time bars for ongoing updates, and falls back to historical catch-up polling when needed so finalized `1m` candles keep flowing into the training/signal engine.
 
 Setup:
 
