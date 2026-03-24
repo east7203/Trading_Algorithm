@@ -854,6 +854,22 @@
       </article>
     </template>
 
+    <div id="chartLightbox" class="chart-lightbox" hidden aria-hidden="true">
+      <button id="chartLightboxBackdrop" class="chart-lightbox-backdrop" type="button" aria-label="Close expanded chart"></button>
+      <section id="chartLightboxSheet" class="chart-lightbox-sheet" role="dialog" aria-modal="true" aria-labelledby="chartLightboxTitle">
+        <div class="chart-lightbox-grabber" aria-hidden="true"></div>
+        <div class="chart-lightbox-head">
+          <div class="chart-lightbox-copy">
+            <p class="chart-lightbox-label">Expanded Chart</p>
+            <h2 id="chartLightboxTitle" class="chart-lightbox-title">Trigger Snapshot</h2>
+            <p id="chartLightboxMeta" class="chart-lightbox-meta">Swipe down to return to the desk.</p>
+          </div>
+          <button id="chartLightboxClose" class="chart-lightbox-close" type="button">Done</button>
+        </div>
+        <div id="chartLightboxFrame" class="chart-lightbox-frame"></div>
+      </section>
+    </div>
+
     <script type="module" src="app.js"></script>
   </body>
 </html>

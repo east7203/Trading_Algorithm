@@ -141,6 +141,13 @@ const statusSegmentModelEl = document.getElementById('statusSegmentModel');
 const quickActionButtons = [...document.querySelectorAll('.quick-action')];
 const signalStatusFilterButtons = [...document.querySelectorAll('[data-status-filter]')];
 const signalSymbolFilterButtons = [...document.querySelectorAll('[data-symbol-filter]')];
+const chartLightboxEl = document.getElementById('chartLightbox');
+const chartLightboxBackdropEl = document.getElementById('chartLightboxBackdrop');
+const chartLightboxSheetEl = document.getElementById('chartLightboxSheet');
+const chartLightboxFrameEl = document.getElementById('chartLightboxFrame');
+const chartLightboxTitleEl = document.getElementById('chartLightboxTitle');
+const chartLightboxMetaEl = document.getElementById('chartLightboxMeta');
+const chartLightboxCloseEl = document.getElementById('chartLightboxClose');
 
 const tabButtons = [...document.querySelectorAll('.tab-btn')];
 const views = {
@@ -180,6 +187,7 @@ let activeRouteAlertId = null;
 let focusedAlertId = null;
 let localNotificationListenersBound = false;
 let pullRefreshFrame = 0;
+let chartLightboxListenersBound = false;
 
 const pullRefreshGesture = {
   active: false,
@@ -192,6 +200,12 @@ const pullRefreshGesture = {
 const PULL_REFRESH_TRIGGER_PX = 72;
 const PULL_REFRESH_MAX_PX = 112;
 const PULL_REFRESH_SETTLE_PX = 40;
+const CHART_LIGHTBOX_DISMISS_PX = 120;
+const chartLightboxGesture = {
+  active: false,
+  startY: 0,
+  offsetY: 0
+};
 
 const setupToggleMap = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: setupSweepMssToggleEl,
@@ -1690,6 +1704,166 @@ const renderSignalChartMarkup = (snapshot) => {
   `;
 };
 
+const configureExpandableChart = (chartEl, title, meta) => {
+  if (!chartEl) {
+    return;
+  }
+
+  if (chartEl.querySelector('svg')) {
+    chartEl.classList.add('is-expandable');
+    chartEl.tabIndex = 0;
+    chartEl.setAttribute('role', 'button');
+    chartEl.setAttribute('aria-label', `Expand ${title || 'chart'}`);
+    chartEl.dataset.chartLightboxTitle = title || 'Trigger Snapshot';
+    chartEl.dataset.chartLightboxMeta = meta || 'Swipe down to return to the desk.';
+    return;
+  }
+
+  chartEl.classList.remove('is-expandable');
+  chartEl.removeAttribute('role');
+  chartEl.removeAttribute('aria-label');
+  chartEl.removeAttribute('tabindex');
+  delete chartEl.dataset.chartLightboxTitle;
+  delete chartEl.dataset.chartLightboxMeta;
+};
+
+const setChartLightboxOffset = (offsetY = 0) => {
+  if (!chartLightboxSheetEl) {
+    return;
+  }
+
+  chartLightboxSheetEl.style.setProperty('--chart-lightbox-offset', `${Math.max(0, offsetY)}px`);
+};
+
+const closeChartLightbox = () => {
+  if (!chartLightboxEl || chartLightboxEl.hidden) {
+    return;
+  }
+
+  chartLightboxGesture.active = false;
+  chartLightboxGesture.startY = 0;
+  chartLightboxGesture.offsetY = 0;
+  chartLightboxSheetEl?.classList.remove('is-dragging');
+  setChartLightboxOffset(0);
+  chartLightboxEl.hidden = true;
+  chartLightboxEl.setAttribute('aria-hidden', 'true');
+  if (chartLightboxFrameEl) {
+    chartLightboxFrameEl.innerHTML = '';
+  }
+  document.body.classList.remove('chart-lightbox-open');
+};
+
+const openChartLightbox = (chartEl) => {
+  if (!chartLightboxEl || !chartLightboxFrameEl || !chartEl?.querySelector('svg')) {
+    return;
+  }
+
+  chartLightboxTitleEl.textContent = chartEl.dataset.chartLightboxTitle || 'Trigger Snapshot';
+  chartLightboxMetaEl.textContent = chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
+  chartLightboxFrameEl.innerHTML = chartEl.innerHTML;
+  chartLightboxEl.hidden = false;
+  chartLightboxEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('chart-lightbox-open');
+  chartLightboxGesture.active = false;
+  chartLightboxGesture.startY = 0;
+  chartLightboxGesture.offsetY = 0;
+  chartLightboxSheetEl?.classList.remove('is-dragging');
+  setChartLightboxOffset(0);
+};
+
+const bindChartLightbox = () => {
+  if (chartLightboxListenersBound || !chartLightboxEl || !chartLightboxSheetEl) {
+    return;
+  }
+
+  chartLightboxListenersBound = true;
+
+  document.addEventListener('click', (event) => {
+    const chartEl = event.target.closest('.signalChart.is-expandable');
+    if (!chartEl || chartLightboxEl.contains(chartEl)) {
+      return;
+    }
+
+    openChartLightbox(chartEl);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !chartLightboxEl.hidden) {
+      closeChartLightbox();
+      return;
+    }
+
+    const chartEl = event.target.closest('.signalChart.is-expandable');
+    if (!chartEl) {
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openChartLightbox(chartEl);
+    }
+  });
+
+  chartLightboxBackdropEl?.addEventListener('click', closeChartLightbox);
+  chartLightboxCloseEl?.addEventListener('click', closeChartLightbox);
+
+  chartLightboxSheetEl.addEventListener('touchstart', (event) => {
+    if (event.touches.length !== 1 || event.target.closest('button')) {
+      return;
+    }
+
+    chartLightboxGesture.active = true;
+    chartLightboxGesture.startY = event.touches[0].clientY;
+    chartLightboxGesture.offsetY = 0;
+    chartLightboxSheetEl.classList.add('is-dragging');
+  });
+
+  chartLightboxSheetEl.addEventListener(
+    'touchmove',
+    (event) => {
+      if (!chartLightboxGesture.active) {
+        return;
+      }
+
+      const deltaY = event.touches[0].clientY - chartLightboxGesture.startY;
+      if (deltaY <= 0) {
+        setChartLightboxOffset(0);
+        return;
+      }
+
+      chartLightboxGesture.offsetY = deltaY;
+      setChartLightboxOffset(deltaY);
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+
+  chartLightboxSheetEl.addEventListener('touchend', () => {
+    if (!chartLightboxGesture.active) {
+      return;
+    }
+
+    chartLightboxSheetEl.classList.remove('is-dragging');
+    if (chartLightboxGesture.offsetY >= CHART_LIGHTBOX_DISMISS_PX) {
+      closeChartLightbox();
+      return;
+    }
+
+    chartLightboxGesture.active = false;
+    chartLightboxGesture.startY = 0;
+    chartLightboxGesture.offsetY = 0;
+    setChartLightboxOffset(0);
+  });
+
+  chartLightboxSheetEl.addEventListener('touchcancel', () => {
+    chartLightboxGesture.active = false;
+    chartLightboxGesture.startY = 0;
+    chartLightboxGesture.offsetY = 0;
+    chartLightboxSheetEl.classList.remove('is-dragging');
+    setChartLightboxOffset(0);
+  });
+};
+
 const getFilteredAlerts = (alerts) =>
   alerts.filter((alert) => {
     const statusMatch =
@@ -2593,7 +2767,13 @@ const loadAlerts = async () => {
       node.querySelector('.setupType').textContent = setupLabel(alert.setupType);
       node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
-      node.querySelector('.signalChart').innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
+      const signalChartEl = node.querySelector('.signalChart');
+      signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
+      configureExpandableChart(
+        signalChartEl,
+        `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
+        `${alert.chartSnapshot?.timeframe ?? '5m'} snapshot • swipe down to return`
+      );
       node.querySelector('.signalScore').textContent =
         typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
       node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
@@ -2861,7 +3041,13 @@ const renderReviewCard = (review) => {
   const chartSnapshot = review.alertSnapshot?.chartSnapshot;
   node.querySelector('.symbol').textContent = `${review.symbol} ${review.side}`;
   node.querySelector('.setupType').textContent = setupLabel(review.setupType);
-  node.querySelector('.reviewSnapshotChart').innerHTML = renderSignalChartMarkup(chartSnapshot);
+  const reviewChartEl = node.querySelector('.reviewSnapshotChart');
+  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
+  configureExpandableChart(
+    reviewChartEl,
+    `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
+    `${chartSnapshot?.timeframe ?? '5m'} replay snapshot • swipe down to return`
+  );
   node.querySelector('.reviewEntry').textContent = fmtNum(review.alertSnapshot?.candidate?.entry, 2);
   node.querySelector('.reviewStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
   node.querySelector('.reviewTakeProfitOne').textContent = fmtNum(review.alertSnapshot?.candidate?.takeProfit?.[0], 2);
@@ -3304,6 +3490,7 @@ const bootstrap = async () => {
   bindNotificationControls();
   bindSignalSettingsControls();
   bindStatusRecoveryControls();
+  bindChartLightbox();
   bindPullToRefresh();
   resetPullRefreshUi();
   bindLocalNotificationListeners();
