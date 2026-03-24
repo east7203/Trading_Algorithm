@@ -5,6 +5,7 @@ const UI_PREFS_KEY = 'trading_mobile_ui_prefs_v1';
 const NOTIFICATION_PREFS_KEY = 'trading_mobile_notification_prefs_v1';
 const SEEN_ALERT_IDS_KEY = 'trading_mobile_seen_alert_ids_v1';
 const NATIVE_PUSH_TOKEN_KEY = 'trading_mobile_native_push_token_v1';
+const TV_CHECKLISTS_KEY = 'trading_mobile_tv_checklists_v1';
 
 const defaultUiPrefs = {
   theme: 'ocean',
@@ -16,6 +17,13 @@ const defaultUiPrefs = {
 const defaultNotificationPrefs = {
   enabled: true
 };
+
+const tradingViewSymbolMap = {
+  NQ: 'CME_MINI:NQ1!',
+  ES: 'CME_MINI:ES1!'
+};
+
+const tvChecklistFields = ['macro_clear', 'sweep_confirmed', 'structure_confirmed', 'rr_acceptable', 'session_valid'];
 
 const apiBaseInput = document.getElementById('apiBase');
 const saveApiBaseBtn = document.getElementById('saveApiBase');
@@ -244,6 +252,44 @@ const reviewOutcomeLabels = {
 const setupLabel = (code) => setupLabels[code] ?? code;
 const reviewValidityLabel = (code) => reviewValidityLabels[code] ?? code ?? '--';
 const reviewOutcomeLabel = (code) => reviewOutcomeLabels[code] ?? code ?? '--';
+
+const readStoredJson = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const writeStoredJson = (key, value) => {
+  localStorage.setItem(key, JSON.stringify(value));
+};
+
+const getTvChecklistStore = () => readStoredJson(TV_CHECKLISTS_KEY, {});
+
+const getTvChecklistState = (alertId) => {
+  const store = getTvChecklistStore();
+  return store[alertId] ?? {};
+};
+
+const setTvChecklistState = (alertId, item, checked) => {
+  const store = getTvChecklistStore();
+  const next = {
+    ...(store[alertId] ?? {}),
+    [item]: checked
+  };
+  store[alertId] = next;
+  writeStoredJson(TV_CHECKLISTS_KEY, store);
+  return next;
+};
+
+const countTvChecklistChecks = (state) => tvChecklistFields.filter((field) => state[field]).length;
+
+const buildTradingViewUrl = (symbol, interval = '5') => {
+  const tvSymbol = tradingViewSymbolMap[symbol] ?? symbol;
+  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(interval)}`;
+};
 
 const signalBiasLabel = (alert) => {
   const regimeScore = Number(alert?.candidate?.metadata?.regimeScore);
@@ -1948,6 +1994,37 @@ const bindChartLightbox = () => {
   });
 };
 
+const hydrateTradingViewChecklist = (node, { alertId, symbol, interval = '5' }) => {
+  const openTvBtn = node.querySelector('.openTradingViewBtn');
+  const checklistSummaryEl = node.querySelector('.tvChecklistSummary');
+  const checklistToggles = [...node.querySelectorAll('.tvChecklistToggle')];
+  const tradingViewUrl = buildTradingViewUrl(symbol, interval);
+
+  if (openTvBtn) {
+    openTvBtn.addEventListener('click', () => {
+      window.open(tradingViewUrl, '_blank', 'noopener,noreferrer');
+    });
+  }
+
+  if (!checklistSummaryEl || !checklistToggles.length || !alertId) {
+    return;
+  }
+
+  const applySummary = (state) => {
+    checklistSummaryEl.textContent = `TV checklist ${countTvChecklistChecks(state)}/${tvChecklistFields.length}`;
+  };
+
+  const initialState = getTvChecklistState(alertId);
+  checklistToggles.forEach((toggle) => {
+    toggle.checked = Boolean(initialState[toggle.value]);
+    toggle.addEventListener('change', () => {
+      const nextState = setTvChecklistState(alertId, toggle.value, toggle.checked);
+      applySummary(nextState);
+    });
+  });
+  applySummary(initialState);
+};
+
 const getFilteredAlerts = (alerts) =>
   alerts.filter((alert) => {
     const statusMatch =
@@ -2862,6 +2939,11 @@ const loadAlerts = async () => {
           candidate: alert.candidate
         }
       );
+      hydrateTradingViewChecklist(node, {
+        alertId: alert.alertId,
+        symbol: alert.symbol,
+        interval: alert.chartSnapshot?.timeframe === '5m' ? '5' : alert.chartSnapshot?.timeframe ?? '5'
+      });
       node.querySelector('.signalScore').textContent =
         typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
       node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
@@ -3140,6 +3222,11 @@ const renderReviewCard = (review) => {
       candidate: review.alertSnapshot?.candidate
     }
   );
+  hydrateTradingViewChecklist(node, {
+    alertId: review.alertId,
+    symbol: review.symbol,
+    interval: chartSnapshot?.timeframe === '5m' ? '5' : chartSnapshot?.timeframe ?? '5'
+  });
   node.querySelector('.reviewEntry').textContent = fmtNum(review.alertSnapshot?.candidate?.entry, 2);
   node.querySelector('.reviewStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
   node.querySelector('.reviewTakeProfitOne').textContent = fmtNum(review.alertSnapshot?.candidate?.takeProfit?.[0], 2);

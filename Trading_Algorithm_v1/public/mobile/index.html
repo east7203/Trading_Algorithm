@@ -688,6 +688,10 @@
         </div>
         <p class="card-section-label">Trigger Snapshot</p>
         <div class="signalChart"></div>
+        <div class="signal-chart-tools">
+          <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
+          <span class="tvChecklistSummary chip chip-neutral">TV checklist 0/5</span>
+        </div>
         <div class="signal-levels">
           <span class="level-chip level-chip-entry">Entry <b class="entry"></b></span>
           <span class="level-chip level-chip-stop">SL <b class="stopLoss"></b></span>
@@ -717,6 +721,29 @@
         <div class="item-meta">
           <span>R:R <b class="rr"></b></span>
           <span class="signalIntentHint"></span>
+        </div>
+        <p class="card-section-label">TradingView Checklist</p>
+        <div class="tv-checklist">
+          <label class="tv-checklist-item">
+            <input class="tvChecklistToggle" type="checkbox" value="macro_clear" />
+            <span>Macro clear</span>
+          </label>
+          <label class="tv-checklist-item">
+            <input class="tvChecklistToggle" type="checkbox" value="sweep_confirmed" />
+            <span>Sweep confirmed</span>
+          </label>
+          <label class="tv-checklist-item">
+            <input class="tvChecklistToggle" type="checkbox" value="structure_confirmed" />
+            <span>Structure confirmed</span>
+          </label>
+          <label class="tv-checklist-item">
+            <input class="tvChecklistToggle" type="checkbox" value="rr_acceptable" />
+            <span>R:R acceptable</span>
+          </label>
+          <label class="tv-checklist-item">
+            <input class="tvChecklistToggle" type="checkbox" value="session_valid" />
+            <span>Session valid</span>
+          </label>
         </div>
         <p class="card-section-label">Why It Matters</p>
         <div class="evidence-strip signalEvidence"></div>
@@ -787,6 +814,9 @@
         <p class="review-section-label">Trigger Snapshot</p>
         <p class="review-section-copy">This is the saved chart from the moment the signal fired.</p>
         <div class="signalChart reviewSnapshotChart"></div>
+        <div class="signal-chart-tools">
+          <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
+        </div>
         <div class="signal-levels reviewSnapshotLevels">
           <span class="level-chip level-chip-entry">Entry <b class="reviewEntry"></b></span>
           <span class="level-chip level-chip-stop">SL <b class="reviewStopLoss"></b></span>
