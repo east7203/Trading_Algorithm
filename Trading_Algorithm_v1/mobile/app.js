@@ -188,6 +188,7 @@ let focusedAlertId = null;
 let localNotificationListenersBound = false;
 let pullRefreshFrame = 0;
 let chartLightboxListenersBound = false;
+const chartLightboxContext = new WeakMap();
 
 const pullRefreshGesture = {
   active: false,
@@ -1532,63 +1533,85 @@ const formatSignalWhy = (alert) => {
   return reasons.slice(0, 4).join(' • ') || 'Rule-qualified signal';
 };
 
-const renderSignalChartMarkup = (snapshot) => {
+const renderSignalChartMarkup = (snapshot, options = {}) => {
   if (!snapshot?.bars?.length) {
     return '<div class="signalChartPlaceholder">Chart pending</div>';
   }
 
-  const width = 320;
-  const height = 144;
-  const padding = { top: 12, right: 88, bottom: 16, left: 12 };
+  const expanded = options.expanded === true;
+  const width = expanded ? 420 : 320;
+  const height = expanded ? 260 : 144;
+  const padding = expanded
+    ? { top: 18, right: 132, bottom: 22, left: 14 }
+    : { top: 12, right: 88, bottom: 16, left: 12 };
   const bars = snapshot.bars;
   const levelDefinitions = [
     {
+      key: 'sessionHigh',
       price: snapshot.levels.sessionHigh,
-      label: 'Sess High',
+      label: expanded ? 'Session High' : 'Sess High',
       color: '#8ab6ff',
       dash: '5 4',
-      fill: 'rgba(37, 78, 132, 0.92)'
+      fill: 'rgba(37, 78, 132, 0.92)',
+      emphasized: false
     },
     {
+      key: 'sessionLow',
       price: snapshot.levels.sessionLow,
-      label: 'Sess Low',
+      label: expanded ? 'Session Low' : 'Sess Low',
       color: '#8ab6ff',
       dash: '5 4',
-      fill: 'rgba(37, 78, 132, 0.92)'
+      fill: 'rgba(37, 78, 132, 0.92)',
+      emphasized: false
     },
     {
+      key: 'nyRangeHigh',
       price: snapshot.levels.nyRangeHigh,
-      label: 'NY High',
+      label: expanded ? 'NY Range High' : 'NY High',
       color: '#ffcf82',
       dash: '4 3',
-      fill: 'rgba(118, 76, 18, 0.96)'
+      fill: 'rgba(118, 76, 18, 0.96)',
+      emphasized: false
     },
     {
+      key: 'nyRangeLow',
       price: snapshot.levels.nyRangeLow,
-      label: 'NY Low',
+      label: expanded ? 'NY Range Low' : 'NY Low',
       color: '#ffcf82',
       dash: '4 3',
-      fill: 'rgba(118, 76, 18, 0.96)'
+      fill: 'rgba(118, 76, 18, 0.96)',
+      emphasized: false
     },
     {
+      key: 'entry',
       price: snapshot.levels.entry,
       label: 'Entry',
       color: '#d5fff0',
-      fill: 'rgba(28, 87, 74, 0.96)'
+      fill: 'rgba(28, 87, 74, 0.96)',
+      emphasized: true
     },
     {
+      key: 'stopLoss',
       price: snapshot.levels.stopLoss,
       label: 'Stop',
       color: '#ff9898',
-      fill: 'rgba(117, 40, 40, 0.96)'
+      fill: 'rgba(117, 40, 40, 0.96)',
+      emphasized: true
     },
     {
+      key: 'takeProfit',
       price: snapshot.levels.takeProfit,
       label: 'TP1',
       color: '#88f2ba',
-      fill: 'rgba(25, 92, 59, 0.96)'
+      fill: 'rgba(25, 92, 59, 0.96)',
+      emphasized: true
     }
-  ].filter((level) => typeof level.price === 'number');
+  ]
+    .filter((level) => typeof level.price === 'number')
+    .map((level) => ({
+      ...level,
+      valueLabel: expanded && level.emphasized ? fmtNum(level.price, 2) : ''
+    }));
 
   const allPrices = [...bars.flatMap((bar) => [bar.high, bar.low]), ...levelDefinitions.map((level) => level.price)];
 
@@ -1602,15 +1625,11 @@ const renderSignalChartMarkup = (snapshot) => {
   const bodyWidth = Math.max(4, slotWidth - barGap * 2);
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
   const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
-  const labelWidth = 58;
-  const labelHeight = 14;
-  const labelGap = 11;
+  const labelGap = expanded ? 8 : 11;
   const labelX = width - padding.right + 8;
-  const labelMaxCenterY = height - padding.bottom - labelHeight / 2;
-  const labelMinCenterY = padding.top + labelHeight / 2;
 
   const levelLine = (level) =>
-    `<line x1="${padding.left}" y1="${priceToY(level.price)}" x2="${width - padding.right}" y2="${priceToY(level.price)}" stroke="${level.color}" stroke-width="1.2" ${level.dash ? `stroke-dasharray="${level.dash}"` : ''} opacity="0.92" />`;
+    `<line x1="${padding.left}" y1="${priceToY(level.price)}" x2="${width - padding.right}" y2="${priceToY(level.price)}" stroke="${level.color}" stroke-width="${level.emphasized ? (expanded ? 1.8 : 1.4) : 1.2}" ${level.dash ? `stroke-dasharray="${level.dash}"` : ''} opacity="0.92" />`;
 
   const candles = bars
     .map((bar, index) => {
@@ -1631,19 +1650,32 @@ const renderSignalChartMarkup = (snapshot) => {
     .join('');
 
   const placedLabels = levelDefinitions
-    .map((level) => ({ ...level, targetY: priceToY(level.price) }))
+    .map((level) => ({
+      ...level,
+      targetY: priceToY(level.price),
+      boxWidth: expanded && level.emphasized ? 90 : expanded ? 82 : 58,
+      boxHeight: expanded && level.emphasized ? 26 : expanded ? 18 : 14
+    }))
     .sort((a, b) => a.targetY - b.targetY)
     .map((level, index, sorted) => {
       const previous = sorted[index - 1];
-      const minCenterY = previous ? previous.labelCenterY + labelGap : labelMinCenterY;
+      const labelMinCenterY = padding.top + level.boxHeight / 2;
+      const minCenterY = previous
+        ? previous.labelCenterY + previous.boxHeight / 2 + level.boxHeight / 2 + labelGap
+        : labelMinCenterY;
       const labelCenterY = Math.max(level.targetY, minCenterY, labelMinCenterY);
       return { ...level, labelCenterY };
     });
 
   for (let index = placedLabels.length - 1; index >= 0; index -= 1) {
     const next = placedLabels[index + 1];
-    const maxCenterY = next ? next.labelCenterY - labelGap : labelMaxCenterY;
-    placedLabels[index].labelCenterY = Math.min(placedLabels[index].labelCenterY, maxCenterY, labelMaxCenterY);
+    const level = placedLabels[index];
+    const labelMaxCenterY = height - padding.bottom - level.boxHeight / 2;
+    const labelMinCenterY = padding.top + level.boxHeight / 2;
+    const maxCenterY = next
+      ? next.labelCenterY - next.boxHeight / 2 - level.boxHeight / 2 - labelGap
+      : labelMaxCenterY;
+    placedLabels[index].labelCenterY = Math.min(level.labelCenterY, maxCenterY, labelMaxCenterY);
     placedLabels[index].labelCenterY = Math.max(placedLabels[index].labelCenterY, labelMinCenterY);
   }
 
@@ -1662,23 +1694,26 @@ const renderSignalChartMarkup = (snapshot) => {
           />
           <rect
             x="${labelX}"
-            y="${level.labelCenterY - labelHeight / 2}"
-            width="${labelWidth}"
-            height="${labelHeight}"
+            y="${level.labelCenterY - level.boxHeight / 2}"
+            width="${level.boxWidth}"
+            height="${level.boxHeight}"
             rx="7"
             fill="${level.fill}"
             stroke="${level.color}"
             stroke-width="0.9"
           />
           <text
-            x="${labelX + labelWidth / 2}"
-            y="${level.labelCenterY + 3}"
+            x="${labelX + level.boxWidth / 2}"
+            y="${expanded && level.valueLabel ? level.labelCenterY - 2.5 : level.labelCenterY + 3}"
             fill="#f6fbff"
-            font-size="8.2"
+            font-size="${expanded ? (level.valueLabel ? '7.2' : '8.1') : '8.2'}"
             font-weight="700"
             text-anchor="middle"
             letter-spacing="0.02em"
-          >${level.label}</text>
+          >
+            <tspan x="${labelX + level.boxWidth / 2}" dy="0">${level.label}</tspan>
+            ${expanded && level.valueLabel ? `<tspan x="${labelX + level.boxWidth / 2}" dy="9.2" font-size="7.8">${level.valueLabel}</tspan>` : ''}
+          </text>
         </g>
       `
     )
@@ -1686,15 +1721,15 @@ const renderSignalChartMarkup = (snapshot) => {
 
   const chartBadge = `
     <g>
-      <rect x="${padding.left}" y="${padding.top}" width="72" height="16" rx="8" fill="rgba(6, 15, 25, 0.86)" stroke="rgba(213, 234, 255, 0.18)" />
-      <text x="${padding.left + 36}" y="${padding.top + 11}" fill="#d8ecff" font-size="8.5" font-weight="700" text-anchor="middle" letter-spacing="0.04em">
-        ${snapshot.timeframe ?? '5m'} trigger map
+      <rect x="${padding.left}" y="${padding.top}" width="${expanded ? 120 : 72}" height="${expanded ? 20 : 16}" rx="8" fill="rgba(6, 15, 25, 0.86)" stroke="rgba(213, 234, 255, 0.18)" />
+      <text x="${padding.left + (expanded ? 60 : 36)}" y="${padding.top + (expanded ? 13 : 11)}" fill="#d8ecff" font-size="${expanded ? '9.2' : '8.5'}" font-weight="700" text-anchor="middle" letter-spacing="0.04em">
+        ${snapshot.timeframe ?? '5m'} ${expanded ? 'trade map' : 'trigger map'}
       </text>
     </g>
   `;
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
       <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
       ${levelDefinitions.map(levelLine).join('')}
       ${candles}
@@ -1704,7 +1739,48 @@ const renderSignalChartMarkup = (snapshot) => {
   `;
 };
 
-const configureExpandableChart = (chartEl, title, meta) => {
+const renderChartLightboxDetails = (context) => {
+  const candidate = context?.candidate;
+  const snapshot = context?.snapshot;
+  if (!candidate && !snapshot) {
+    return '';
+  }
+
+  const entry = candidate?.entry ?? snapshot?.levels?.entry;
+  const stopLoss = candidate?.stopLoss ?? snapshot?.levels?.stopLoss;
+  const takeProfit = candidate?.takeProfit?.[0] ?? snapshot?.levels?.takeProfit;
+  const riskPoints =
+    typeof entry === 'number' && typeof stopLoss === 'number' ? Math.abs(entry - stopLoss) : undefined;
+  const rewardPoints =
+    typeof entry === 'number' && typeof takeProfit === 'number' ? Math.abs(takeProfit - entry) : undefined;
+
+  return `
+    <div class="chart-lightbox-detail-grid">
+      <article class="chart-lightbox-detail-card">
+        <p class="chart-lightbox-detail-label">Entry</p>
+        <p class="chart-lightbox-detail-value">${fmtNum(entry, 2)}</p>
+      </article>
+      <article class="chart-lightbox-detail-card chart-lightbox-detail-card-stop">
+        <p class="chart-lightbox-detail-label">Stop Loss</p>
+        <p class="chart-lightbox-detail-value">${fmtNum(stopLoss, 2)}</p>
+      </article>
+      <article class="chart-lightbox-detail-card chart-lightbox-detail-card-target">
+        <p class="chart-lightbox-detail-label">Take Profit</p>
+        <p class="chart-lightbox-detail-value">${fmtNum(takeProfit, 2)}</p>
+      </article>
+      <article class="chart-lightbox-detail-card">
+        <p class="chart-lightbox-detail-label">Risk / Reward</p>
+        <p class="chart-lightbox-detail-value">${calcRr(entry, stopLoss, takeProfit)}</p>
+        <p class="chart-lightbox-detail-note">
+          ${typeof riskPoints === 'number' ? `Risk ${fmtNum(riskPoints, 2)}` : '--'}
+          ${typeof rewardPoints === 'number' ? ` • Reward ${fmtNum(rewardPoints, 2)}` : ''}
+        </p>
+      </article>
+    </div>
+  `;
+};
+
+const configureExpandableChart = (chartEl, context = {}) => {
   if (!chartEl) {
     return;
   }
@@ -1713,9 +1789,10 @@ const configureExpandableChart = (chartEl, title, meta) => {
     chartEl.classList.add('is-expandable');
     chartEl.tabIndex = 0;
     chartEl.setAttribute('role', 'button');
-    chartEl.setAttribute('aria-label', `Expand ${title || 'chart'}`);
-    chartEl.dataset.chartLightboxTitle = title || 'Trigger Snapshot';
-    chartEl.dataset.chartLightboxMeta = meta || 'Swipe down to return to the desk.';
+    chartEl.setAttribute('aria-label', `Expand ${context.title || 'chart'}`);
+    chartEl.dataset.chartLightboxTitle = context.title || 'Trigger Snapshot';
+    chartEl.dataset.chartLightboxMeta = context.meta || 'Swipe down to return to the desk.';
+    chartLightboxContext.set(chartEl, context);
     return;
   }
 
@@ -1725,6 +1802,7 @@ const configureExpandableChart = (chartEl, title, meta) => {
   chartEl.removeAttribute('tabindex');
   delete chartEl.dataset.chartLightboxTitle;
   delete chartEl.dataset.chartLightboxMeta;
+  chartLightboxContext.delete(chartEl);
 };
 
 const setChartLightboxOffset = (offsetY = 0) => {
@@ -1758,9 +1836,15 @@ const openChartLightbox = (chartEl) => {
     return;
   }
 
-  chartLightboxTitleEl.textContent = chartEl.dataset.chartLightboxTitle || 'Trigger Snapshot';
-  chartLightboxMetaEl.textContent = chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
-  chartLightboxFrameEl.innerHTML = chartEl.innerHTML;
+  const context = chartLightboxContext.get(chartEl) ?? {};
+  chartLightboxTitleEl.textContent = context.title || chartEl.dataset.chartLightboxTitle || 'Trigger Snapshot';
+  chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
+  chartLightboxFrameEl.innerHTML = context.snapshot
+    ? `
+        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true })}</div>
+        ${renderChartLightboxDetails(context)}
+      `
+    : chartEl.innerHTML;
   chartLightboxEl.hidden = false;
   chartLightboxEl.setAttribute('aria-hidden', 'false');
   document.body.classList.add('chart-lightbox-open');
@@ -2771,8 +2855,12 @@ const loadAlerts = async () => {
       signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
       configureExpandableChart(
         signalChartEl,
-        `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
-        `${alert.chartSnapshot?.timeframe ?? '5m'} snapshot • swipe down to return`
+        {
+          title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
+          meta: `${alert.chartSnapshot?.timeframe ?? '5m'} snapshot • swipe down to return`,
+          snapshot: alert.chartSnapshot,
+          candidate: alert.candidate
+        }
       );
       node.querySelector('.signalScore').textContent =
         typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
@@ -3045,8 +3133,12 @@ const renderReviewCard = (review) => {
   reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
   configureExpandableChart(
     reviewChartEl,
-    `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
-    `${chartSnapshot?.timeframe ?? '5m'} replay snapshot • swipe down to return`
+    {
+      title: `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
+      meta: `${chartSnapshot?.timeframe ?? '5m'} replay snapshot • swipe down to return`,
+      snapshot: chartSnapshot,
+      candidate: review.alertSnapshot?.candidate
+    }
   );
   node.querySelector('.reviewEntry').textContent = fmtNum(review.alertSnapshot?.candidate?.entry, 2);
   node.querySelector('.reviewStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);

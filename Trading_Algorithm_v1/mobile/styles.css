@@ -3156,7 +3156,8 @@ h1 {
   .system-glance-grid,
   .training-panel-grid,
   .insights-grid,
-  .status-rail {
+  .status-rail,
+  .chart-lightbox-detail-grid {
     grid-template-columns: 1fr;
   }
 
@@ -3317,8 +3318,11 @@ body.chart-lightbox-open {
     linear-gradient(180deg, rgba(5, 12, 21, 0.98), rgba(8, 18, 30, 0.9));
   box-shadow: 0 28px 54px rgba(0, 0, 0, 0.34);
   overflow: hidden;
+  display: grid;
+  gap: 0;
 }
 
+.chart-lightbox-chart svg,
 .chart-lightbox-frame svg {
   display: block;
   width: 100%;
@@ -3327,4 +3331,50 @@ body.chart-lightbox-open {
 
 .chart-lightbox-frame .signalChartPlaceholder {
   min-height: min(76vh, 560px);
+}
+
+.chart-lightbox-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid rgba(231, 240, 250, 0.08);
+  background: rgba(4, 10, 18, 0.74);
+}
+
+.chart-lightbox-detail-card {
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background: rgba(10, 20, 32, 0.76);
+}
+
+.chart-lightbox-detail-card-stop {
+  background: rgba(71, 24, 24, 0.38);
+}
+
+.chart-lightbox-detail-card-target {
+  background: rgba(19, 67, 44, 0.34);
+}
+
+.chart-lightbox-detail-label {
+  margin: 0 0 6px;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chart-lightbox-detail-value {
+  margin: 0;
+  color: #f6fbff;
+  font-size: 1.06rem;
+  font-weight: 800;
+}
+
+.chart-lightbox-detail-note {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
