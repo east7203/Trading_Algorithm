@@ -30,6 +30,8 @@ import {
 } from './services/webPushNotificationService.js';
 import {
   OperationalReminderService,
+  type AppNotificationMessage,
+  type AppNotifier,
   type OperationalReminderConfig,
   type OperationalReminderStatus
 } from './services/operationalReminderService.js';
@@ -774,6 +776,42 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           })
         : null
       : options.webPushNotificationService;
+  const tradeAssistAppNotifier: AppNotifier | null =
+    nativePushNotificationService || webPushNotificationService
+      ? {
+          notifyGeneric: async (message: AppNotificationMessage) => {
+            const deliveries = await Promise.allSettled([
+              nativePushNotificationService?.notifyGeneric(message),
+              webPushNotificationService?.notifyGeneric(message)
+            ]);
+
+            return deliveries.reduce(
+              (summary, result) => {
+                if (result.status !== 'fulfilled' || !result.value) {
+                  return summary;
+                }
+
+                summary.attempted += result.value.attempted ?? 0;
+                summary.delivered += result.value.delivered ?? 0;
+                summary.removed += result.value.removed ?? 0;
+                return summary;
+              },
+              { attempted: 0, delivered: 0, removed: 0 }
+            );
+          }
+        }
+      : null;
+  const notifyTradeAssistChannels = async (
+    appMessage: AppNotificationMessage,
+    telegramMessage?: { title: string; lines?: string[]; buttons?: Array<{ text: string; url: string }> }
+  ) => {
+    const appDelivery = await tradeAssistAppNotifier?.notifyGeneric(appMessage);
+    const telegramDelivery = telegramMessage ? await telegramAlertService?.notifyGeneric(telegramMessage) : undefined;
+    return {
+      appDelivery,
+      telegramDelivery
+    };
+  };
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
@@ -968,7 +1006,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               ...resolvedOperationalReminderConfig,
               enabled: true
             },
-            webPushNotificationService,
+            tradeAssistAppNotifier,
             telegramAlertService,
             async (kind): Promise<void> => {
               const source = kind === 'test' ? 'reminder-test' : 'scheduled-reminder';
@@ -1044,14 +1082,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const bodyText = `${title}${symbolText}. The server is actively trying to restore the IBKR session.`;
-    await Promise.allSettled([
-      webPushNotificationService?.notifyGeneric({
+    await notifyTradeAssistChannels(
+      {
         title,
         body: bodyText,
         url: ibkrStatusUrl,
         tag: 'ibkr-recovery-progress'
-      }),
-      telegramAlertService?.notifyGeneric({
+      },
+      {
         title,
         lines: [
           bodyText,
@@ -1065,8 +1103,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           { text: 'Open Status', url: ibkrStatusUrl },
           { text: 'Last-Resort Website', url: ibkrMobileUrl }
         ]
-      })
-    ]);
+      }
+    );
   };
   const notifyIbkrRecoveryRequest = async (
     title: string,
@@ -1080,14 +1118,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const bodyText = `${title}${symbolText}. The server received your request and is starting the recovery flow now.`;
-    await Promise.allSettled([
-      webPushNotificationService?.notifyGeneric({
+    await notifyTradeAssistChannels(
+      {
         title,
         body: bodyText,
         url: ibkrStatusUrl,
         tag: 'ibkr-recovery-requested'
-      }),
-      telegramAlertService?.notifyGeneric({
+      },
+      {
         title,
         lines: [
           bodyText,
@@ -1096,8 +1134,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           'You will get another update when the server finishes the next recovery step.'
         ],
         buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-      })
-    ]);
+      }
+    );
   };
 
   const sendIbkrReconnectFallback = async (
@@ -1121,14 +1159,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const notifyUsers = canNotifyIbkrRecovery(source);
 
     if (notifyUsers) {
-      await Promise.allSettled([
-        webPushNotificationService?.notifyGeneric({
+      await notifyTradeAssistChannels(
+        {
           title,
           body: bodyText,
           url: ibkrStatusUrl,
           tag: 'ibkr-login-fallback'
-        }),
-        telegramAlertService?.notifyGeneric({
+        },
+        {
           title,
           lines: [
             bodyText,
@@ -1141,8 +1179,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             { text: 'Open Status', url: ibkrStatusUrl },
             { text: 'Last-Resort Website', url: ibkrMobileUrl }
           ]
-        })
-      ]);
+        }
+      );
     }
 
     ibkrReconnectState.lastFallbackAtMs = Date.now();
@@ -1195,17 +1233,31 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               const reason = run.promotionReason ?? 'LATEST_RETRAIN_LIVE';
               const modelId = run.activeModelId ?? run.modelId ?? 'unknown-model';
 
-              await telegramAlertService?.notifyGeneric({
-                title,
-                lines: [
-                  `Trigger: ${run.trigger}`,
-                  `Live model: ${modelId}`,
-                  `Bars: ${run.barCount.toLocaleString()} • Samples: ${run.sampleCount.toLocaleString()}`,
-                  `Delta vs prior model: ${formatWinRateDelta(improvementDelta)}`,
-                  `Promotion decision: ${reason}`
-                ],
-                buttons: [{ text: 'Open Status', url: trainingStatusUrl }]
-              });
+              await notifyTradeAssistChannels(
+                {
+                  title,
+                  body: [
+                    `Trigger ${run.trigger}`,
+                    `Model ${modelId}`,
+                    `Bars ${run.barCount.toLocaleString()} • Samples ${run.sampleCount.toLocaleString()}`,
+                    `Delta ${formatWinRateDelta(improvementDelta)}`,
+                    `Decision ${reason}`
+                  ].join(' • '),
+                  url: trainingStatusUrl,
+                  tag: 'training-retrain'
+                },
+                {
+                  title,
+                  lines: [
+                    `Trigger: ${run.trigger}`,
+                    `Live model: ${modelId}`,
+                    `Bars: ${run.barCount.toLocaleString()} • Samples: ${run.sampleCount.toLocaleString()}`,
+                    `Delta vs prior model: ${formatWinRateDelta(improvementDelta)}`,
+                    `Promotion decision: ${reason}`
+                  ],
+                  buttons: [{ text: 'Open Status', url: trainingStatusUrl }]
+                }
+              );
             }
           })
         : null
@@ -1898,24 +1950,26 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const notifyUsers = shouldNotifyUsers || shouldNotifyManualRecoveryCompletion;
 
     const deliveries = notifyUsers
-      ? await Promise.allSettled([
-          webPushNotificationService?.notifyGeneric({
-            title,
-            body: bodyText,
-            url: ibkrStatusUrl,
-            tag: 'ibkr-connected'
-          }),
-          telegramAlertService?.notifyGeneric({
-            title,
-            lines: [
-              bodyText,
-              `Source: ${source}`,
-              `Connected at: ${connectedAt}`,
-              yahooCutover.message
-            ],
-            buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-          })
-        ])
+      ? [
+          await notifyTradeAssistChannels(
+            {
+              title,
+              body: bodyText,
+              url: ibkrStatusUrl,
+              tag: 'ibkr-connected'
+            },
+            {
+              title,
+              lines: [
+                bodyText,
+                `Source: ${source}`,
+                `Connected at: ${connectedAt}`,
+                yahooCutover.message
+              ],
+              buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
+            }
+          )
+        ]
       : [];
 
     return reply.status(200).send({
@@ -1925,7 +1979,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       connectedAt,
       notifiedUsers: notifyUsers,
       yahooCutover,
-      deliveries: deliveries.map((result) => (result.status === 'fulfilled' ? result.value : { error: result.reason?.message ?? 'failed' }))
+      deliveries
     });
   });
 
@@ -1966,32 +2020,34 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const notifyUsers = canNotifyIbkrRecovery(source);
 
     const deliveries = notifyUsers
-      ? await Promise.allSettled([
-          webPushNotificationService?.notifyGeneric({
-            title,
-            body: bodyText,
-            url: ibkrStatusUrl,
-            tag: 'ibkr-login-required'
-          }),
-          telegramAlertService?.notifyGeneric({
-            title,
-            lines: [
-              bodyText,
-              triggerLine,
-              resendLine,
-              'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
-              `Source: ${source}`,
-              `Detected at: ${detectedAt}`,
-              `Reason: ${reason}`,
-              `You will get a follow-up notice in about ${fallbackDelaySeconds}s if it still does not reconnect.`,
-              `After that, reminders will repeat every ${ibkrReconnectReminderLabel} until it reconnects.`
-            ],
-            buttons: [
-              { text: 'Open Status', url: ibkrStatusUrl },
-              { text: 'Last-Resort Website', url: ibkrMobileUrl }
-            ]
-          })
-        ])
+      ? [
+          await notifyTradeAssistChannels(
+            {
+              title,
+              body: bodyText,
+              url: ibkrStatusUrl,
+              tag: 'ibkr-login-required'
+            },
+            {
+              title,
+              lines: [
+                bodyText,
+                triggerLine,
+                resendLine,
+                'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
+                `Source: ${source}`,
+                `Detected at: ${detectedAt}`,
+                `Reason: ${reason}`,
+                `You will get a follow-up notice in about ${fallbackDelaySeconds}s if it still does not reconnect.`,
+                `After that, reminders will repeat every ${ibkrReconnectReminderLabel} until it reconnects.`
+              ],
+              buttons: [
+                { text: 'Open Status', url: ibkrStatusUrl },
+                { text: 'Last-Resort Website', url: ibkrMobileUrl }
+              ]
+            }
+          )
+        ]
       : [];
 
     scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, fallbackDelaySeconds * 1000);
@@ -2005,9 +2061,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       loginAttempt,
       resendAttempt,
       fallbackDelaySeconds,
-      deliveries: deliveries.map((result) =>
-        result.status === 'fulfilled' ? result.value : { error: result.reason?.message ?? 'failed' }
-      )
+      deliveries
     });
   });
 
@@ -2136,24 +2190,26 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
 
     const deliveries = notifyUsers
-      ? await Promise.allSettled([
-          webPushNotificationService?.notifyGeneric({
-            title,
-            body: bodyText,
-            url: ibkrStatusUrl,
-            tag: 'ibkr-fallback-activated'
-          }),
-          telegramAlertService?.notifyGeneric({
-            title,
-            lines: [
-              bodyText,
-              `Source: ${source}`,
-              `Activated at: ${activatedAt}`,
-              body.latestBarTimestamp ? `Last IBKR bar: ${body.latestBarTimestamp}` : 'Last IBKR bar timestamp unavailable.'
-            ],
-            buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-          })
-        ])
+      ? [
+          await notifyTradeAssistChannels(
+            {
+              title,
+              body: bodyText,
+              url: ibkrStatusUrl,
+              tag: 'ibkr-fallback-activated'
+            },
+            {
+              title,
+              lines: [
+                bodyText,
+                `Source: ${source}`,
+                `Activated at: ${activatedAt}`,
+                body.latestBarTimestamp ? `Last IBKR bar: ${body.latestBarTimestamp}` : 'Last IBKR bar timestamp unavailable.'
+              ],
+              buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
+            }
+          )
+        ]
       : [];
 
     return reply.status(200).send({
@@ -2161,9 +2217,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       source,
       activatedAt,
       liveFeedStatus,
-      deliveries: deliveries.map((result) =>
-        result.status === 'fulfilled' ? result.value : { error: result.reason?.message ?? 'failed' }
-      )
+      deliveries
     });
   });
 

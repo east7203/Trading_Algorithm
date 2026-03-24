@@ -3,6 +3,7 @@ import path from 'node:path';
 import { connect, constants } from 'node:http2';
 import jwt from 'jsonwebtoken';
 import type { SignalAlert } from '../domain/types.js';
+import type { AppNotificationMessage } from './operationalReminderService.js';
 
 export type NativePushPlatform = 'ios' | 'macos';
 
@@ -213,6 +214,66 @@ export class NativePushNotificationService {
 
     for (const device of devices) {
       const result = await this.sendPush(device.deviceToken, providerToken, payload, alert.alertId);
+      if (result.ok) {
+        delivered += 1;
+        continue;
+      }
+
+      if (result.removeToken) {
+        await this.store.remove(device.deviceToken);
+        removed += 1;
+      }
+
+      if (result.reason) {
+        this.lastError = result.reason;
+      }
+    }
+
+    return {
+      attempted: devices.length,
+      delivered,
+      removed
+    };
+  }
+
+  async notifyGeneric(message: AppNotificationMessage): Promise<{ attempted: number; delivered: number; removed: number }> {
+    if (!this.config.enabled) {
+      return { attempted: 0, delivered: 0, removed: 0 };
+    }
+
+    await this.start();
+    const devices = this.store.list();
+    if (devices.length === 0) {
+      return { attempted: 0, delivered: 0, removed: 0 };
+    }
+
+    const readiness = this.getReadiness();
+    if (!readiness.ready) {
+      this.lastError = readiness.reason ?? 'APNs credentials are not fully configured';
+      return { attempted: devices.length, delivered: 0, removed: 0 };
+    }
+
+    const providerToken = this.getProviderToken();
+    const payload = {
+      aps: {
+        alert: {
+          title: message.title,
+          body: message.body
+        },
+        sound: 'default',
+        badge: 1
+      },
+      type: 'operational-reminder',
+      url: message.url || '/mobile/?tab=status',
+      tag: message.tag || 'trading-assist-operational-reminder'
+    };
+
+    let delivered = 0;
+    let removed = 0;
+    const collapseId = message.tag || `generic-${Date.now()}`;
+
+    for (const device of devices) {
+      const result = await this.sendPush(device.deviceToken, providerToken, payload, collapseId);
       if (result.ok) {
         delivered += 1;
         continue;
