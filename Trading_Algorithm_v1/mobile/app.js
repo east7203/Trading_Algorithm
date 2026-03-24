@@ -224,7 +224,8 @@ const CHART_LIGHTBOX_DISMISS_PX = 120;
 const chartLightboxGesture = {
   active: false,
   startY: 0,
-  offsetY: 0
+  offsetY: 0,
+  scrollTop: 0
 };
 
 const setupToggleMap = {
@@ -723,8 +724,7 @@ const parseTimeZoneClock = (isoTimestamp, timeZone) => {
   return hour * 60 + minute;
 };
 
-const isWithinRiskWindow = (nowIso, riskConfig) => {
-  const window = riskConfig?.tradingWindow;
+const isWithinClockWindow = (nowIso, window) => {
   if (!window?.enabled) {
     return true;
   }
@@ -743,23 +743,39 @@ const isWithinRiskWindow = (nowIso, riskConfig) => {
   return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
 };
 
+const isWithinRiskWindow = (nowIso, riskConfig) => isWithinClockWindow(nowIso, riskConfig?.tradingWindow);
+
+const resolveQuietWindow = () => {
+  if (signalSettings) {
+    return {
+      enabled: true,
+      timezone: signalSettings.timezone,
+      startHour: signalSettings.sessionStartHour,
+      startMinute: signalSettings.sessionStartMinute,
+      endHour: signalSettings.sessionEndHour,
+      endMinute: signalSettings.sessionEndMinute
+    };
+  }
+
+  return latestRiskConfig?.config?.tradingWindow ?? null;
+};
+
 const renderQuietModeState = () => {
   if (!diagQuietModeEl) {
     return;
   }
 
-  const riskConfig = latestRiskConfig?.config ?? null;
-  const window = riskConfig?.tradingWindow ?? null;
+  const window = resolveQuietWindow();
   if (!window) {
     diagQuietModeEl.dataset.tone = 'warn';
     diagQuietModeEl.textContent = 'Quiet mode --';
     if (diagQuietModeHintEl) {
-      diagQuietModeHintEl.textContent = 'Quiet mode follows the trading window once risk config loads.';
+      diagQuietModeHintEl.textContent = 'Quiet mode follows the desk rules once settings load.';
     }
     return;
   }
 
-  const insideWindow = isWithinRiskWindow(new Date().toISOString(), riskConfig);
+  const insideWindow = isWithinClockWindow(new Date().toISOString(), window);
   const tzLabel = window.timezone === 'America/New_York' ? 'ET' : window.timezone;
   const startText = formatTimeValue(window.startHour, window.startMinute);
   const endText = formatTimeValue(window.endHour, window.endMinute);
@@ -992,6 +1008,7 @@ const renderSignalSettings = (config) => {
   });
 
   updateSystemSummary();
+  renderQuietModeState();
 };
 
 const selectedSetups = () =>
@@ -1591,6 +1608,41 @@ const formatSignalWhy = (alert) => {
   return reasons.slice(0, 4).join(' • ') || 'Rule-qualified signal';
 };
 
+const buildAlertLikeContext = (input) => {
+  if (!input) {
+    return null;
+  }
+
+  if (input.candidate && input.riskDecision) {
+    return input;
+  }
+
+  if (input.alertSnapshot) {
+    return {
+      symbol: input.symbol,
+      side: input.side,
+      setupType: input.setupType,
+      candidate: input.alertSnapshot?.candidate ?? null,
+      riskDecision: input.alertSnapshot?.riskDecision ?? { allowed: false, reasonCodes: [] }
+    };
+  }
+
+  return null;
+};
+
+const summarizeGuardrails = (alertLike) => {
+  if (!alertLike?.riskDecision) {
+    return 'Risk state unavailable';
+  }
+
+  if (alertLike.riskDecision.allowed) {
+    return 'Desk rules allowed this setup at the time it fired.';
+  }
+
+  const reasons = alertLike.riskDecision.reasonCodes ?? [];
+  return reasons.length ? reasons.map(humanizeRiskReason).join(' • ') : 'Blocked by guardrails';
+};
+
 const renderSignalChartMarkup = (snapshot, options = {}) => {
   if (!snapshot?.bars?.length) {
     return '<div class="signalChartPlaceholder">Chart pending</div>';
@@ -1804,6 +1856,10 @@ const renderChartLightboxDetails = (context) => {
     return '';
   }
 
+  const review = context?.review ?? null;
+  const alert = context?.alert ?? null;
+  const alertLike = buildAlertLikeContext(review ?? alert ?? null);
+
   const entry = candidate?.entry ?? snapshot?.levels?.entry;
   const stopLoss = candidate?.stopLoss ?? snapshot?.levels?.stopLoss;
   const takeProfit = candidate?.takeProfit?.[0] ?? snapshot?.levels?.takeProfit;
@@ -1811,29 +1867,83 @@ const renderChartLightboxDetails = (context) => {
     typeof entry === 'number' && typeof stopLoss === 'number' ? Math.abs(entry - stopLoss) : undefined;
   const rewardPoints =
     typeof entry === 'number' && typeof takeProfit === 'number' ? Math.abs(takeProfit - entry) : undefined;
+  const seenAt = review?.detectedAt ?? alert?.detectedAt ?? snapshot?.generatedAt;
+  const snapshotAt = snapshot?.generatedAt;
+  const reviewedAt = review?.reviewedAt ?? review?.autoLabeledAt ?? alert?.reviewState?.reviewedAt;
+  const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Setup context unavailable';
+  const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Guardrail context unavailable';
+  const evidence = alertLike ? signalEvidenceTags(alertLike) : [];
+  const reviewNote = review?.notes?.trim();
+  const reviewStateSummary = review
+    ? review.reviewStatus === 'COMPLETED'
+      ? review.validity
+        ? `${reviewValidityLabel(review.validity)} • ${reviewOutcomeLabel(review.outcome)}`
+        : reviewOutcomeLabel(review.outcome)
+      : review.autoOutcome
+        ? `Auto-labeled ${reviewOutcomeLabel(review.autoOutcome)}`
+        : 'Pending review'
+    : alert?.reviewState?.acknowledgedAt
+      ? 'Seen on desk'
+      : alertLike?.riskDecision?.allowed
+        ? 'Ready on desk'
+        : 'Blocked on desk';
 
   return `
-    <div class="chart-lightbox-detail-grid">
-      <article class="chart-lightbox-detail-card">
-        <p class="chart-lightbox-detail-label">Entry</p>
-        <p class="chart-lightbox-detail-value">${fmtNum(entry, 2)}</p>
+    <div class="chart-lightbox-detail-stack">
+      <div class="chart-lightbox-detail-grid">
+        <article class="chart-lightbox-detail-card">
+          <p class="chart-lightbox-detail-label">Entry</p>
+          <p class="chart-lightbox-detail-value">${fmtNum(entry, 2)}</p>
+        </article>
+        <article class="chart-lightbox-detail-card chart-lightbox-detail-card-stop">
+          <p class="chart-lightbox-detail-label">Stop Loss</p>
+          <p class="chart-lightbox-detail-value">${fmtNum(stopLoss, 2)}</p>
+        </article>
+        <article class="chart-lightbox-detail-card chart-lightbox-detail-card-target">
+          <p class="chart-lightbox-detail-label">Take Profit</p>
+          <p class="chart-lightbox-detail-value">${fmtNum(takeProfit, 2)}</p>
+        </article>
+        <article class="chart-lightbox-detail-card">
+          <p class="chart-lightbox-detail-label">Risk / Reward</p>
+          <p class="chart-lightbox-detail-value">${calcRr(entry, stopLoss, takeProfit)}</p>
+          <p class="chart-lightbox-detail-note">
+            ${typeof riskPoints === 'number' ? `Risk ${fmtNum(riskPoints, 2)}` : '--'}
+            ${typeof rewardPoints === 'number' ? ` • Reward ${fmtNum(rewardPoints, 2)}` : ''}
+          </p>
+        </article>
+      </div>
+      <div class="chart-lightbox-context-grid">
+        <article class="chart-lightbox-context-card">
+          <p class="chart-lightbox-detail-label">Seen</p>
+          <p class="chart-lightbox-context-value">${fmtDateTimeCompact(seenAt)}</p>
+          <p class="chart-lightbox-detail-note">${fmtRelativeMinutes(seenAt)}</p>
+        </article>
+        <article class="chart-lightbox-context-card">
+          <p class="chart-lightbox-detail-label">Snapshot Saved</p>
+          <p class="chart-lightbox-context-value">${fmtDateTimeCompact(snapshotAt)}</p>
+          <p class="chart-lightbox-detail-note">${fmtRelativeMinutes(snapshotAt)}</p>
+        </article>
+        <article class="chart-lightbox-context-card">
+          <p class="chart-lightbox-detail-label">Review State</p>
+          <p class="chart-lightbox-context-value">${reviewStateSummary}</p>
+          <p class="chart-lightbox-detail-note">${reviewedAt ? `Updated ${fmtDateTimeCompact(reviewedAt)}` : 'No manual review saved yet'}</p>
+        </article>
+        <article class="chart-lightbox-context-card">
+          <p class="chart-lightbox-detail-label">Execution Read</p>
+          <p class="chart-lightbox-context-value">${alertLike?.riskDecision?.allowed ? 'Desk-ready' : 'Guardrail blocked'}</p>
+          <p class="chart-lightbox-detail-note">${typeof candidate?.oneMinuteConfidence === 'number' ? `1m confidence ${fmtNum(candidate.oneMinuteConfidence, 2)}` : '1m confidence unavailable'}</p>
+        </article>
+      </div>
+      <article class="chart-lightbox-story-card">
+        <p class="chart-lightbox-detail-label">Desk Read</p>
+        <p class="chart-lightbox-story-copy">${signalSummary}</p>
       </article>
-      <article class="chart-lightbox-detail-card chart-lightbox-detail-card-stop">
-        <p class="chart-lightbox-detail-label">Stop Loss</p>
-        <p class="chart-lightbox-detail-value">${fmtNum(stopLoss, 2)}</p>
+      <article class="chart-lightbox-story-card">
+        <p class="chart-lightbox-detail-label">Guardrails</p>
+        <p class="chart-lightbox-story-copy">${guardrailSummary}</p>
       </article>
-      <article class="chart-lightbox-detail-card chart-lightbox-detail-card-target">
-        <p class="chart-lightbox-detail-label">Take Profit</p>
-        <p class="chart-lightbox-detail-value">${fmtNum(takeProfit, 2)}</p>
-      </article>
-      <article class="chart-lightbox-detail-card">
-        <p class="chart-lightbox-detail-label">Risk / Reward</p>
-        <p class="chart-lightbox-detail-value">${calcRr(entry, stopLoss, takeProfit)}</p>
-        <p class="chart-lightbox-detail-note">
-          ${typeof riskPoints === 'number' ? `Risk ${fmtNum(riskPoints, 2)}` : '--'}
-          ${typeof rewardPoints === 'number' ? ` • Reward ${fmtNum(rewardPoints, 2)}` : ''}
-        </p>
-      </article>
+      ${evidence.length ? `<div class="chart-lightbox-chip-row">${evidence.map((tag) => `<span class="evidence-chip">${tag}</span>`).join('')}</div>` : ''}
+      ${reviewNote ? `<article class="chart-lightbox-story-card"><p class="chart-lightbox-detail-label">Review Note</p><p class="chart-lightbox-story-copy">${reviewNote}</p></article>` : ''}
     </div>
   `;
 };
@@ -1879,6 +1989,7 @@ const closeChartLightbox = () => {
   chartLightboxGesture.active = false;
   chartLightboxGesture.startY = 0;
   chartLightboxGesture.offsetY = 0;
+  chartLightboxGesture.scrollTop = 0;
   chartLightboxSheetEl?.classList.remove('is-dragging');
   setChartLightboxOffset(0);
   chartLightboxEl.hidden = true;
@@ -1909,8 +2020,12 @@ const openChartLightbox = (chartEl) => {
   chartLightboxGesture.active = false;
   chartLightboxGesture.startY = 0;
   chartLightboxGesture.offsetY = 0;
+  chartLightboxGesture.scrollTop = 0;
   chartLightboxSheetEl?.classList.remove('is-dragging');
   setChartLightboxOffset(0);
+  if (chartLightboxSheetEl) {
+    chartLightboxSheetEl.scrollTop = 0;
+  }
 };
 
 const bindChartLightbox = () => {
@@ -1954,16 +2069,26 @@ const bindChartLightbox = () => {
       return;
     }
 
-    chartLightboxGesture.active = true;
+    chartLightboxGesture.scrollTop = chartLightboxSheetEl.scrollTop;
+    chartLightboxGesture.active = chartLightboxSheetEl.scrollTop <= 0;
     chartLightboxGesture.startY = event.touches[0].clientY;
     chartLightboxGesture.offsetY = 0;
-    chartLightboxSheetEl.classList.add('is-dragging');
+    if (chartLightboxGesture.active) {
+      chartLightboxSheetEl.classList.add('is-dragging');
+    }
   });
 
   chartLightboxSheetEl.addEventListener(
     'touchmove',
     (event) => {
       if (!chartLightboxGesture.active) {
+        return;
+      }
+
+      if (chartLightboxSheetEl.scrollTop > 0) {
+        chartLightboxGesture.active = false;
+        chartLightboxSheetEl.classList.remove('is-dragging');
+        setChartLightboxOffset(0);
         return;
       }
 
@@ -1994,6 +2119,7 @@ const bindChartLightbox = () => {
     chartLightboxGesture.active = false;
     chartLightboxGesture.startY = 0;
     chartLightboxGesture.offsetY = 0;
+    chartLightboxGesture.scrollTop = 0;
     setChartLightboxOffset(0);
   });
 
@@ -2001,6 +2127,7 @@ const bindChartLightbox = () => {
     chartLightboxGesture.active = false;
     chartLightboxGesture.startY = 0;
     chartLightboxGesture.offsetY = 0;
+    chartLightboxGesture.scrollTop = 0;
     chartLightboxSheetEl.classList.remove('is-dragging');
     setChartLightboxOffset(0);
   });
@@ -3071,7 +3198,8 @@ const loadAlerts = async () => {
           title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
           meta: `${alert.chartSnapshot?.timeframe ?? '5m'} snapshot • swipe down to return`,
           snapshot: alert.chartSnapshot,
-          candidate: alert.candidate
+          candidate: alert.candidate,
+          alert
         }
       );
       hydrateTradingViewChecklist(node, {
@@ -3349,6 +3477,19 @@ const saveReview = async (review, buttonEl) => {
 const renderReviewCard = (review) => {
   const node = reviewTemplate.content.firstElementChild.cloneNode(true);
   const chartSnapshot = review.alertSnapshot?.chartSnapshot;
+  const alertLike = buildAlertLikeContext(review);
+  const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Rule-qualified signal';
+  const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Risk state unavailable';
+  const evidence = alertLike ? signalEvidenceTags(alertLike) : [];
+  const riskPoints =
+    typeof review.alertSnapshot?.candidate?.entry === 'number' && typeof review.alertSnapshot?.candidate?.stopLoss === 'number'
+      ? Math.abs(review.alertSnapshot.candidate.entry - review.alertSnapshot.candidate.stopLoss)
+      : undefined;
+  const rewardPoints =
+    typeof review.alertSnapshot?.candidate?.entry === 'number' &&
+    typeof review.alertSnapshot?.candidate?.takeProfit?.[0] === 'number'
+      ? Math.abs(review.alertSnapshot.candidate.takeProfit[0] - review.alertSnapshot.candidate.entry)
+      : undefined;
   node.querySelector('.symbol').textContent = `${review.symbol} ${review.side}`;
   node.querySelector('.setupType').textContent = setupLabel(review.setupType);
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
@@ -3359,7 +3500,8 @@ const renderReviewCard = (review) => {
       title: `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
       meta: `${chartSnapshot?.timeframe ?? '5m'} replay snapshot • swipe down to return`,
       snapshot: chartSnapshot,
-      candidate: review.alertSnapshot?.candidate
+      candidate: review.alertSnapshot?.candidate,
+      review
     }
   );
   hydrateTradingViewChecklist(node, {
@@ -3394,6 +3536,32 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewSnapshotNote').textContent = chartSnapshot?.generatedAt
     ? `Saved at ${fmtTime(chartSnapshot.generatedAt)}`
     : 'No saved trigger snapshot';
+  node.querySelector('.reviewSeenAt').textContent = fmtDateTimeCompact(review.detectedAt);
+  node.querySelector('.reviewSeenAgo').textContent = fmtRelativeMinutes(review.detectedAt);
+  node.querySelector('.reviewSnapshotSavedAt').textContent = fmtDateTimeCompact(chartSnapshot?.generatedAt);
+  node.querySelector('.reviewSnapshotSavedAgo').textContent = fmtRelativeMinutes(chartSnapshot?.generatedAt);
+  node.querySelector('.reviewStateSummary').textContent =
+    review.reviewStatus === 'COMPLETED'
+      ? review.validity
+        ? `${reviewValidityLabel(review.validity)} • ${reviewOutcomeLabel(review.outcome)}`
+        : reviewOutcomeLabel(review.outcome)
+      : review.autoOutcome
+        ? `Auto ${reviewOutcomeLabel(review.autoOutcome)}`
+        : 'Pending';
+  node.querySelector('.reviewStateHint').textContent = review.reviewedAt
+    ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
+    : review.autoLabeledAt
+      ? `Auto-labeled ${fmtRelativeMinutes(review.autoLabeledAt)}`
+      : 'Waiting on your read';
+  node.querySelector('.reviewRrValue').textContent = calcRr(
+    review.alertSnapshot?.candidate?.entry,
+    review.alertSnapshot?.candidate?.stopLoss,
+    review.alertSnapshot?.candidate?.takeProfit?.[0]
+  );
+  node.querySelector('.reviewRiskRewardRange').textContent =
+    typeof riskPoints === 'number' && typeof rewardPoints === 'number'
+      ? `Risk ${fmtNum(riskPoints, 2)} • Reward ${fmtNum(rewardPoints, 2)}`
+      : 'Plan range unavailable';
   node.querySelector('.signalScore').textContent = fmtNum(
     review.alertSnapshot?.candidate?.finalScore ?? review.alertSnapshot?.candidate?.baseScore,
     1
@@ -3405,7 +3573,22 @@ const renderReviewCard = (review) => {
     review.alertSnapshot?.candidate?.oneMinuteConfidence,
     2
   );
+  node.querySelector('.reviewSignalSummary').textContent = signalSummary;
+  node.querySelector('.reviewGuardrails').textContent = guardrailSummary;
+  const evidenceEl = node.querySelector('.reviewEvidence');
+  evidence.forEach((tag) => {
+    const chip = document.createElement('span');
+    chip.className = 'evidence-chip';
+    chip.textContent = tag;
+    evidenceEl.appendChild(chip);
+  });
   node.querySelector('.detectedAt').textContent = fmtDateTime(review.detectedAt);
+  node.querySelector('.reviewTimelineSnapshotAt').textContent = fmtDateTime(chartSnapshot?.generatedAt);
+  node.querySelector('.reviewTimelineUpdatedAt').textContent = review.reviewedAt
+    ? fmtDateTime(review.reviewedAt)
+    : review.autoLabeledAt
+      ? fmtDateTime(review.autoLabeledAt)
+      : '--';
   node.querySelector('.reviewValidity').value = review.validity ?? '';
   node.querySelector('.reviewOutcome').value = review.outcome ?? '';
   node.querySelector('.reviewNotes').value = review.notes ?? '';
@@ -3726,7 +3909,7 @@ const bindSignalSettingsControls = () => {
         body: JSON.stringify(payload)
       });
       renderSignalSettings(config);
-      await Promise.all([loadDiagnostics(), loadAlerts()]);
+      await Promise.all([loadDiagnostics(), loadAlerts(), loadRiskConfig()]);
       setStatus('Status: signal rules updated');
     } catch (error) {
       setStatus(`Status: failed to save signal rules (${error.message})`, true);

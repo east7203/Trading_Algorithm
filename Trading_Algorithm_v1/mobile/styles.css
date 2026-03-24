@@ -3125,6 +3125,48 @@ h1 {
   width: 100%;
 }
 
+.review-casefile-grid,
+.review-reading-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.review-case-card,
+.review-reading-card {
+  padding: 14px;
+  border: 1px solid rgba(232, 163, 103, 0.14);
+  border-radius: 18px;
+  background: rgba(16, 14, 14, 0.9);
+}
+
+.reviewCasePrimary,
+.chart-lightbox-context-value {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.reviewCaseSecondary,
+.review-reading-copy {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  line-height: 1.4;
+}
+
+.reviewEvidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reviewTimelineMeta,
+.reviewSignalMeta {
+  gap: 10px 16px;
+}
+
 .control-row {
   align-items: center;
   gap: 14px;
@@ -3282,6 +3324,7 @@ body.tv-viewer-open {
   display: flex;
   flex-direction: column;
   min-height: 100%;
+  overflow-y: auto;
   padding:
     calc(env(safe-area-inset-top) + 10px)
     14px
@@ -3348,8 +3391,8 @@ body.tv-viewer-open {
 }
 
 .chart-lightbox-frame {
-  margin-top: auto;
-  margin-bottom: auto;
+  width: min(760px, 100%);
+  margin: 0 auto;
   border-radius: 24px;
   border: 1px solid rgba(231, 240, 250, 0.08);
   background:
@@ -3376,9 +3419,15 @@ body.tv-viewer-open {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  padding: 14px 14px 0;
+}
+
+.chart-lightbox-detail-stack {
+  display: grid;
+  gap: 12px;
   padding: 14px;
-  border-top: 1px solid rgba(231, 240, 250, 0.08);
   background: rgba(4, 10, 18, 0.74);
+  border-top: 1px solid rgba(231, 240, 250, 0.08);
 }
 
 .chart-lightbox-detail-card {
@@ -3416,6 +3465,32 @@ body.tv-viewer-open {
   color: var(--text-soft);
   font-size: 0.76rem;
   line-height: 1.35;
+}
+
+.chart-lightbox-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.chart-lightbox-context-card,
+.chart-lightbox-story-card {
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background: rgba(10, 20, 32, 0.76);
+}
+
+.chart-lightbox-story-copy {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.chart-lightbox-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .tv-viewer {

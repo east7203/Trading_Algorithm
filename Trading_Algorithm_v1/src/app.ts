@@ -778,6 +778,20 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
   const ibkrStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=status&focus=ibkr-connection`;
+
+  const syncRiskTradingWindowToSignalSettings = (): void => {
+    const signalConfig = signalMonitorSettingsStore.get();
+    riskConfigStore.patch({
+      tradingWindow: {
+        enabled: true,
+        timezone: signalConfig.timezone,
+        startHour: signalConfig.sessionStartHour,
+        startMinute: signalConfig.sessionStartMinute,
+        endHour: signalConfig.sessionEndHour,
+        endMinute: signalConfig.sessionEndMinute
+      }
+    });
+  };
   const trainingStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=status&focus=learning`;
   const ibkrReconnectFallbackDelayMs =
     parseIntEnv('IBKR_RECONNECT_FALLBACK_DELAY_SECONDS', 45, 5, 600) * 1000;
@@ -1238,7 +1252,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     void webPushNotificationService.start();
   }
 
-  void signalMonitorSettingsStore.start();
+  void signalMonitorSettingsStore
+    .start()
+    .then(() => {
+      syncRiskTradingWindowToSignalSettings();
+    })
+    .catch(() => undefined);
   void signalReviewStore.start();
 
   app.addHook('onReady', async () => {
@@ -1578,6 +1597,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     try {
       const body = parseOrThrow(signalMonitorSettingsPatchSchema.safeParse(request.body));
       const config = await signalMonitorSettingsStore.patch(body);
+      syncRiskTradingWindowToSignalSettings();
       return reply.status(200).send({ config });
     } catch (error) {
       return reply.status(400).send({ message: (error as Error).message });

@@ -811,6 +811,28 @@
           <span class="pill reviewStatus"></span>
         </div>
         <p class="setupType"></p>
+        <div class="review-casefile-grid">
+          <article class="review-case-card">
+            <p class="card-section-label">Seen</p>
+            <p class="reviewCasePrimary reviewSeenAt">--</p>
+            <p class="reviewCaseSecondary reviewSeenAgo">--</p>
+          </article>
+          <article class="review-case-card">
+            <p class="card-section-label">Snapshot</p>
+            <p class="reviewCasePrimary reviewSnapshotSavedAt">--</p>
+            <p class="reviewCaseSecondary reviewSnapshotSavedAgo">--</p>
+          </article>
+          <article class="review-case-card">
+            <p class="card-section-label">Review State</p>
+            <p class="reviewCasePrimary reviewStateSummary">--</p>
+            <p class="reviewCaseSecondary reviewStateHint">--</p>
+          </article>
+          <article class="review-case-card">
+            <p class="card-section-label">Reward / Risk</p>
+            <p class="reviewCasePrimary reviewRrValue">--</p>
+            <p class="reviewCaseSecondary reviewRiskRewardRange">--</p>
+          </article>
+        </div>
         <p class="review-section-label">Trigger Snapshot</p>
         <p class="review-section-copy">This is the saved chart from the moment the signal fired.</p>
         <div class="signalChart reviewSnapshotChart"></div>
@@ -834,17 +856,30 @@
             <p class="projection-note reviewProjectedStopLossNote">--</p>
           </div>
         </div>
+        <div class="review-reading-grid">
+          <article class="review-reading-card">
+            <p class="card-section-label">Desk Read</p>
+            <p class="review-reading-copy reviewSignalSummary">--</p>
+          </article>
+          <article class="review-reading-card">
+            <p class="card-section-label">Guardrails</p>
+            <p class="review-reading-copy reviewGuardrails">--</p>
+          </article>
+        </div>
+        <div class="signalEvidence reviewEvidence"></div>
         <div class="item-meta">
           <span>Timeframe <b class="reviewSnapshotTimeframe"></b></span>
           <span class="reviewSnapshotNote"></span>
         </div>
         <p class="review-chart-legend">Each line is labeled on-chart. Blue dashed = session levels, amber dashed = NY range, solid lines = entry, stop, and target.</p>
         <p class="review-section-label">Signal Read</p>
-        <div class="item-meta">
+        <div class="item-meta reviewTimelineMeta">
           <span>Detected <b class="detectedAt"></b></span>
-          <span>Score <b class="signalScore"></b></span>
+          <span>Snapshot <b class="reviewTimelineSnapshotAt"></b></span>
+          <span>Updated <b class="reviewTimelineUpdatedAt"></b></span>
         </div>
-        <div class="item-meta">
+        <div class="item-meta reviewSignalMeta">
+          <span>Score <b class="signalScore"></b></span>
           <span>Risk <b class="signalRisk"></b></span>
           <span>1m Confidence <b class="signalConfidence"></b></span>
         </div>
