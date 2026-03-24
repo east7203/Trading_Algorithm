@@ -35,6 +35,8 @@ export interface NativePushNotificationStatus {
   bundleId?: string;
   environment: 'sandbox' | 'production';
   lastError?: string;
+  readyReason?: string;
+  missingConfigFields?: string[];
 }
 
 interface CachedProviderToken {
@@ -144,13 +146,16 @@ export class NativePushNotificationService {
   }
 
   status(): NativePushNotificationStatus {
+    const readiness = this.getReadiness();
     return {
       enabled: this.config.enabled,
-      ready: this.isReady(),
+      ready: readiness.ready,
       deviceCount: this.store.count(),
       bundleId: this.config.bundleId,
       environment: this.config.useSandbox ? 'sandbox' : 'production',
-      lastError: this.lastError
+      lastError: this.lastError,
+      readyReason: readiness.reason,
+      missingConfigFields: readiness.missingFields
     };
   }
 
@@ -175,8 +180,9 @@ export class NativePushNotificationService {
       return { attempted: 0, delivered: 0, removed: 0 };
     }
 
-    if (!this.isReady()) {
-      this.lastError = 'APNs credentials are not fully configured';
+    const readiness = this.getReadiness();
+    if (!readiness.ready) {
+      this.lastError = readiness.reason ?? 'APNs credentials are not fully configured';
       return { attempted: devices.length, delivered: 0, removed: 0 };
     }
 
@@ -229,14 +235,40 @@ export class NativePushNotificationService {
     };
   }
 
-  private isReady(): boolean {
-    return Boolean(
-      this.config.enabled &&
-        this.config.teamId &&
-        this.config.keyId &&
-        this.config.bundleId &&
-        this.privateKeyPem
-    );
+  private getReadiness(): { ready: boolean; reason?: string; missingFields?: string[] } {
+    if (!this.config.enabled) {
+      return {
+        ready: false,
+        reason: 'Native push is disabled in configuration',
+        missingFields: ['NATIVE_PUSH_ENABLED']
+      };
+    }
+
+    const missingFields: string[] = [];
+    if (!this.config.teamId) {
+      missingFields.push('APNS_TEAM_ID');
+    }
+    if (!this.config.keyId) {
+      missingFields.push('APNS_KEY_ID');
+    }
+    if (!this.config.bundleId) {
+      missingFields.push('APNS_BUNDLE_ID');
+    }
+    if (!this.privateKeyPem) {
+      missingFields.push('APNS_PRIVATE_KEY_PATH or APNS_PRIVATE_KEY_PEM');
+    }
+
+    if (missingFields.length > 0) {
+      return {
+        ready: false,
+        reason: `Missing APNs config: ${missingFields.join(', ')}`,
+        missingFields
+      };
+    }
+
+    return {
+      ready: true
+    };
   }
 
   private async resolvePrivateKey(): Promise<string | undefined> {

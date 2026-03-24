@@ -156,6 +156,15 @@ const chartLightboxFrameEl = document.getElementById('chartLightboxFrame');
 const chartLightboxTitleEl = document.getElementById('chartLightboxTitle');
 const chartLightboxMetaEl = document.getElementById('chartLightboxMeta');
 const chartLightboxCloseEl = document.getElementById('chartLightboxClose');
+const tradingViewViewerEl = document.getElementById('tradingViewViewer');
+const tradingViewViewerBackdropEl = document.getElementById('tradingViewViewerBackdrop');
+const tradingViewViewerSheetEl = document.getElementById('tradingViewViewerSheet');
+const tradingViewViewerTitleEl = document.getElementById('tradingViewViewerTitle');
+const tradingViewViewerMetaEl = document.getElementById('tradingViewViewerMeta');
+const tradingViewViewerPlanEl = document.getElementById('tradingViewViewerPlan');
+const tradingViewViewerFrameEl = document.getElementById('tradingViewViewerFrame');
+const tradingViewViewerExternalEl = document.getElementById('tradingViewViewerExternal');
+const tradingViewViewerCloseEl = document.getElementById('tradingViewViewerClose');
 
 const tabButtons = [...document.querySelectorAll('.tab-btn')];
 const views = {
@@ -197,6 +206,8 @@ let localNotificationListenersBound = false;
 let pullRefreshFrame = 0;
 let chartLightboxListenersBound = false;
 const chartLightboxContext = new WeakMap();
+let tradingViewViewerBound = false;
+let tradingViewViewerContext = null;
 
 const pullRefreshGesture = {
   active: false,
@@ -226,6 +237,7 @@ const setupToggleMap = {
 
 const fallbackApiBase = window.location.origin;
 const defaultIbkrWebsiteUrl = 'https://www.interactivebrokers.com/en/general/qr-code-ibkr-mobile-routing.php';
+const tradingViewWidgetScriptUrl = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
 
 const setupLabels = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: 'Sweep -> MSS -> FVG',
@@ -1994,15 +2006,138 @@ const bindChartLightbox = () => {
   });
 };
 
-const hydrateTradingViewChecklist = (node, { alertId, symbol, interval = '5' }) => {
+const renderTradingViewPlanMarkup = (context) => {
+  const candidate = context?.candidate;
+  if (!candidate) {
+    return '';
+  }
+
+  return `
+    <div class="chart-lightbox-detail-grid">
+      <article class="chart-lightbox-detail-card">
+        <p class="chart-lightbox-detail-label">Entry</p>
+        <p class="chart-lightbox-detail-value">${fmtNum(candidate.entry, 2)}</p>
+      </article>
+      <article class="chart-lightbox-detail-card chart-lightbox-detail-card-stop">
+        <p class="chart-lightbox-detail-label">Stop Loss</p>
+        <p class="chart-lightbox-detail-value">${fmtNum(candidate.stopLoss, 2)}</p>
+      </article>
+      <article class="chart-lightbox-detail-card chart-lightbox-detail-card-target">
+        <p class="chart-lightbox-detail-label">Take Profit</p>
+        <p class="chart-lightbox-detail-value">${fmtNum(candidate.takeProfit?.[0], 2)}</p>
+      </article>
+      <article class="chart-lightbox-detail-card">
+        <p class="chart-lightbox-detail-label">Risk / Reward</p>
+        <p class="chart-lightbox-detail-value">${calcRr(candidate.entry, candidate.stopLoss, candidate.takeProfit?.[0])}</p>
+        <p class="chart-lightbox-detail-note">${setupLabel(context?.setupType)} • ${context?.side ?? '--'}</p>
+      </article>
+    </div>
+  `;
+};
+
+const closeTradingViewViewer = () => {
+  if (!tradingViewViewerEl || tradingViewViewerEl.hidden) {
+    return;
+  }
+
+  tradingViewViewerEl.hidden = true;
+  tradingViewViewerEl.setAttribute('aria-hidden', 'true');
+  tradingViewViewerContext = null;
+  if (tradingViewViewerFrameEl) {
+    tradingViewViewerFrameEl.innerHTML = '';
+  }
+  if (tradingViewViewerPlanEl) {
+    tradingViewViewerPlanEl.innerHTML = '';
+  }
+  document.body.classList.remove('tv-viewer-open');
+};
+
+const openTradingViewViewer = (context) => {
+  if (!tradingViewViewerEl || !tradingViewViewerFrameEl) {
+    window.open(buildTradingViewUrl(context.symbol, context.interval ?? '5'), '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  tradingViewViewerContext = context;
+  tradingViewViewerTitleEl.textContent = context.title || `${context.symbol} TradingView`;
+  tradingViewViewerMetaEl.textContent = context.meta || 'Confirm structure here before executing in Tradovate / E8.';
+  tradingViewViewerPlanEl.innerHTML = renderTradingViewPlanMarkup(context);
+  tradingViewViewerFrameEl.innerHTML = `
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+    </div>
+  `;
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.async = true;
+  script.src = tradingViewWidgetScriptUrl;
+  script.text = JSON.stringify({
+    autosize: true,
+    symbol: tradingViewSymbolMap[context.symbol] ?? context.symbol,
+    interval: context.interval ?? '5',
+    timezone: 'America/Chicago',
+    theme: 'dark',
+    style: '1',
+    locale: 'en',
+    enable_publishing: false,
+    allow_symbol_change: false,
+    hide_top_toolbar: false,
+    hide_legend: false,
+    save_image: false,
+    calendar: false,
+    details: false,
+    support_host: 'https://www.tradingview.com'
+  });
+  script.onerror = () => {
+    tradingViewViewerFrameEl.innerHTML = `
+      <div class="tv-viewer-fallback">
+        <p class="tv-viewer-fallback-title">TradingView embed did not load.</p>
+        <p class="tv-viewer-fallback-note">Open the full chart directly to confirm structure.</p>
+      </div>
+    `;
+  };
+  tradingViewViewerFrameEl.querySelector('.tradingview-widget-container')?.appendChild(script);
+  tradingViewViewerEl.hidden = false;
+  tradingViewViewerEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('tv-viewer-open');
+};
+
+const bindTradingViewViewer = () => {
+  if (tradingViewViewerBound || !tradingViewViewerEl) {
+    return;
+  }
+
+  tradingViewViewerBound = true;
+
+  tradingViewViewerBackdropEl?.addEventListener('click', closeTradingViewViewer);
+  tradingViewViewerCloseEl?.addEventListener('click', closeTradingViewViewer);
+  tradingViewViewerExternalEl?.addEventListener('click', () => {
+    if (!tradingViewViewerContext) {
+      return;
+    }
+    window.open(
+      buildTradingViewUrl(tradingViewViewerContext.symbol, tradingViewViewerContext.interval ?? '5'),
+      '_blank',
+      'noopener,noreferrer'
+    );
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && tradingViewViewerEl && !tradingViewViewerEl.hidden) {
+      closeTradingViewViewer();
+    }
+  });
+};
+
+const hydrateTradingViewChecklist = (node, context) => {
+  const { alertId, symbol, interval = '5' } = context;
   const openTvBtn = node.querySelector('.openTradingViewBtn');
   const checklistSummaryEl = node.querySelector('.tvChecklistSummary');
   const checklistToggles = [...node.querySelectorAll('.tvChecklistToggle')];
-  const tradingViewUrl = buildTradingViewUrl(symbol, interval);
 
   if (openTvBtn) {
     openTvBtn.addEventListener('click', () => {
-      window.open(tradingViewUrl, '_blank', 'noopener,noreferrer');
+      openTradingViewViewer(context);
     });
   }
 
@@ -2093,8 +2228,7 @@ const hashAlertId = (value) => {
 
 const getLocalNotificationsPlugin = () => window.Capacitor?.Plugins?.LocalNotifications ?? null;
 const getNativePushPlugin = () => window.Capacitor?.Plugins?.PushNotifications ?? null;
-const hasNativePush = () =>
-  nativePushServerReady && Boolean(getNativePushPlugin()?.requestPermissions && getNativePushPlugin()?.register);
+const hasNativePush = () => Boolean(getNativePushPlugin()?.requestPermissions && getNativePushPlugin()?.register);
 
 const saveNativePushToken = (token) => {
   if (token) {
@@ -2169,7 +2303,8 @@ const bindNativePushListeners = () => {
 
 const requestNotificationPermission = async () => {
   const nativePush = getNativePushPlugin();
-  if (nativePushServerReady && nativePush?.requestPermissions && nativePush?.register) {
+  const isNativeApp = Boolean(window.Capacitor?.isNativePlatform?.());
+  if (isNativeApp && nativePush?.requestPermissions && nativePush?.register) {
     bindNativePushListeners();
     try {
       const permissions = await nativePush.requestPermissions();
@@ -2707,7 +2842,7 @@ const renderDiagnostics = () => {
     ? `${fmtDateTimeCompact(diagnostics.latestBarTimestamp)} • ${fmtRelativeMinutes(diagnostics.latestBarTimestamp)}`
     : 'No recent bar';
   diagModelEl.textContent = diagnostics.rankingModel?.modelId ?? '--';
-  diagSubscribersEl.textContent = `Web ${diagnostics.notifications?.webPushSubscribers ?? 0} • Native ${diagnostics.notifications?.nativePushDevices ?? 0} • TG ${diagnostics.notifications?.telegramReady ? 'on' : 'off'} • Sun ${diagnostics.notifications?.ibkrLoginReminderEnabled ? 'on' : 'off'}`;
+  diagSubscribersEl.textContent = `Web ${diagnostics.notifications?.webPushSubscribers ?? 0} • Native ${diagnostics.notifications?.nativePushDevices ?? 0}${diagnostics.notifications?.nativePushReady ? ' ready' : diagnostics.notifications?.nativePushReadyReason ? ` (${diagnostics.notifications.nativePushReadyReason})` : ' off'} • TG ${diagnostics.notifications?.telegramReady ? 'on' : 'off'} • Sun ${diagnostics.notifications?.ibkrLoginReminderEnabled ? 'on' : 'off'}`;
   diagSignalMonitorEl.textContent = diagnostics.signalMonitor?.started
     ? `On • ${diagnostics.signalMonitor.alertCount ?? 0} alerts`
     : 'Off';
@@ -2942,7 +3077,12 @@ const loadAlerts = async () => {
       hydrateTradingViewChecklist(node, {
         alertId: alert.alertId,
         symbol: alert.symbol,
-        interval: alert.chartSnapshot?.timeframe === '5m' ? '5' : alert.chartSnapshot?.timeframe ?? '5'
+        interval: alert.chartSnapshot?.timeframe === '5m' ? '5' : alert.chartSnapshot?.timeframe ?? '5',
+        title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
+        meta: 'Confirm structure, stop placement, and timing before manual execution.',
+        candidate: alert.candidate,
+        setupType: alert.setupType,
+        side: alert.side
       });
       node.querySelector('.signalScore').textContent =
         typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
@@ -3225,7 +3365,12 @@ const renderReviewCard = (review) => {
   hydrateTradingViewChecklist(node, {
     alertId: review.alertId,
     symbol: review.symbol,
-    interval: chartSnapshot?.timeframe === '5m' ? '5' : chartSnapshot?.timeframe ?? '5'
+    interval: chartSnapshot?.timeframe === '5m' ? '5' : chartSnapshot?.timeframe ?? '5',
+    title: `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
+    meta: 'Reopen this setup in TradingView to compare the saved replay with live structure.',
+    candidate: review.alertSnapshot?.candidate,
+    setupType: review.setupType,
+    side: review.side
   });
   node.querySelector('.reviewEntry').textContent = fmtNum(review.alertSnapshot?.candidate?.entry, 2);
   node.querySelector('.reviewStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
@@ -3510,7 +3655,7 @@ const bindNotificationControls = () => {
       setStatus(
         granted
           ? isNativeApp && !nativePushServerReady
-            ? 'Status: local permissions enabled. Remote signal alerts continue through Telegram or the hosted app.'
+            ? 'Status: native push permissions enabled. Server APNs are not ready yet.'
             : 'Status: signal notifications enabled'
           : 'Status: notifications blocked at device/browser level',
         !granted
@@ -3670,6 +3815,7 @@ const bootstrap = async () => {
   bindSignalSettingsControls();
   bindStatusRecoveryControls();
   bindChartLightbox();
+  bindTradingViewViewer();
   bindPullToRefresh();
   resetPullRefreshUi();
   bindLocalNotificationListeners();

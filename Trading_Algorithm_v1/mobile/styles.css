@@ -3254,6 +3254,10 @@ body.chart-lightbox-open {
   overflow: hidden;
 }
 
+body.tv-viewer-open {
+  overflow: hidden;
+}
+
 .chart-lightbox {
   position: fixed;
   inset: 0;
@@ -3412,4 +3416,120 @@ body.chart-lightbox-open {
   color: var(--text-soft);
   font-size: 0.76rem;
   line-height: 1.35;
+}
+
+.tv-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+}
+
+.tv-viewer[hidden] {
+  display: none;
+}
+
+.tv-viewer-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(3, 8, 14, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.tv-viewer-sheet {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 100%;
+  padding:
+    calc(env(safe-area-inset-top) + 14px)
+    14px
+    calc(env(safe-area-inset-bottom) + 18px);
+}
+
+.tv-viewer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.tv-viewer-copy {
+  min-width: 0;
+}
+
+.tv-viewer-label {
+  margin: 0 0 4px;
+  color: rgba(229, 164, 104, 0.88);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.tv-viewer-title {
+  margin: 0;
+  color: #f6fbff;
+  font-size: 1.16rem;
+}
+
+.tv-viewer-meta {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.tv-viewer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 150px;
+}
+
+.tv-viewer-plan {
+  display: grid;
+}
+
+.tv-viewer-frame {
+  min-height: 60vh;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(83, 172, 255, 0.16), transparent 28%),
+    linear-gradient(180deg, rgba(5, 12, 21, 0.98), rgba(8, 18, 30, 0.9));
+  box-shadow: 0 28px 54px rgba(0, 0, 0, 0.34);
+}
+
+.tv-viewer-frame .tradingview-widget-container,
+.tv-viewer-frame .tradingview-widget-container__widget,
+.tv-viewer-frame iframe {
+  width: 100%;
+  height: min(72vh, 680px);
+  border: 0;
+}
+
+.tv-viewer-fallback {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  justify-items: center;
+  min-height: min(72vh, 680px);
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.tv-viewer-fallback-title {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.tv-viewer-fallback-note {
+  margin: 0;
+  font-size: 0.9rem;
 }

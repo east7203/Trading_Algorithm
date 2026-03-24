@@ -1673,6 +1673,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           webPushSubscribers: webPush.subscriberCount,
           nativePushDevices: nativePush.deviceCount,
           nativePushReady: nativePush.ready,
+          nativePushReadyReason: nativePush.readyReason,
+          nativePushMissingConfigFields: nativePush.missingConfigFields ?? [],
           telegramReady: telegram.ready,
           ibkrLoginReminderEnabled: operationalReminder.enabled,
           ibkrLoginReminderStarted: operationalReminder.started

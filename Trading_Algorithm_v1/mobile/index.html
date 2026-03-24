@@ -900,6 +900,25 @@
       </section>
     </div>
 
+    <div id="tradingViewViewer" class="tv-viewer" hidden aria-hidden="true">
+      <button id="tradingViewViewerBackdrop" class="tv-viewer-backdrop" type="button" aria-label="Close TradingView confirmation"></button>
+      <section id="tradingViewViewerSheet" class="tv-viewer-sheet" role="dialog" aria-modal="true" aria-labelledby="tradingViewViewerTitle">
+        <div class="tv-viewer-head">
+          <div class="tv-viewer-copy">
+            <p class="tv-viewer-label">TradingView Confirm</p>
+            <h2 id="tradingViewViewerTitle" class="tv-viewer-title">TradingView</h2>
+            <p id="tradingViewViewerMeta" class="tv-viewer-meta">Use this to confirm the setup before executing in Tradovate / E8.</p>
+          </div>
+          <div class="tv-viewer-actions">
+            <button id="tradingViewViewerExternal" class="chip-btn secondary-btn" type="button">Open full TradingView</button>
+            <button id="tradingViewViewerClose" class="chip-btn secondary-btn" type="button">Done</button>
+          </div>
+        </div>
+        <div id="tradingViewViewerPlan" class="tv-viewer-plan"></div>
+        <div id="tradingViewViewerFrame" class="tv-viewer-frame"></div>
+      </section>
+    </div>
+
     <script type="module" src="app.js"></script>
   </body>
 </html>
