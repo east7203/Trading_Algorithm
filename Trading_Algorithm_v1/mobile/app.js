@@ -41,6 +41,23 @@ const heroPushBadgeEl = document.getElementById('heroPushBadge');
 const heroWindowEl = document.getElementById('heroWindow');
 const heroStackEl = document.getElementById('heroStack');
 const heroLastAlertEl = document.getElementById('heroLastAlert');
+const homeSessionChipEl = document.getElementById('homeSessionChip');
+const homeDirectionCardEl = document.getElementById('homeDirectionCard');
+const homeBiasLabelEl = document.getElementById('homeBiasLabel');
+const homeBiasDetailEl = document.getElementById('homeBiasDetail');
+const homeBiasConfidenceEl = document.getElementById('homeBiasConfidence');
+const homeBiasWindowEl = document.getElementById('homeBiasWindow');
+const homeBiasReasonEl = document.getElementById('homeBiasReason');
+const homeMacroReasonEl = document.getElementById('homeMacroReason');
+const homeDirectionTagsEl = document.getElementById('homeDirectionTags');
+const homeDeskStateEl = document.getElementById('homeDeskState');
+const homeTopIdeaEl = document.getElementById('homeTopIdea');
+const homeActionStateEl = document.getElementById('homeActionState');
+const homeReplayStateEl = document.getElementById('homeReplayState');
+const homeModelStateEl = document.getElementById('homeModelState');
+const homeAlertStateEl = document.getElementById('homeAlertState');
+const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
+const homeMacroListEl = document.getElementById('homeMacroList');
 const approvedByInput = document.getElementById('approvedBy');
 const manualChecklistConfirmInput = document.getElementById('manualChecklistConfirm');
 const alertsListEl = document.getElementById('alertsList');
@@ -168,6 +185,7 @@ const tradingViewViewerCloseEl = document.getElementById('tradingViewViewerClose
 
 const tabButtons = [...document.querySelectorAll('.tab-btn')];
 const views = {
+  home: document.getElementById('view-home'),
   signals: document.getElementById('view-signals'),
   pending: document.getElementById('view-pending'),
   trades: document.getElementById('view-trades'),
@@ -182,6 +200,7 @@ let latestTrades = [];
 let latestEvents = [];
 let latestReviews = [];
 let latestDiagnostics = null;
+let latestCalendar = null;
 let latestRiskConfig = null;
 let latestHealth = null;
 let lastSyncAt = null;
@@ -376,6 +395,330 @@ const humanizeRiskReason = (code) => {
     .join(' ');
 };
 
+const parseEconomicValue = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw || raw === '-') {
+    return null;
+  }
+
+  let multiplier = 1;
+  if (/k$/i.test(raw)) {
+    multiplier = 1_000;
+  } else if (/m$/i.test(raw)) {
+    multiplier = 1_000_000;
+  } else if (/b$/i.test(raw)) {
+    multiplier = 1_000_000_000;
+  }
+
+  const numeric = Number.parseFloat(raw.replace(/,/g, '').replace(/[^\d.+-]/g, ''));
+  return Number.isFinite(numeric) ? numeric * multiplier : null;
+};
+
+const isPolicySensitiveMacroTitle = (title) =>
+  /CPI|PCE|PPI|CORE CPI|CORE PCE|CORE PPI|AVERAGE HOURLY|WAGES|EMPLOYMENT COST|FOMC|FED CHAIR|FEDERAL FUNDS|INTEREST RATE|POWELL/i.test(
+    title || ''
+  );
+
+const isDirectUsdMacroEvent = (event) =>
+  event?.currency === 'USD' || /FOMC|FED|POWELL|TREASURY|CPI|PCE|PPI|NFP|NON-FARM|PAYROLL|UNEMPLOYMENT|JOBLESS|GDP|PMI|RETAIL SALES/i.test(event?.title || '');
+
+const isHighImpactEvent = (event) => (event?.importanceScore ?? 0) >= 3 || String(event?.impact ?? '').toLowerCase() === 'high';
+
+const getMinutesUntil = (value) => {
+  if (!value) {
+    return null;
+  }
+  const diffMs = Date.parse(value) - Date.now();
+  if (!Number.isFinite(diffMs)) {
+    return null;
+  }
+  return Math.round(diffMs / 60000);
+};
+
+const formatMinutesUntil = (value) => {
+  const minutes = getMinutesUntil(value);
+  if (minutes === null) {
+    return '--';
+  }
+  if (minutes <= 0) {
+    return minutes >= -4 ? 'now' : `${Math.abs(minutes)} min ago`;
+  }
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`;
+};
+
+const interpretMacroEventForIndices = (event) => {
+  if (!event) {
+    return {
+      tone: 'neutral',
+      summary: 'No scheduled macro catalyst is near the desk window.',
+      detail: 'Forex Factory is loaded, but there is no direct event pressing on NQ/ES right now.'
+    };
+  }
+
+  const title = event.title ?? event.category ?? 'Economic event';
+  const actual = parseEconomicValue(event.actual);
+  const forecast = parseEconomicValue(event.forecast);
+  const minutesUntil = getMinutesUntil(event.startsAt);
+  const directUsd = isDirectUsdMacroEvent(event);
+  const highImpact = isHighImpactEvent(event);
+
+  if (minutesUntil !== null && minutesUntil >= -5 && minutesUntil <= 45 && directUsd && highImpact) {
+    return {
+      tone: 'event-risk',
+      summary: `${title} is too close to trust a clean directional call.`,
+      detail: `${title} is inside the risk window (${formatMinutesUntil(event.startsAt)}). Let the print or speaker hit first, then trust the board again.`
+    };
+  }
+
+  if (actual !== null && forecast !== null && isPolicySensitiveMacroTitle(title) && directUsd) {
+    if (actual > forecast) {
+      return {
+        tone: 'bearish',
+        summary: `${title} came in hotter than forecast.`,
+        detail: `Hotter policy-sensitive USD data usually pressures NQ/ES lower through yields. Actual ${event.actual} vs forecast ${event.forecast}.`
+      };
+    }
+    if (actual < forecast) {
+      return {
+        tone: 'bullish',
+        summary: `${title} came in softer than forecast.`,
+        detail: `Softer policy-sensitive USD data usually supports NQ/ES if yields back off. Actual ${event.actual} vs forecast ${event.forecast}.`
+      };
+    }
+  }
+
+  if (directUsd && highImpact && minutesUntil !== null && minutesUntil > 45) {
+    if (isPolicySensitiveMacroTitle(title)) {
+      return {
+        tone: 'neutral',
+        summary: `${title} is the next policy-sensitive swing point.`,
+        detail: `${title} is due in ${formatMinutesUntil(event.startsAt)}. A hotter print would usually pressure NQ/ES lower; a softer print would usually support upside. Until then, let the 5m board lead.`
+      };
+    }
+    return {
+      tone: 'neutral',
+      summary: `${title} is the next direct macro swing point.`,
+      detail: `${title} is scheduled in ${formatMinutesUntil(event.startsAt)}. It matters for US index futures, but it is not close enough yet to override the board.`
+    };
+  }
+
+  if (/FOMC|FED CHAIR|POWELL|SPEAKS/i.test(title)) {
+    return {
+      tone: 'event-risk',
+      summary: `${title} can reprice yields quickly, but the direction is headline-dependent.`,
+      detail: 'Treat Fed speakers as regime risk, not as a pre-defined directional edge. Let the tape confirm before leaning hard.'
+    };
+  }
+
+  if (highImpact) {
+    return {
+      tone: 'neutral',
+      summary: `${title} is a high-impact macro event.`,
+      detail: directUsd
+        ? 'This can move NQ/ES directly, but the desk should still wait for structure instead of guessing the print.'
+        : 'This is global macro risk. It can bleed into US index futures, but it is not a direct US release.'
+    };
+  }
+
+  return {
+    tone: 'neutral',
+    summary: `${title} is on deck, but it is not a primary directional driver for the desk right now.`,
+    detail: directUsd
+      ? 'The event is tracked, but it is not strong enough by itself to overrule the board.'
+      : 'This stays in the background unless broader risk sentiment picks it up.'
+  };
+};
+
+const buildBoardPressure = (alerts) => {
+  const workingAlerts = [...alerts]
+    .sort((left, right) => {
+      const scoreDelta = (Number(right?.candidate?.finalScore) || 0) - (Number(left?.candidate?.finalScore) || 0);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      return new Date(right.detectedAt).getTime() - new Date(left.detectedAt).getTime();
+    })
+    .slice(0, 4);
+
+  let bullish = 0;
+  let bearish = 0;
+  for (const [index, alert] of workingAlerts.entries()) {
+    const weight = (index === 0 ? 2.4 : 1.4) + (alert.riskDecision?.allowed ? 0.8 : 0);
+    if (alert.side === 'LONG') {
+      bullish += weight;
+    } else if (alert.side === 'SHORT') {
+      bearish += weight;
+    }
+  }
+
+  return {
+    bullish,
+    bearish,
+    topAlert: workingAlerts[0] ?? null,
+    readyAlerts: workingAlerts.filter((alert) => alert.riskDecision?.allowed)
+  };
+};
+
+const renderDirectionTags = (tags) => {
+  if (!homeDirectionTagsEl) {
+    return;
+  }
+
+  homeDirectionTagsEl.innerHTML = '';
+  tags.filter(Boolean).forEach((tag) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip chip-neutral';
+    chip.textContent = tag;
+    homeDirectionTagsEl.appendChild(chip);
+  });
+};
+
+const renderHomeMacroList = (events) => {
+  if (!homeMacroListEl) {
+    return;
+  }
+
+  homeMacroListEl.innerHTML = '';
+  const relevantEvents = (events ?? [])
+    .filter((event) => isDirectUsdMacroEvent(event) || isHighImpactEvent(event))
+    .slice(0, 3);
+
+  if (!relevantEvents.length) {
+    renderEmpty(homeMacroListEl, 'No high-value macro events are close enough to matter right now.');
+    return;
+  }
+
+  relevantEvents.forEach((event) => {
+    const read = interpretMacroEventForIndices(event);
+    const card = document.createElement('article');
+    card.className = 'home-macro-card';
+    card.dataset.tone = read.tone;
+
+    card.innerHTML = `
+      <div class="home-macro-head">
+        <div>
+          <p class="stat-label">${String(event.impact ?? 'low').toUpperCase()} • ${event.currency ?? 'Macro'}</p>
+          <p class="home-macro-title">${event.title ?? event.category ?? 'Economic event'}</p>
+        </div>
+        <span class="chip chip-neutral">${formatMinutesUntil(event.startsAt)}</span>
+      </div>
+      <p class="home-macro-copy">${read.summary}</p>
+      <p class="home-macro-note">${read.detail}</p>
+      <p class="home-macro-meta">${fmtDateTimeCompact(event.startsAt)}${event.forecast ? ` • Forecast ${event.forecast}` : ''}${event.previous ? ` • Prev ${event.previous}` : ''}</p>
+    `;
+
+    homeMacroListEl.appendChild(card);
+  });
+};
+
+const renderHomeDashboard = () => {
+  if (!homeDirectionCardEl) {
+    return;
+  }
+
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const feedState = getFeedStateMeta(diagnostics);
+  const board = buildBoardPressure(latestAlerts);
+  const topAlert = board.readyAlerts[0] ?? board.topAlert;
+  const effectiveCalendar = diagnostics?.calendar?.sourceName ? diagnostics.calendar : latestCalendar?.calendar ?? null;
+  const upcomingEvents = effectiveCalendar?.upcomingEvents ?? effectiveCalendar?.events ?? [];
+  const nextMacroEvent =
+    upcomingEvents.find((event) => isDirectUsdMacroEvent(event) || isHighImpactEvent(event)) ?? upcomingEvents[0] ?? null;
+  const macroRead = interpretMacroEventForIndices(nextMacroEvent);
+  const quietWindow = resolveQuietWindow();
+  const windowKnown = Boolean(quietWindow);
+  const insideWindow = quietWindow ? isWithinClockWindow(new Date().toISOString(), quietWindow) : false;
+  const openRisk = latestPending.reduce((sum, intent) => sum + (Number(intent.riskPct) || 0), 0);
+  const lastRetrainAt = diagnostics?.training?.lastRun?.trainedAt ?? diagnostics?.training?.lastTrainedAt;
+
+  let directionTone = 'neutral';
+  let directionLabel = 'Balanced';
+  let directionDetail = 'The desk does not have a strong directional edge yet.';
+  let directionConfidence = 'Confidence Low';
+  let directionReason = 'No 5m setup is dominating the board strongly enough to lean hard.';
+
+  if (!diagnostics) {
+    directionLabel = 'Checking';
+    directionDetail = 'Waiting for live diagnostics.';
+    directionReason = 'The home screen is waiting for the latest desk state.';
+  } else if (feedState.segment === 'Reauth' || feedState.segment === 'Frozen' || feedState.segment === 'Stalled') {
+    directionTone = 'risk';
+    directionLabel = 'Do Not Trust';
+    directionDetail = feedState.summary;
+    directionConfidence = 'Confidence Off';
+    directionReason = feedState.detail;
+  } else if (macroRead.tone === 'event-risk') {
+    directionTone = 'risk';
+    directionLabel = 'Stand Aside';
+    directionDetail = macroRead.summary;
+    directionConfidence = 'Confidence Hold';
+    directionReason = topAlert
+      ? `${topAlert.symbol} has a ${topAlert.side} 5m idea, but ${macroRead.detail}`
+      : macroRead.detail;
+  } else if (board.bullish > 0 && board.bearish > 0 && Math.abs(board.bullish - board.bearish) < 1.2) {
+    directionTone = 'neutral';
+    directionLabel = 'Mixed';
+    directionDetail = 'The board has both long and short pressure.';
+    directionConfidence = 'Confidence Low';
+    directionReason = 'NQ/ES do not have a clean 5m directional consensus right now.';
+  } else if (topAlert) {
+    const isBullish = topAlert.side === 'LONG';
+    const score = Number(topAlert?.candidate?.finalScore);
+    const confidence = topAlert.riskDecision?.allowed && Number.isFinite(score) && score >= 82 ? 'High' : topAlert.riskDecision?.allowed ? 'Moderate' : 'Developing';
+    directionTone = isBullish ? 'bullish' : 'bearish';
+    directionLabel = isBullish ? 'Bullish' : 'Bearish';
+    directionDetail = `${topAlert.symbol} is leading with a ${setupLabel(topAlert.setupType)} on the 5m board.`;
+    directionConfidence = `Confidence ${confidence}`;
+    directionReason = topAlert.riskDecision?.allowed
+      ? `${topAlert.symbol} ${topAlert.side} is the strongest ready setup at score ${fmtNum(score, 1)}. ${macroRead.detail}`
+      : `${topAlert.symbol} ${topAlert.side} is the lead developing setup, but it is still blocked. ${macroRead.detail}`;
+  }
+
+  homeDirectionCardEl.dataset.tone = directionTone;
+  homeBiasLabelEl.textContent = directionLabel;
+  homeBiasDetailEl.textContent = directionDetail;
+  homeBiasConfidenceEl.textContent = directionConfidence;
+  homeBiasWindowEl.textContent = windowKnown ? (insideWindow ? 'Desk Open' : 'Quiet Window') : 'Window --';
+  homeBiasReasonEl.textContent = directionReason;
+  homeMacroReasonEl.textContent = macroRead.summary;
+  homeSessionChipEl.textContent = windowKnown ? (insideWindow ? 'Window open' : 'Quiet mode') : 'Desk loading';
+  renderDirectionTags([
+    topAlert ? `${topAlert.symbol} ${topAlert.side}` : 'No lead setup',
+    topAlert ? setupLabel(topAlert.setupType) : 'Watchlist only',
+    effectiveCalendar?.sourceName ? `Macro ${effectiveCalendar.sourceName}` : 'Macro offline',
+    diagnostics?.latestBarTimestamp ? `Last bar ${fmtRelativeMinutes(diagnostics.latestBarTimestamp)}` : 'No bar'
+  ]);
+
+  homeDeskStateEl.textContent = `${feedState.segment} • ${windowKnown ? (insideWindow ? 'window open' : 'quiet window') : 'window loading'}`;
+  homeTopIdeaEl.textContent = topAlert
+    ? `${topAlert.symbol} ${topAlert.side} • ${setupLabel(topAlert.setupType)}`
+    : 'No live lead idea';
+  homeActionStateEl.textContent = `${latestPending.length} pending • ${fmtNum(openRisk, 2)}% queued risk`;
+  homeReplayStateEl.textContent = `${reviewSummary.pending} pending • ${reviewSummary.completed} done`;
+  homeModelStateEl.textContent = diagnostics?.rankingModel?.modelId
+    ? `${diagnostics.rankingModel.modelId} • ${lastRetrainAt ? fmtRelativeMinutes(lastRetrainAt) : 'fresh run unknown'}`
+    : 'Model not loaded';
+  homeAlertStateEl.textContent =
+    getNotificationPrefs().enabled
+      ? diagnostics?.notifications?.telegramReady
+        ? 'Phone + Telegram armed'
+        : 'Phone armed'
+      : 'Phone alerts off';
+  homeMacroSummaryEl.textContent = nextMacroEvent
+    ? `${nextMacroEvent.title} • ${fmtDateTimeCompact(nextMacroEvent.startsAt)} • ${macroRead.summary}`
+    : 'No near-term macro catalyst in the current Forex Factory window.';
+  renderHomeMacroList(upcomingEvents);
+};
+
 const summarizeSignalSetup = (alert) => {
   const setup = setupLabel(alert.setupType);
   if (alert.riskDecision.allowed) {
@@ -499,6 +842,7 @@ const describeDeskRules = (config) => {
 
 const updateSystemSummary = () => {
   const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const calendarState = diagnostics?.calendar?.sourceName ? diagnostics.calendar : latestCalendar?.calendar ?? null;
   const alertsEnabled = getNotificationPrefs().enabled;
   const feedState = getFeedStateMeta(diagnostics);
   const connection = diagnostics
@@ -515,8 +859,8 @@ const updateSystemSummary = () => {
   const learning = diagnostics?.training?.enabled
     ? `Learning is running every ${diagnostics.training.cadence?.retrainIntervalMinutes ?? '--'} minutes.`
     : 'Learning is currently paused.';
-  const calendar = diagnostics?.calendar?.sourceName
-    ? `Macro calendar source: ${diagnostics.calendar.sourceName}.`
+  const calendar = calendarState?.sourceName
+    ? `Macro calendar source: ${calendarState.sourceName}.`
     : 'Macro calendar source is not configured.';
 
   systemOverviewEl.textContent = `${connection} ${rules} ${alerts} ${learning} ${calendar}`;
@@ -1009,6 +1353,7 @@ const renderSignalSettings = (config) => {
 
   updateSystemSummary();
   renderQuietModeState();
+  renderHomeDashboard();
 };
 
 const selectedSetups = () =>
@@ -1018,7 +1363,7 @@ const selectedSetups = () =>
 
 const currentSignalSettingsPayload = () => {
   const sessionStart = parseTimeValue(signalSessionStartEl.value || '08:30');
-  const sessionEnd = parseTimeValue(signalSessionEndEl.value || '11:30');
+  const sessionEnd = parseTimeValue(signalSessionEndEl.value || '10:30');
 
   return {
     minFinalScore: Number(signalMinScoreEl.value),
@@ -2957,7 +3302,7 @@ const renderDiagnostics = () => {
   const training = diagnostics.training ?? null;
   const learningPerformance = diagnostics.learningPerformance ?? null;
   const recovery = diagnostics.ibkrRecovery ?? null;
-  const calendar = diagnostics.calendar ?? null;
+  const calendar = diagnostics.calendar?.sourceName ? diagnostics.calendar : latestCalendar?.calendar ?? diagnostics.calendar ?? null;
   const feedState = getFeedStateMeta(diagnostics);
   const cadence = training?.cadence ?? null;
   const analysisFrames = training?.data?.analysisTimeframes ?? [];
@@ -3043,6 +3388,7 @@ const renderDiagnostics = () => {
     : 'Phone alerts off';
   renderQuietModeState();
   updateSystemSummary();
+  renderHomeDashboard();
 };
 
 const renderHero = () => {
@@ -3052,7 +3398,7 @@ const renderHero = () => {
   const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
   const blockedCount = latestAlerts.length - readyCount;
 
-  heroWindowEl.textContent = '08:30-11:30 ET';
+  heroWindowEl.textContent = '08:30-10:30 ET';
   if (signalSettings) {
     heroWindowEl.textContent = `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ET`;
   }
@@ -3109,6 +3455,7 @@ const updateStats = () => {
   topSetupStatEl.textContent = computeTopSetup(latestTrades);
   lastSyncChipEl.textContent = `Sync: ${fmtTime(lastSyncAt)}`;
   renderHero();
+  renderHomeDashboard();
 };
 
 const loadHealth = async () => {
@@ -3135,11 +3482,13 @@ const loadDiagnostics = async () => {
     }
     renderDiagnostics();
     renderStatusRail();
+    renderHomeDashboard();
   } catch {
     latestDiagnostics = null;
     nativePushServerReady = false;
     renderDiagnostics();
     renderStatusRail();
+    renderHomeDashboard();
   }
 };
 
@@ -3150,6 +3499,17 @@ const loadRiskConfig = async () => {
     latestRiskConfig = null;
   }
   renderQuietModeState();
+  renderHomeDashboard();
+};
+
+const loadCalendar = async () => {
+  try {
+    latestCalendar = await apiFetch('/calendar/events?limit=12');
+  } catch {
+    latestCalendar = null;
+  }
+  renderDiagnostics();
+  renderHomeDashboard();
 };
 
 const loadSignalSettings = async () => {
@@ -3676,6 +4036,7 @@ const refreshAll = async () => {
     loadTrades(),
     loadReviews(),
     loadDiagnostics(),
+    loadCalendar(),
     loadRiskConfig()
   ])
     .then(() => {
@@ -4018,7 +4379,7 @@ const bootstrap = async () => {
   quickActionButtons.forEach((button) => {
     button.addEventListener('click', () => setActiveTab(button.dataset.targetTab));
   });
-  setActiveTab(routeState.tab ?? tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.tab ?? 'signals');
+  setActiveTab(routeState.tab ?? tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.tab ?? 'home');
   if (routeState.tab === 'status' && routeState.focus === 'ibkr-connection') {
     setTimeout(() => {
       ibkrRecoveryPanelEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });

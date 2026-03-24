@@ -50,7 +50,7 @@
         <div class="ops-ribbon">
           <span class="ops-item">NQ + ES only</span>
           <span class="ops-dot" aria-hidden="true"></span>
-          <span class="ops-item">08:30-11:30 ET window</span>
+          <span class="ops-item">08:30-10:30 ET window</span>
           <span class="ops-dot" aria-hidden="true"></span>
           <span class="ops-item">Tradovate manual execution</span>
         </div>
@@ -72,7 +72,7 @@
           <div class="hero-side-stack">
             <article class="hero-panel hero-panel-compact">
               <p class="panel-label">Attack Window</p>
-              <p id="heroWindow" class="panel-value">08:30-11:30 ET</p>
+              <p id="heroWindow" class="panel-value">08:30-10:30 ET</p>
               <p class="panel-note">Manual execution only</p>
             </article>
             <article class="hero-panel hero-panel-compact hero-panel-muted">
@@ -84,15 +84,22 @@
         </section>
 
         <div class="quick-actions" aria-label="Section shortcuts">
+          <button class="quick-action is-active" type="button" data-target-tab="home">Home</button>
           <button class="quick-action" type="button" data-target-tab="signals">Board</button>
-          <button class="quick-action" type="button" data-target-tab="pending">Approve</button>
+          <button class="quick-action" type="button" data-target-tab="pending">Action</button>
           <button class="quick-action" type="button" data-target-tab="reviews">Replay</button>
           <button class="quick-action" type="button" data-target-tab="status">Engine</button>
         </div>
       </header>
 
       <nav class="tabbar tabbar-top" aria-label="Primary tabs">
-        <button class="tab-btn is-active" type="button" data-tab="signals" aria-current="page">
+        <button class="tab-btn is-active" type="button" data-tab="home" aria-current="page">
+          <span class="tab-btn-content">
+            <span class="tab-icon" aria-hidden="true">H</span>
+            <span class="tab-label">Home</span>
+          </span>
+        </button>
+        <button class="tab-btn" type="button" data-tab="signals">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">D</span>
             <span class="tab-label">Board</span>
@@ -100,7 +107,7 @@
         </button>
         <button class="tab-btn" type="button" data-tab="pending">
           <span class="tab-btn-content">
-            <span class="tab-icon" aria-hidden="true">Q</span>
+            <span class="tab-icon" aria-hidden="true">A</span>
             <span class="tab-label">Action</span>
           </span>
         </button>
@@ -158,7 +165,86 @@
       </section>
 
       <section class="views">
-        <section id="view-signals" class="view view-signals is-active">
+        <section id="view-home" class="view view-home is-active">
+          <div class="section-head">
+            <div>
+              <h2>Home</h2>
+              <p class="section-kicker">One-screen morning read: direction, board pressure, queue state, macro risk, and what deserves your attention right now.</p>
+            </div>
+            <span id="homeSessionChip" class="chip chip-neutral">Desk --</span>
+          </div>
+
+          <section id="homeDirectionCard" class="home-direction-card" data-tone="neutral">
+            <div class="home-direction-head">
+              <div>
+                <p class="panel-label">Market Direction Widget</p>
+                <p id="homeBiasLabel" class="home-direction-label">Balanced</p>
+                <p id="homeBiasDetail" class="home-direction-detail">Waiting for the board, feed, and macro context to settle.</p>
+              </div>
+              <div class="home-direction-stack">
+                <span id="homeBiasConfidence" class="micro-pill">Confidence --</span>
+                <span id="homeBiasWindow" class="micro-pill">Window --</span>
+              </div>
+            </div>
+            <div class="home-direction-grid">
+              <article class="home-why-card">
+                <p class="card-section-label">Why The Desk Leans This Way</p>
+                <p id="homeBiasReason" class="home-why-copy">The board is waiting for a 5m setup to take control.</p>
+              </article>
+              <article class="home-why-card">
+                <p class="card-section-label">Forex Factory Read</p>
+                <p id="homeMacroReason" class="home-why-copy">Macro pressure is still loading.</p>
+              </article>
+            </div>
+            <div id="homeDirectionTags" class="home-direction-tags"></div>
+          </section>
+
+          <section class="home-snapshot-grid">
+            <article class="home-snapshot-card home-snapshot-card-strong">
+              <p class="stat-label">Desk State</p>
+              <p id="homeDeskState" class="home-snapshot-value">--</p>
+              <p class="home-snapshot-note">Feed + session + quiet-window state.</p>
+            </article>
+            <article class="home-snapshot-card">
+              <p class="stat-label">Top Idea</p>
+              <p id="homeTopIdea" class="home-snapshot-value">--</p>
+              <p class="home-snapshot-note">Lead 5m setup on the board.</p>
+            </article>
+            <article class="home-snapshot-card">
+              <p class="stat-label">Action Queue</p>
+              <p id="homeActionState" class="home-snapshot-value">--</p>
+              <p class="home-snapshot-note">Approvals and open planned risk.</p>
+            </article>
+            <article class="home-snapshot-card">
+              <p class="stat-label">Replay Loop</p>
+              <p id="homeReplayState" class="home-snapshot-value">--</p>
+              <p class="home-snapshot-note">What still needs your review.</p>
+            </article>
+            <article class="home-snapshot-card">
+              <p class="stat-label">Model</p>
+              <p id="homeModelState" class="home-snapshot-value">--</p>
+              <p class="home-snapshot-note">Latest live model and retrain rhythm.</p>
+            </article>
+            <article class="home-snapshot-card">
+              <p class="stat-label">Alert Stack</p>
+              <p id="homeAlertState" class="home-snapshot-value">--</p>
+              <p class="home-snapshot-note">Phone, Telegram, and recovery path.</p>
+            </article>
+          </section>
+
+          <section class="home-macro-panel">
+            <div class="section-subhead">
+              <div>
+                <h3>Forex Factory Outlook</h3>
+                <p class="section-kicker">Interpretation for NQ/ES, not just a raw event list. When the desk cannot defend a directional call, it says that clearly.</p>
+              </div>
+            </div>
+            <p id="homeMacroSummary" class="home-macro-summary">Scanning the next macro events.</p>
+            <div id="homeMacroList" class="home-macro-list"></div>
+          </section>
+        </section>
+
+        <section id="view-signals" class="view view-signals">
           <div class="section-head">
             <div>
               <h2>Trade Board</h2>

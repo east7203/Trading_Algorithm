@@ -3608,3 +3608,222 @@ body.tv-viewer-open {
   margin: 0;
   font-size: 0.9rem;
 }
+
+.view-home {
+  display: grid;
+  gap: 18px;
+}
+
+.home-direction-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 28px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(229, 164, 104, 0.18), transparent 32%),
+    linear-gradient(180deg, rgba(17, 25, 36, 0.98), rgba(11, 17, 26, 0.92));
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+}
+
+.home-direction-card[data-tone='bullish'] {
+  background:
+    radial-gradient(circle at top right, rgba(106, 214, 154, 0.24), transparent 30%),
+    linear-gradient(180deg, rgba(11, 30, 25, 0.98), rgba(9, 18, 17, 0.92));
+}
+
+.home-direction-card[data-tone='bearish'] {
+  background:
+    radial-gradient(circle at top right, rgba(255, 121, 121, 0.2), transparent 30%),
+    linear-gradient(180deg, rgba(37, 15, 20, 0.98), rgba(18, 10, 13, 0.92));
+}
+
+.home-direction-card[data-tone='risk'] {
+  background:
+    radial-gradient(circle at top right, rgba(255, 196, 121, 0.22), transparent 30%),
+    linear-gradient(180deg, rgba(33, 23, 14, 0.98), rgba(19, 13, 9, 0.92));
+}
+
+.home-direction-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.home-direction-label {
+  margin: 4px 0 6px;
+  color: #f7fbff;
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.home-direction-detail {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.home-direction-stack {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  min-width: 126px;
+}
+
+.home-direction-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-why-card {
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background: rgba(8, 16, 24, 0.62);
+}
+
+.home-why-copy {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.home-direction-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.home-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-snapshot-card {
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background:
+    linear-gradient(180deg, rgba(12, 19, 29, 0.94), rgba(10, 16, 24, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.home-snapshot-card-strong {
+  background:
+    radial-gradient(circle at top right, rgba(83, 172, 255, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(13, 24, 38, 0.98), rgba(9, 17, 27, 0.9));
+}
+
+.home-snapshot-value {
+  margin: 6px 0 4px;
+  color: #f6fbff;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.home-snapshot-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.home-macro-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 28px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background:
+    linear-gradient(180deg, rgba(10, 16, 24, 0.96), rgba(9, 14, 20, 0.88));
+}
+
+.home-macro-summary {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.home-macro-list {
+  display: grid;
+  gap: 10px;
+}
+
+.home-macro-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background: rgba(8, 16, 24, 0.74);
+}
+
+.home-macro-card[data-tone='bullish'] {
+  border-color: rgba(106, 214, 154, 0.28);
+}
+
+.home-macro-card[data-tone='bearish'] {
+  border-color: rgba(255, 121, 121, 0.28);
+}
+
+.home-macro-card[data-tone='event-risk'] {
+  border-color: rgba(255, 196, 121, 0.28);
+}
+
+.home-macro-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.home-macro-title {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.home-macro-copy,
+.home-macro-note,
+.home-macro-meta {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.home-macro-copy {
+  color: #f6fbff;
+}
+
+.home-macro-note {
+  color: var(--text-soft);
+}
+
+.home-macro-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 720px) {
+  .home-direction-head,
+  .home-macro-head {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .home-direction-stack {
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .home-direction-grid,
+  .home-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+}
