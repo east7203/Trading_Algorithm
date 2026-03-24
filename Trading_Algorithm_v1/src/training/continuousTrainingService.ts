@@ -446,6 +446,7 @@ export class ContinuousTrainingService {
   private lastRun: TrainingRunResult | undefined;
   private history: TrainingRunHistoryEntry[] = [];
   private nextRetrainWindowAt: string | undefined;
+  private lastExecutedTrainAtMs = 0;
   private feedbackCounts: LearningFeedbackCounts = {
     totalExamples: 0,
     marketExamples: 0,
@@ -491,6 +492,27 @@ export class ContinuousTrainingService {
       }
     }
     return latest;
+  }
+
+  private resolveLastExecutedTrainAtMs(): number {
+    const latestHistoryTrainedAt = this.history.find((entry) => entry.executed && typeof entry.trainedAt === 'string')?.trainedAt;
+    const candidates = [latestHistoryTrainedAt, this.modelStore.get().trainedAt];
+
+    for (const candidate of candidates) {
+      if (!candidate) {
+        continue;
+      }
+      const parsed = Date.parse(candidate);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  }
+
+  private setNextRetrainWindow(baseMs: number = Date.now()): void {
+    this.nextRetrainWindowAt = new Date(baseMs + this.config.retrainIntervalMs).toISOString();
   }
 
   private applyMaxBarsLimit(): void {
@@ -727,6 +749,26 @@ export class ContinuousTrainingService {
       return skipped;
     }
 
+    if (!force && this.lastExecutedTrainAtMs > 0) {
+      const now = Date.now();
+      const earliestNextRunAt = this.lastExecutedTrainAtMs + this.config.retrainIntervalMs;
+      if (earliestNextRunAt > now) {
+        this.setNextRetrainWindow(this.lastExecutedTrainAtMs);
+        const skipped = {
+          trigger,
+          executed: false,
+          reason: `RETRAIN_COOLDOWN_${Math.ceil((earliestNextRunAt - now) / 1000)}S`,
+          barCount: bars.length,
+          sampleCount: 0,
+          trainExampleCount: 0,
+          validationExampleCount: 0
+        };
+        this.lastRun = skipped;
+        await this.recordRun(skipped);
+        return skipped;
+      }
+    }
+
     this.trainingInProgress = true;
     try {
       const historicalExamples = buildTrainingExamplesFromOneMinuteBars(bars, this.config.trainingOptions);
@@ -819,6 +861,8 @@ export class ContinuousTrainingService {
       this.newBarsSinceTrain = 0;
       this.trainRuns += 1;
       this.lastError = undefined;
+      this.lastExecutedTrainAtMs = Date.parse(finalChallengerModel.trainedAt) || Date.now();
+      this.setNextRetrainWindow(this.lastExecutedTrainAtMs);
 
       const activeModel = this.modelStore.get();
       const activeFullHistoryMetrics = evaluateExamples(examples, activeModel);
@@ -909,13 +953,13 @@ export class ContinuousTrainingService {
     this.started = true;
 
     await this.loadTrainingHistory();
+    this.lastExecutedTrainAtMs = this.resolveLastExecutedTrainAtMs();
     await this.loadBootstrapHistory();
     await this.loadArchiveBars();
     await this.retrain('startup', false);
-    this.nextRetrainWindowAt = new Date(Date.now() + this.config.retrainIntervalMs).toISOString();
+    this.setNextRetrainWindow(this.lastExecutedTrainAtMs || Date.now());
 
     this.trainTimer = setInterval(() => {
-      this.nextRetrainWindowAt = new Date(Date.now() + this.config.retrainIntervalMs).toISOString();
       if (this.newBarsSinceTrain < this.config.minNewBarsForRetrain) {
         return;
       }
@@ -968,10 +1012,6 @@ export class ContinuousTrainingService {
     this.newBarsSinceTrain += accepted.length;
     this.applyMaxBarsLimit();
     await this.appendArchiveBars(accepted);
-
-    if (source === 'api' && this.newBarsSinceTrain >= this.config.minNewBarsForRetrain) {
-      void this.retrain('new-bars-threshold', false);
-    }
 
     return {
       accepted: accepted.length,

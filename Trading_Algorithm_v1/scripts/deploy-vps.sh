@@ -54,10 +54,21 @@ legacy = 'IBKR_LOGIN_ENV_JSON=/opt/trading-algorithm/.ibkr-login.json'
 current = 'IBKR_LOGIN_ENV_JSON=/opt/ibkr-runtime/run/ibkr-login.json'
 heap_key = 'NODE_OPTIONS='
 heap_value = 'NODE_OPTIONS=--max-old-space-size=1536'
+promote_key = 'CONTINUOUS_TRAINING_ALWAYS_PROMOTE_LATEST='
+promote_value = 'CONTINUOUS_TRAINING_ALWAYS_PROMOTE_LATEST=false'
 if legacy in content:
     content = content.replace(legacy, current)
 if heap_key not in content:
     content = content.rstrip('\n') + '\n' + heap_value + '\n'
+if promote_key in content:
+    content = '\n'.join(
+        promote_value if line.startswith(promote_key) else line
+        for line in content.splitlines()
+    )
+    if not content.endswith('\n'):
+        content += '\n'
+else:
+    content = content.rstrip('\n') + '\n' + promote_value + '\n'
 env_path.write_text(content)
 PY
     eval \"\$(

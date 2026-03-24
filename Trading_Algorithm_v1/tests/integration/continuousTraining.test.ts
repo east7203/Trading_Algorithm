@@ -41,6 +41,100 @@ afterEach(async () => {
 });
 
 describe('continuous training integration', () => {
+  it('does not auto retrain just because the new-bar threshold is reached', async () => {
+    const makeCandidate = (id: string) => ({
+      id,
+      setupType: 'NY_BREAK_RETEST_MOMENTUM' as const,
+      symbol: 'NQ' as const,
+      session: 'NY' as const,
+      detectionTimeframe: '5m' as const,
+      executionTimeframe: '5m' as const,
+      side: 'LONG' as const,
+      entry: 100,
+      stopLoss: 95,
+      takeProfit: [108],
+      baseScore: 80,
+      oneMinuteConfidence: 0.5,
+      finalScore: 80,
+      eligibility: {
+        passed: true,
+        passReasons: ['test'],
+        failReasons: []
+      },
+      metadata: {},
+      generatedAt: '2026-03-12T14:30:00.000Z'
+    });
+
+    const feedbackExamples = [
+      {
+        snapshotId: 'feedback-1',
+        candidate: makeCandidate('feedback-1'),
+        outcome: 'WIN' as const
+      },
+      {
+        snapshotId: 'feedback-2',
+        candidate: makeCandidate('feedback-2'),
+        outcome: 'LOSS' as const
+      }
+    ];
+
+    const service = new ContinuousTrainingService(new RankingModelStore(defaultRankingModel()), {
+      enabled: true,
+      retrainIntervalMs: 60_000,
+      minBarsToTrain: 2,
+      minExamplesToTrain: 2,
+      minNewBarsForRetrain: 2,
+      maxBarsRetained: 1000,
+      validationPct: 0,
+      pollIntervalMs: 60_000,
+      promotionMinDelta: 0.001,
+      minEvaluationTopPicks: 1,
+      historyLimit: 10,
+      feedbackDatasetProvider: async () => ({
+        examples: feedbackExamples,
+        counts: {
+          totalExamples: feedbackExamples.length,
+          marketExamples: feedbackExamples.length,
+          preferenceExamples: 0,
+          manualOutcomeExamples: feedbackExamples.length,
+          autoOutcomeExamples: 0,
+          manualPreferenceExamples: 0,
+          resolvedReviews: feedbackExamples.length,
+          manualResolvedReviews: feedbackExamples.length,
+          autoResolvedReviews: 0,
+          pendingOutcomeReviews: 0
+        }
+      })
+    });
+
+    await service.ingestBars([
+      {
+        symbol: 'NQ',
+        timestamp: '2026-03-12T14:30:00.000Z',
+        open: 100,
+        high: 101,
+        low: 99,
+        close: 100.5,
+        volume: 10
+      },
+      {
+        symbol: 'NQ',
+        timestamp: '2026-03-12T14:31:00.000Z',
+        open: 100.5,
+        high: 101.5,
+        low: 100,
+        close: 101,
+        volume: 12
+      }
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(service.status().lastRun).toBeUndefined();
+    expect(service.status().trainRuns).toBe(0);
+    expect(service.status().newBarsSinceTrain).toBe(2);
+  });
+
   it('ingests live bars and reports training status', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'continuous-training-'));
     tempDirs.push(tempDir);
