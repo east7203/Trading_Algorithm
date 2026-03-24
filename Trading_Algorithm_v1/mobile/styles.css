@@ -767,24 +767,86 @@ textarea {
   border-radius: 16px;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(6, 14, 25, 0.92), rgba(11, 22, 36, 0.76));
-  min-height: 144px;
+  min-height: 182px;
   cursor: zoom-in;
   position: relative;
 }
 
 .signalChart svg {
   width: 100%;
-  height: 144px;
+  height: 182px;
   display: block;
 }
 
 .signalChartPlaceholder {
-  min-height: 144px;
+  min-height: 182px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.signalChartStack {
+  display: grid;
+  gap: 0;
+}
+
+.signalChartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px 0;
+  border-top: 1px solid rgba(213, 234, 255, 0.08);
+  background: linear-gradient(180deg, rgba(7, 14, 25, 0.14), rgba(7, 14, 25, 0));
+}
+
+.signalChartLegend.is-expanded {
+  padding: 12px 14px 0;
+}
+
+.signalChartLegend-secondary {
+  padding-top: 8px;
+  padding-bottom: 12px;
+  background: transparent;
+  border-top: 0;
+}
+
+.signalChartLegendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(213, 234, 255, 0.12);
+  background: rgba(8, 18, 29, 0.72);
+  color: var(--text-soft);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.signalChartLegendChip.is-muted {
+  border-color: rgba(213, 234, 255, 0.08);
+  background: rgba(8, 18, 29, 0.44);
+}
+
+.signalChartLegendSwatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--swatch, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--swatch, var(--accent)) 28%, transparent 72%);
+}
+
+.signalChartLegendText {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.signalChartLegendPrice {
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .signalChart.is-expandable::after {
@@ -833,6 +895,12 @@ textarea {
   padding: 7px 10px;
   font-size: 0.74rem;
   background: rgba(8, 18, 29, 0.76);
+}
+
+.evidence-chip-muted {
+  border-color: rgba(213, 234, 255, 0.08);
+  background: rgba(8, 18, 29, 0.48);
+  color: var(--text-soft);
 }
 
 .level-chip-entry {

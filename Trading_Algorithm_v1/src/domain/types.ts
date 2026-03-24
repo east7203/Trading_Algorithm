@@ -50,6 +50,12 @@ export interface SetupCandidate {
 export interface SignalChartSnapshot {
   timeframe: '5m';
   bars: Candle[];
+  generatedAt: string;
+  detectedAt: string;
+  focusBarAt: string;
+  symbol: SymbolCode;
+  side: Side;
+  setupType: SetupType;
   levels: {
     entry: number;
     stopLoss: number;
@@ -59,6 +65,21 @@ export interface SignalChartSnapshot {
     nyRangeHigh?: number;
     nyRangeLow?: number;
   };
+  referenceLevels?: Array<{
+    key: string;
+    label: string;
+    price: number;
+    role: 'trade' | 'structure' | 'context';
+    onChart?: boolean;
+  }>;
+  zones?: Array<{
+    key: string;
+    label: string;
+    low: number;
+    high: number;
+    role: 'structure' | 'context';
+    onChart?: boolean;
+  }>;
 }
 
 export interface SignalMonitorSettings {

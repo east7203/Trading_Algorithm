@@ -207,6 +207,125 @@ const summarizeCandidate = (candidate: SetupCandidate): string => {
   return `${candidate.symbol} ${candidate.side} • ${candidate.setupType} • ${score}`;
 };
 
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const buildSnapshotReferenceLevels = (
+  candidate: SetupCandidate,
+  sessionLevels: SignalGenerationInput['sessionLevels']
+): NonNullable<SignalChartSnapshot['referenceLevels']> => {
+  const levels: NonNullable<SignalChartSnapshot['referenceLevels']> = [
+    {
+      key: 'entry',
+      label: 'Entry',
+      price: candidate.entry,
+      role: 'trade',
+      onChart: true
+    },
+    {
+      key: 'stopLoss',
+      label: 'Stop',
+      price: candidate.stopLoss,
+      role: 'trade',
+      onChart: true
+    },
+    {
+      key: 'takeProfit',
+      label: 'TP1',
+      price: candidate.takeProfit[0],
+      role: 'trade',
+      onChart: true
+    }
+  ];
+
+  const pushIfNumber = (
+    key: string,
+    label: string,
+    value: unknown,
+    role: 'structure' | 'context',
+    onChart: boolean
+  ) => {
+    const price = asNumber(value);
+    if (price === undefined) {
+      return;
+    }
+    levels.push({ key, label, price, role, onChart });
+  };
+
+  pushIfNumber('brokenRangeLevel', 'NY Break', candidate.metadata.brokenRangeLevel, 'structure', true);
+  pushIfNumber('orderBlockLevel', 'Order Block', candidate.metadata.orderBlockLevel, 'structure', true);
+  pushIfNumber('mssBreakReference', 'MSS Ref', candidate.metadata.mssBreakReference, 'structure', true);
+  pushIfNumber('sweepLevel', 'Sweep', candidate.metadata.sweepLevel, 'structure', true);
+  pushIfNumber('sessionHigh', 'Session High', sessionLevels.high, 'context', false);
+  pushIfNumber('sessionLow', 'Session Low', sessionLevels.low, 'context', false);
+  pushIfNumber('nyRangeHigh', 'NY Range High', sessionLevels.nyRangeHigh, 'context', false);
+  pushIfNumber('nyRangeLow', 'NY Range Low', sessionLevels.nyRangeLow, 'context', false);
+
+  const deduped = new Map<string, (typeof levels)[number]>();
+  for (const level of levels) {
+    const key = `${level.label}|${level.price.toFixed(4)}`;
+    if (deduped.has(key)) {
+      const existing = deduped.get(key);
+      if (existing) {
+        existing.onChart = existing.onChart || level.onChart;
+        if (existing.role === 'context' && level.role !== 'context') {
+          existing.role = level.role;
+        }
+      }
+      continue;
+    }
+    deduped.set(key, { ...level });
+  }
+
+  const primary = Array.from(deduped.values()).filter((level) => level.role === 'trade');
+  const structure = Array.from(deduped.values())
+    .filter((level) => level.role === 'structure')
+    .slice(0, 2);
+  const context = Array.from(deduped.values()).filter((level) => level.role === 'context');
+
+  return [...primary, ...structure, ...context];
+};
+
+const buildSnapshotZones = (
+  candidate: SetupCandidate
+): NonNullable<SignalChartSnapshot['zones']> => {
+  const zones: NonNullable<SignalChartSnapshot['zones']> = [];
+  const addZone = (
+    key: string,
+    label: string,
+    lowValue: unknown,
+    highValue: unknown,
+    role: 'structure' | 'context',
+    onChart: boolean
+  ) => {
+    const low = asNumber(lowValue);
+    const high = asNumber(highValue);
+    if (low === undefined || high === undefined) {
+      return;
+    }
+    zones.push({
+      key,
+      label,
+      low: Math.min(low, high),
+      high: Math.max(low, high),
+      role,
+      onChart
+    });
+  };
+
+  addZone('fvgGap', 'FVG', candidate.metadata.fvgGapLow, candidate.metadata.fvgGapHigh, 'structure', true);
+  addZone(
+    'higherTimeframeFvg',
+    '1H FVG',
+    candidate.metadata.higherTimeframeFvgLow,
+    candidate.metadata.higherTimeframeFvgHigh,
+    'context',
+    false
+  );
+
+  return zones;
+};
+
 const createChartSnapshot = (
   candles5m: Candle[],
   candidate: SetupCandidate,
@@ -220,6 +339,12 @@ const createChartSnapshot = (
   return {
     timeframe: '5m',
     bars,
+    generatedAt: candidate.generatedAt,
+    detectedAt: candidate.generatedAt,
+    focusBarAt: bars[bars.length - 1]?.timestamp ?? candidate.generatedAt,
+    symbol: candidate.symbol,
+    side: candidate.side,
+    setupType: candidate.setupType,
     levels: {
       entry: candidate.entry,
       stopLoss: candidate.stopLoss,
@@ -228,7 +353,9 @@ const createChartSnapshot = (
       sessionLow: sessionLevels.low,
       nyRangeHigh: sessionLevels.nyRangeHigh,
       nyRangeLow: sessionLevels.nyRangeLow
-    }
+    },
+    referenceLevels: buildSnapshotReferenceLevels(candidate, sessionLevels),
+    zones: buildSnapshotZones(candidate)
   };
 };
 
@@ -379,7 +506,7 @@ export class SignalMonitorService {
     const entry = Number((referencePrice + direction * 4).toFixed(2));
     const stopLoss = Number((entry - direction * 20).toFixed(2));
     const takeProfit = [Number((entry + direction * 36).toFixed(2))];
-    const generatedAt = new Date().toISOString();
+    const generatedAt = detectedAt;
 
     const candidate: SetupCandidate = {
       id: uuidv4(),

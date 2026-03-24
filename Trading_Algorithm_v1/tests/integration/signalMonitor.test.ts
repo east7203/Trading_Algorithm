@@ -172,6 +172,8 @@ describe('signal monitor integration', () => {
     expect(top.candidate.executionTimeframe).toBe('5m');
     expect(top.chartSnapshot.timeframe).toBe('5m');
     expect(top.chartSnapshot.bars.length).toBeGreaterThan(3);
+    expect(top.chartSnapshot.generatedAt).toBe(top.detectedAt);
+    expect(top.chartSnapshot.referenceLevels.some((level: { key: string }) => level.key === 'entry')).toBe(true);
   });
 
   it('adds macro-news context to ranked candidates and blocks setups during critical windows', async () => {

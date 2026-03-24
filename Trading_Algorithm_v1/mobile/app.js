@@ -1994,97 +1994,111 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
   }
 
   const expanded = options.expanded === true;
-  const width = expanded ? 420 : 320;
-  const height = expanded ? 260 : 144;
+  const width = expanded ? 440 : 320;
+  const height = expanded ? 292 : 182;
   const padding = expanded
-    ? { top: 18, right: 132, bottom: 22, left: 14 }
-    : { top: 12, right: 88, bottom: 16, left: 12 };
+    ? { top: 26, right: 132, bottom: 30, left: 16 }
+    : { top: 22, right: 104, bottom: 28, left: 14 };
   const bars = snapshot.bars;
-  const levelDefinitions = [
-    {
-      key: 'sessionHigh',
-      price: snapshot.levels.sessionHigh,
-      label: expanded ? 'Session High' : 'Sess High',
-      color: '#8ab6ff',
-      dash: '5 4',
-      fill: 'rgba(37, 78, 132, 0.92)',
-      emphasized: false
-    },
-    {
-      key: 'sessionLow',
-      price: snapshot.levels.sessionLow,
-      label: expanded ? 'Session Low' : 'Sess Low',
-      color: '#8ab6ff',
-      dash: '5 4',
-      fill: 'rgba(37, 78, 132, 0.92)',
-      emphasized: false
-    },
-    {
-      key: 'nyRangeHigh',
-      price: snapshot.levels.nyRangeHigh,
-      label: expanded ? 'NY Range High' : 'NY High',
-      color: '#ffcf82',
-      dash: '4 3',
-      fill: 'rgba(118, 76, 18, 0.96)',
-      emphasized: false
-    },
-    {
-      key: 'nyRangeLow',
-      price: snapshot.levels.nyRangeLow,
-      label: expanded ? 'NY Range Low' : 'NY Low',
-      color: '#ffcf82',
-      dash: '4 3',
-      fill: 'rgba(118, 76, 18, 0.96)',
-      emphasized: false
-    },
-    {
-      key: 'entry',
-      price: snapshot.levels.entry,
-      label: 'Entry',
-      color: '#d5fff0',
-      fill: 'rgba(28, 87, 74, 0.96)',
-      emphasized: true
-    },
-    {
-      key: 'stopLoss',
-      price: snapshot.levels.stopLoss,
-      label: 'Stop',
-      color: '#ff9898',
-      fill: 'rgba(117, 40, 40, 0.96)',
-      emphasized: true
-    },
-    {
-      key: 'takeProfit',
-      price: snapshot.levels.takeProfit,
-      label: 'TP1',
-      color: '#88f2ba',
-      fill: 'rgba(25, 92, 59, 0.96)',
-      emphasized: true
+  const baseReferenceLevels =
+    snapshot.referenceLevels?.filter((level) => typeof level.price === 'number') ??
+    [
+      {
+        key: 'entry',
+        label: 'Entry',
+        price: snapshot.levels.entry,
+        role: 'trade',
+        onChart: true
+      },
+      {
+        key: 'stopLoss',
+        label: 'Stop',
+        price: snapshot.levels.stopLoss,
+        role: 'trade',
+        onChart: true
+      },
+      {
+        key: 'takeProfit',
+        label: 'TP1',
+        price: snapshot.levels.takeProfit,
+        role: 'trade',
+        onChart: true
+      }
+    ];
+  const colorForLevel = (level) => {
+    if (level.key === 'entry') {
+      return { stroke: '#d5fff0', fill: 'rgba(28, 87, 74, 0.96)' };
     }
-  ]
-    .filter((level) => typeof level.price === 'number')
+    if (level.key === 'stopLoss') {
+      return { stroke: '#ff9898', fill: 'rgba(117, 40, 40, 0.96)' };
+    }
+    if (level.key === 'takeProfit') {
+      return { stroke: '#88f2ba', fill: 'rgba(25, 92, 59, 0.96)' };
+    }
+    return level.role === 'structure'
+      ? { stroke: '#ffc27b', fill: 'rgba(126, 80, 24, 0.96)' }
+      : { stroke: '#8ab6ff', fill: 'rgba(37, 78, 132, 0.96)' };
+  };
+  const tradeLevels = baseReferenceLevels
+    .filter((level) => level.role === 'trade')
     .map((level) => ({
       ...level,
-      valueLabel: expanded && level.emphasized ? fmtNum(level.price, 2) : ''
+      ...colorForLevel(level),
+      dash: undefined,
+      emphasized: true
+    }));
+  const structureLevels = baseReferenceLevels
+    .filter((level) => level.role === 'structure' && level.onChart !== false)
+    .slice(0, 2)
+    .map((level) => ({
+      ...level,
+      ...colorForLevel(level),
+      dash: '4 4',
+      emphasized: false
+    }));
+  const contextLevels = baseReferenceLevels.filter((level) => level.role === 'context' || level.onChart === false);
+  const levelDefinitions = [...tradeLevels, ...structureLevels].map((level) => ({
+    ...level,
+    valueLabel: expanded || level.role === 'trade' ? fmtNum(level.price, 2) : ''
+  }));
+  const zones = (snapshot.zones ?? [])
+    .filter((zone) => zone.onChart !== false)
+    .slice(0, 1)
+    .map((zone) => ({
+      ...zone,
+      stroke: zone.role === 'structure' ? '#f3ba6c' : '#8ab6ff',
+      fill: zone.role === 'structure' ? 'rgba(153, 96, 22, 0.18)' : 'rgba(37, 78, 132, 0.16)'
     }));
 
-  const allPrices = [...bars.flatMap((bar) => [bar.high, bar.low]), ...levelDefinitions.map((level) => level.price)];
+  const allPrices = [
+    ...bars.flatMap((bar) => [bar.high, bar.low]),
+    ...levelDefinitions.map((level) => level.price),
+    ...zones.flatMap((zone) => [zone.low, zone.high])
+  ];
 
   const maxPrice = Math.max(...allPrices);
   const minPrice = Math.min(...allPrices);
   const range = Math.max(maxPrice - minPrice, 1e-6);
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
+  const plotBottom = padding.top + plotHeight;
   const barGap = Math.max(2, plotWidth / (bars.length * 6));
   const slotWidth = plotWidth / bars.length;
   const bodyWidth = Math.max(4, slotWidth - barGap * 2);
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
   const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
-  const labelGap = expanded ? 8 : 11;
+  const labelGap = expanded ? 8 : 9;
   const labelX = width - padding.right + 8;
+  const focusBarAt = snapshot.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot.detectedAt;
+  const focusIndex = Math.max(
+    0,
+    bars.findIndex((bar) => bar.timestamp === focusBarAt) >= 0
+      ? bars.findIndex((bar) => bar.timestamp === focusBarAt)
+      : bars.length - 1
+  );
 
   const levelLine = (level) =>
-    `<line x1="${padding.left}" y1="${priceToY(level.price)}" x2="${width - padding.right}" y2="${priceToY(level.price)}" stroke="${level.color}" stroke-width="${level.emphasized ? (expanded ? 1.8 : 1.4) : 1.2}" ${level.dash ? `stroke-dasharray="${level.dash}"` : ''} opacity="0.92" />`;
+    `<line x1="${padding.left}" y1="${priceToY(level.price)}" x2="${width - padding.right}" y2="${priceToY(level.price)}" stroke="${level.stroke}" stroke-width="${level.emphasized ? (expanded ? 1.9 : 1.5) : 1.15}" ${level.dash ? `stroke-dasharray="${level.dash}"` : ''} opacity="${level.emphasized ? '0.94' : '0.75'}" />`;
 
   const candles = bars
     .map((bar, index) => {
@@ -2104,12 +2118,89 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
     })
     .join('');
 
+  const zonesMarkup = zones
+    .map(
+      (zone) => `
+        <g>
+          <rect
+            x="${padding.left}"
+            y="${priceToY(zone.high)}"
+            width="${plotWidth}"
+            height="${Math.max(2, priceToY(zone.low) - priceToY(zone.high))}"
+            fill="${zone.fill}"
+            stroke="${zone.stroke}"
+            stroke-width="0.9"
+            stroke-dasharray="3 4"
+            rx="6"
+          />
+          <text
+            x="${padding.left + 8}"
+            y="${priceToY(zone.high) + 11}"
+            fill="${zone.stroke}"
+            font-size="${expanded ? '8' : '7.4'}"
+            font-weight="700"
+            letter-spacing="0.03em"
+          >${zone.label}</text>
+        </g>
+      `
+    )
+    .join('');
+
+  const focusX = candleX(focusIndex);
+  const focusLine = `
+    <g>
+      <line
+        x1="${focusX}"
+        y1="${padding.top}"
+        x2="${focusX}"
+        y2="${plotBottom}"
+        stroke="rgba(255, 246, 196, 0.72)"
+        stroke-width="1.1"
+        stroke-dasharray="3 5"
+      />
+      <rect
+        x="${Math.max(padding.left, Math.min(focusX - 38, width - padding.right - 76))}"
+        y="${padding.top - 16}"
+        width="76"
+        height="14"
+        rx="7"
+        fill="rgba(255, 209, 120, 0.16)"
+        stroke="rgba(255, 214, 149, 0.42)"
+        stroke-width="0.8"
+      />
+      <text
+        x="${Math.max(padding.left + 38, Math.min(focusX, width - padding.right - 38))}"
+        y="${padding.top - 6}"
+        fill="#ffdba3"
+        font-size="7.2"
+        font-weight="700"
+        text-anchor="middle"
+        letter-spacing="0.04em"
+      >Seen ${fmtTime(snapshot.detectedAt)}</text>
+    </g>
+  `;
+
+  const gridLines = Array.from({ length: 4 }, (_, index) => minPrice + (range * (index + 1)) / 5)
+    .map(
+      (price) => `
+        <line
+          x1="${padding.left}"
+          y1="${priceToY(price)}"
+          x2="${width - padding.right}"
+          y2="${priceToY(price)}"
+          stroke="rgba(215, 235, 255, 0.08)"
+          stroke-width="1"
+        />
+      `
+    )
+    .join('');
+
   const placedLabels = levelDefinitions
     .map((level) => ({
       ...level,
       targetY: priceToY(level.price),
-      boxWidth: expanded && level.emphasized ? 90 : expanded ? 82 : 58,
-      boxHeight: expanded && level.emphasized ? 26 : expanded ? 18 : 14
+      boxWidth: expanded && level.emphasized ? 96 : expanded ? 82 : 64,
+      boxHeight: expanded && level.valueLabel ? 26 : expanded ? 18 : 16
     }))
     .sort((a, b) => a.targetY - b.targetY)
     .map((level, index, sorted) => {
@@ -2143,7 +2234,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
             y1="${priceToY(level.price)}"
             x2="${labelX - 4}"
             y2="${level.labelCenterY}"
-            stroke="${level.color}"
+            stroke="${level.stroke}"
             stroke-width="1"
             opacity="0.55"
           />
@@ -2154,7 +2245,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
             height="${level.boxHeight}"
             rx="7"
             fill="${level.fill}"
-            stroke="${level.color}"
+            stroke="${level.stroke}"
             stroke-width="0.9"
           />
           <text
@@ -2176,21 +2267,131 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
 
   const chartBadge = `
     <g>
-      <rect x="${padding.left}" y="${padding.top}" width="${expanded ? 120 : 72}" height="${expanded ? 20 : 16}" rx="8" fill="rgba(6, 15, 25, 0.86)" stroke="rgba(213, 234, 255, 0.18)" />
-      <text x="${padding.left + (expanded ? 60 : 36)}" y="${padding.top + (expanded ? 13 : 11)}" fill="#d8ecff" font-size="${expanded ? '9.2' : '8.5'}" font-weight="700" text-anchor="middle" letter-spacing="0.04em">
-        ${snapshot.timeframe ?? '5m'} ${expanded ? 'trade map' : 'trigger map'}
+      <rect x="${padding.left}" y="${padding.top}" width="${expanded ? 138 : 96}" height="${expanded ? 20 : 16}" rx="8" fill="rgba(6, 15, 25, 0.86)" stroke="rgba(213, 234, 255, 0.18)" />
+      <text x="${padding.left + (expanded ? 69 : 48)}" y="${padding.top + (expanded ? 13 : 11)}" fill="#d8ecff" font-size="${expanded ? '9.2' : '8.2'}" font-weight="700" text-anchor="middle" letter-spacing="0.04em">
+        ${snapshot.symbol} ${snapshot.timeframe ?? '5m'} exact case
       </text>
     </g>
   `;
 
+  const setupBadge = `
+    <g>
+      <rect
+        x="${width - padding.right - 96}"
+        y="${padding.top}"
+        width="96"
+        height="${expanded ? 20 : 16}"
+        rx="8"
+        fill="rgba(11, 18, 30, 0.82)"
+        stroke="rgba(213, 234, 255, 0.14)"
+      />
+      <text
+        x="${width - padding.right - 48}"
+        y="${padding.top + (expanded ? 13 : 11)}"
+        fill="#f5f8ff"
+        font-size="${expanded ? '8.6' : '7.7'}"
+        font-weight="700"
+        text-anchor="middle"
+        letter-spacing="0.04em"
+      >${snapshot.side}</text>
+    </g>
+  `;
+
+  const timeLabelIndices = Array.from(new Set([0, focusIndex, bars.length - 1])).sort((a, b) => a - b);
+  const timeAxis = `
+    <g>
+      <line
+        x1="${padding.left}"
+        y1="${plotBottom + 7}"
+        x2="${width - padding.right}"
+        y2="${plotBottom + 7}"
+        stroke="rgba(213, 234, 255, 0.12)"
+        stroke-width="1"
+      />
+      ${timeLabelIndices
+        .map(
+          (index) => `
+            <g>
+              <line
+                x1="${candleX(index)}"
+                y1="${plotBottom + 4}"
+                x2="${candleX(index)}"
+                y2="${plotBottom + 10}"
+                stroke="rgba(213, 234, 255, 0.32)"
+                stroke-width="1"
+              />
+              <text
+                x="${candleX(index)}"
+                y="${plotBottom + 21}"
+                fill="rgba(221, 233, 245, 0.78)"
+                font-size="${expanded ? '7.8' : '7.1'}"
+                font-weight="${index === focusIndex ? '700' : '600'}"
+                text-anchor="middle"
+              >${fmtTime(index === focusIndex ? snapshot.detectedAt : bars[index]?.timestamp)}</text>
+            </g>
+          `
+        )
+        .join('')}
+    </g>
+  `;
+
+  const legendItems = [...tradeLevels, ...structureLevels, ...zones];
+  const legend = legendItems.length
+    ? `
+        <div class="signalChartLegend${expanded ? ' is-expanded' : ''}">
+          ${legendItems
+            .map((item) => {
+              const price =
+                typeof item.price === 'number'
+                  ? fmtNum(item.price, 2)
+                  : `${fmtNum(item.low, 2)} - ${fmtNum(item.high, 2)}`;
+              const color = item.stroke;
+              return `
+                <span class="signalChartLegendChip">
+                  <span class="signalChartLegendSwatch" style="--swatch:${color}"></span>
+                  <span class="signalChartLegendText">${item.label}</span>
+                  <span class="signalChartLegendPrice">${price}</span>
+                </span>
+              `;
+            })
+            .join('')}
+        </div>
+      `
+    : '';
+  const contextLegend = contextLevels.length
+    ? `
+        <div class="signalChartLegend signalChartLegend-secondary${expanded ? ' is-expanded' : ''}">
+          ${contextLevels
+            .map(
+              (level) => `
+                <span class="signalChartLegendChip is-muted">
+                  <span class="signalChartLegendText">${level.label}</span>
+                  <span class="signalChartLegendPrice">${fmtNum(level.price, 2)}</span>
+                </span>
+              `
+            )
+            .join('')}
+        </div>
+      `
+    : '';
+
   return `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
-      <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
-      ${levelDefinitions.map(levelLine).join('')}
-      ${candles}
-      ${chartBadge}
-      ${levelLabels}
-    </svg>
+    <div class="signalChartStack${expanded ? ' is-expanded' : ''}">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
+        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
+        ${gridLines}
+        ${zonesMarkup}
+        ${focusLine}
+        ${levelDefinitions.map(levelLine).join('')}
+        ${candles}
+        ${chartBadge}
+        ${setupBadge}
+        ${levelLabels}
+        ${timeAxis}
+      </svg>
+      ${legend}
+      ${contextLegend}
+    </div>
   `;
 };
 
@@ -2212,12 +2413,19 @@ const renderChartLightboxDetails = (context) => {
     typeof entry === 'number' && typeof stopLoss === 'number' ? Math.abs(entry - stopLoss) : undefined;
   const rewardPoints =
     typeof entry === 'number' && typeof takeProfit === 'number' ? Math.abs(takeProfit - entry) : undefined;
-  const seenAt = review?.detectedAt ?? alert?.detectedAt ?? snapshot?.generatedAt;
-  const snapshotAt = snapshot?.generatedAt;
+  const seenAt = review?.detectedAt ?? alert?.detectedAt ?? snapshot?.detectedAt ?? snapshot?.generatedAt;
+  const snapshotAt = snapshot?.generatedAt ?? snapshot?.detectedAt;
   const reviewedAt = review?.reviewedAt ?? review?.autoLabeledAt ?? alert?.reviewState?.reviewedAt;
   const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Setup context unavailable';
   const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Guardrail context unavailable';
   const evidence = alertLike ? signalEvidenceTags(alertLike) : [];
+  const hiddenContextLevels = (snapshot?.referenceLevels ?? []).filter(
+    (level) => level.role === 'context' || level.onChart === false
+  );
+  const visibleStructureLevels = (snapshot?.referenceLevels ?? []).filter(
+    (level) => level.role === 'structure' && level.onChart !== false
+  );
+  const visibleZones = (snapshot?.zones ?? []).filter((zone) => zone.onChart !== false);
   const reviewNote = review?.notes?.trim();
   const reviewStateSummary = review
     ? review.reviewStatus === 'COMPLETED'
@@ -2288,6 +2496,35 @@ const renderChartLightboxDetails = (context) => {
         <p class="chart-lightbox-story-copy">${guardrailSummary}</p>
       </article>
       ${evidence.length ? `<div class="chart-lightbox-chip-row">${evidence.map((tag) => `<span class="evidence-chip">${tag}</span>`).join('')}</div>` : ''}
+      ${
+        visibleStructureLevels.length || visibleZones.length || hiddenContextLevels.length
+          ? `
+              <article class="chart-lightbox-story-card">
+                <p class="chart-lightbox-detail-label">Reference Map</p>
+                <div class="chart-lightbox-chip-row">
+                  ${visibleStructureLevels
+                    .map(
+                      (level) =>
+                        `<span class="evidence-chip">${level.label} ${fmtNum(level.price, 2)}</span>`
+                    )
+                    .join('')}
+                  ${visibleZones
+                    .map(
+                      (zone) =>
+                        `<span class="evidence-chip">${zone.label} ${fmtNum(zone.low, 2)}-${fmtNum(zone.high, 2)}</span>`
+                    )
+                    .join('')}
+                  ${hiddenContextLevels
+                    .map(
+                      (level) =>
+                        `<span class="evidence-chip evidence-chip-muted">${level.label} ${fmtNum(level.price, 2)}</span>`
+                    )
+                    .join('')}
+                </div>
+              </article>
+            `
+          : ''
+      }
       ${reviewNote ? `<article class="chart-lightbox-story-card"><p class="chart-lightbox-detail-label">Review Note</p><p class="chart-lightbox-story-copy">${reviewNote}</p></article>` : ''}
     </div>
   `;
@@ -3556,7 +3793,7 @@ const loadAlerts = async () => {
         signalChartEl,
         {
           title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
-          meta: `${alert.chartSnapshot?.timeframe ?? '5m'} snapshot • swipe down to return`,
+          meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
           snapshot: alert.chartSnapshot,
           candidate: alert.candidate,
           alert
@@ -3858,7 +4095,7 @@ const renderReviewCard = (review) => {
     reviewChartEl,
     {
       title: `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
-      meta: `${chartSnapshot?.timeframe ?? '5m'} replay snapshot • swipe down to return`,
+      meta: `${chartSnapshot?.timeframe ?? '5m'} replay case at ${fmtTime(review.detectedAt)} • swipe down to return`,
       snapshot: chartSnapshot,
       candidate: review.alertSnapshot?.candidate,
       review
