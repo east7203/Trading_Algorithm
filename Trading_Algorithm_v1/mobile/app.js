@@ -1524,19 +1524,59 @@ const renderSignalChartMarkup = (snapshot) => {
   }
 
   const width = 320;
-  const height = 132;
-  const padding = { top: 12, right: 12, bottom: 16, left: 12 };
+  const height = 144;
+  const padding = { top: 12, right: 88, bottom: 16, left: 12 };
   const bars = snapshot.bars;
-  const allPrices = [
-    ...bars.flatMap((bar) => [bar.high, bar.low]),
-    snapshot.levels.entry,
-    snapshot.levels.stopLoss,
-    snapshot.levels.takeProfit,
-    snapshot.levels.sessionHigh,
-    snapshot.levels.sessionLow,
-    snapshot.levels.nyRangeHigh,
-    snapshot.levels.nyRangeLow
-  ].filter((value) => typeof value === 'number');
+  const levelDefinitions = [
+    {
+      price: snapshot.levels.sessionHigh,
+      label: 'Sess High',
+      color: '#8ab6ff',
+      dash: '5 4',
+      fill: 'rgba(37, 78, 132, 0.92)'
+    },
+    {
+      price: snapshot.levels.sessionLow,
+      label: 'Sess Low',
+      color: '#8ab6ff',
+      dash: '5 4',
+      fill: 'rgba(37, 78, 132, 0.92)'
+    },
+    {
+      price: snapshot.levels.nyRangeHigh,
+      label: 'NY High',
+      color: '#ffcf82',
+      dash: '4 3',
+      fill: 'rgba(118, 76, 18, 0.96)'
+    },
+    {
+      price: snapshot.levels.nyRangeLow,
+      label: 'NY Low',
+      color: '#ffcf82',
+      dash: '4 3',
+      fill: 'rgba(118, 76, 18, 0.96)'
+    },
+    {
+      price: snapshot.levels.entry,
+      label: 'Entry',
+      color: '#d5fff0',
+      fill: 'rgba(28, 87, 74, 0.96)'
+    },
+    {
+      price: snapshot.levels.stopLoss,
+      label: 'Stop',
+      color: '#ff9898',
+      fill: 'rgba(117, 40, 40, 0.96)'
+    },
+    {
+      price: snapshot.levels.takeProfit,
+      label: 'TP1',
+      color: '#88f2ba',
+      fill: 'rgba(25, 92, 59, 0.96)'
+    }
+  ].filter((level) => typeof level.price === 'number');
+
+  const allPrices = [...bars.flatMap((bar) => [bar.high, bar.low]), ...levelDefinitions.map((level) => level.price)];
 
   const maxPrice = Math.max(...allPrices);
   const minPrice = Math.min(...allPrices);
@@ -1548,11 +1588,15 @@ const renderSignalChartMarkup = (snapshot) => {
   const bodyWidth = Math.max(4, slotWidth - barGap * 2);
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
   const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
+  const labelWidth = 58;
+  const labelHeight = 14;
+  const labelGap = 11;
+  const labelX = width - padding.right + 8;
+  const labelMaxCenterY = height - padding.bottom - labelHeight / 2;
+  const labelMinCenterY = padding.top + labelHeight / 2;
 
-  const levelLine = (price, color, dash = '') =>
-    typeof price === 'number'
-      ? `<line x1="${padding.left}" y1="${priceToY(price)}" x2="${width - padding.right}" y2="${priceToY(price)}" stroke="${color}" stroke-width="1.2" ${dash ? `stroke-dasharray="${dash}"` : ''} opacity="0.9" />`
-      : '';
+  const levelLine = (level) =>
+    `<line x1="${padding.left}" y1="${priceToY(level.price)}" x2="${width - padding.right}" y2="${priceToY(level.price)}" stroke="${level.color}" stroke-width="1.2" ${level.dash ? `stroke-dasharray="${level.dash}"` : ''} opacity="0.92" />`;
 
   const candles = bars
     .map((bar, index) => {
@@ -1572,17 +1616,76 @@ const renderSignalChartMarkup = (snapshot) => {
     })
     .join('');
 
+  const placedLabels = levelDefinitions
+    .map((level) => ({ ...level, targetY: priceToY(level.price) }))
+    .sort((a, b) => a.targetY - b.targetY)
+    .map((level, index, sorted) => {
+      const previous = sorted[index - 1];
+      const minCenterY = previous ? previous.labelCenterY + labelGap : labelMinCenterY;
+      const labelCenterY = Math.max(level.targetY, minCenterY, labelMinCenterY);
+      return { ...level, labelCenterY };
+    });
+
+  for (let index = placedLabels.length - 1; index >= 0; index -= 1) {
+    const next = placedLabels[index + 1];
+    const maxCenterY = next ? next.labelCenterY - labelGap : labelMaxCenterY;
+    placedLabels[index].labelCenterY = Math.min(placedLabels[index].labelCenterY, maxCenterY, labelMaxCenterY);
+    placedLabels[index].labelCenterY = Math.max(placedLabels[index].labelCenterY, labelMinCenterY);
+  }
+
+  const levelLabels = placedLabels
+    .map(
+      (level) => `
+        <g>
+          <line
+            x1="${width - padding.right}"
+            y1="${priceToY(level.price)}"
+            x2="${labelX - 4}"
+            y2="${level.labelCenterY}"
+            stroke="${level.color}"
+            stroke-width="1"
+            opacity="0.55"
+          />
+          <rect
+            x="${labelX}"
+            y="${level.labelCenterY - labelHeight / 2}"
+            width="${labelWidth}"
+            height="${labelHeight}"
+            rx="7"
+            fill="${level.fill}"
+            stroke="${level.color}"
+            stroke-width="0.9"
+          />
+          <text
+            x="${labelX + labelWidth / 2}"
+            y="${level.labelCenterY + 3}"
+            fill="#f6fbff"
+            font-size="8.2"
+            font-weight="700"
+            text-anchor="middle"
+            letter-spacing="0.02em"
+          >${level.label}</text>
+        </g>
+      `
+    )
+    .join('');
+
+  const chartBadge = `
+    <g>
+      <rect x="${padding.left}" y="${padding.top}" width="72" height="16" rx="8" fill="rgba(6, 15, 25, 0.86)" stroke="rgba(213, 234, 255, 0.18)" />
+      <text x="${padding.left + 36}" y="${padding.top + 11}" fill="#d8ecff" font-size="8.5" font-weight="700" text-anchor="middle" letter-spacing="0.04em">
+        ${snapshot.timeframe ?? '5m'} trigger map
+      </text>
+    </g>
+  `;
+
   return `
     <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
       <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
-      ${levelLine(snapshot.levels.sessionHigh, '#8ab6ff', '5 4')}
-      ${levelLine(snapshot.levels.sessionLow, '#8ab6ff', '5 4')}
-      ${levelLine(snapshot.levels.nyRangeHigh, '#ffcf82', '4 3')}
-      ${levelLine(snapshot.levels.nyRangeLow, '#ffcf82', '4 3')}
-      ${levelLine(snapshot.levels.entry, '#d5fff0')}
-      ${levelLine(snapshot.levels.stopLoss, '#ff9898')}
-      ${levelLine(snapshot.levels.takeProfit, '#88f2ba')}
+      ${levelDefinitions.map(levelLine).join('')}
       ${candles}
+      ${chartBadge}
+      ${levelLabels}
     </svg>
   `;
 };
