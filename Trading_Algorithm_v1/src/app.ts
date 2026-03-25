@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
+import type { SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
 import { evaluateRisk } from './services/riskEngine.js';
 import { ExecutionService } from './services/executionService.js';
@@ -17,6 +18,7 @@ import {
 import { defaultRankingModel, loadRankingModelFromPath, type RankingModel } from './services/rankingModel.js';
 import { RankingModelStore } from './services/rankingModelStore.js';
 import { SignalMonitorService, type SignalMonitorStatus } from './services/signalMonitorService.js';
+import { MarketResearchService, type MarketResearchConfig, type MarketResearchStatus } from './services/marketResearchService.js';
 import {
   NativePushNotificationService,
   type NativePushNotificationConfig,
@@ -86,6 +88,7 @@ export interface AppContext {
   webPushNotificationService: WebPushNotificationService | null;
   telegramAlertService: TelegramAlertService | null;
   operationalReminderService: OperationalReminderService | null;
+  marketResearchService: MarketResearchService | null;
 }
 
 interface BuildAppOptions {
@@ -113,6 +116,9 @@ interface BuildAppOptions {
   operationalReminderEnabled?: boolean;
   operationalReminderConfig?: Partial<OperationalReminderConfig>;
   operationalReminderService?: OperationalReminderService | null;
+  marketResearchEnabled?: boolean;
+  marketResearchConfig?: Partial<MarketResearchConfig>;
+  marketResearchService?: MarketResearchService | null;
   ibkrLoginTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
   ibkrResendPushTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
   webPushEnabled?: boolean;
@@ -151,6 +157,15 @@ interface SignalMonitorConfigInput {
     spreadPoints: number;
     expectedSlippagePoints: number;
   };
+}
+
+interface MarketResearchConfigInput {
+  enabled: boolean;
+  archivePath?: string;
+  bootstrapCsvDir?: string;
+  bootstrapRecursive: boolean;
+  maxBarsPerSymbol: number;
+  focusSymbols: SymbolCode[];
 }
 
 interface IbkrLoginTriggerResult {
@@ -643,6 +658,33 @@ const resolveOperationalReminderConfig = (
   };
 };
 
+const resolveMarketResearchConfig = (
+  overrides: Partial<MarketResearchConfig> = {}
+): MarketResearchConfigInput => {
+  const knownSymbols = new Set<SymbolCode>(['NQ', 'ES']);
+  const envSymbols = parseCsvEnv('MARKET_RESEARCH_SYMBOLS', ['NQ', 'ES'])
+    .map((symbol) => symbol.toUpperCase() as SymbolCode)
+    .filter((symbol) => knownSymbols.has(symbol));
+
+  const defaults: MarketResearchConfigInput = {
+    enabled: parseBooleanEnv('MARKET_RESEARCH_ENABLED', true),
+    archivePath: parseOptionalPathEnv(
+      'MARKET_RESEARCH_ARCHIVE_PATH',
+      path.resolve(process.cwd(), 'data', 'live', 'one-minute-bars.ndjson')
+    ),
+    bootstrapCsvDir: parseOptionalPathEnv('MARKET_RESEARCH_BOOTSTRAP_DIR'),
+    bootstrapRecursive: parseBooleanEnv('MARKET_RESEARCH_BOOTSTRAP_RECURSIVE', true),
+    maxBarsPerSymbol: parseIntEnv('MARKET_RESEARCH_MAX_BARS_PER_SYMBOL', 6_000, 500),
+    focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES']
+  };
+
+  return {
+    ...defaults,
+    ...overrides,
+    focusSymbols: overrides.focusSymbols ?? defaults.focusSymbols
+  };
+};
+
 const resolveSignalReviewStorePath = (override?: string): string => {
   if (override) {
     return path.resolve(process.cwd(), override);
@@ -1015,6 +1057,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           )
         : null
       : options.operationalReminderService;
+  const resolvedMarketResearchConfig = resolveMarketResearchConfig(options.marketResearchConfig);
+  const marketResearchEnabled = options.marketResearchEnabled ?? resolvedMarketResearchConfig.enabled;
+  const marketResearchService =
+    options.marketResearchService === undefined
+      ? marketResearchEnabled
+        ? new MarketResearchService({
+            ...resolvedMarketResearchConfig,
+            enabled: true
+          })
+        : null
+      : options.marketResearchService;
   const ibkrReconnectState: IbkrReconnectStateSnapshot & { pendingTimer?: NodeJS.Timeout } = {
     ...ibkrReconnectStateStore.get(),
     pendingTimer: undefined
@@ -1406,6 +1459,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   }
 
+  if (marketResearchService) {
+    void marketResearchService.start();
+    app.addHook('onClose', async () => {
+      marketResearchService.stop();
+    });
+  }
+
   if (operationalReminderService) {
     void operationalReminderService.start();
     app.addHook('onClose', async () => {
@@ -1688,6 +1748,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const learningPerformance = summarizeLearningPerformance(allReviews);
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
+    const research: MarketResearchStatus | { enabled: false; started: false } = marketResearchService
+      ? marketResearchService.status()
+      : { enabled: false, started: false };
     const trainingLatestBarTimestamp =
       'latestBarTimestamp' in training && typeof training.latestBarTimestamp === 'string'
         ? training.latestBarTimestamp
@@ -1758,6 +1821,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ibkrRecovery,
         operationalReminder,
         training,
+        research,
         learningPerformance,
         reviews,
         signalConfig,
@@ -1794,6 +1858,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ...calendarClient.status(),
         events
       }
+    });
+  });
+
+  app.get('/research/status', async (_request, reply) => {
+    return reply.status(200).send({
+      research: marketResearchService ? marketResearchService.status() : { enabled: false, started: false }
     });
   });
 
@@ -2434,10 +2504,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             latestBarTimestamp: undefined
           };
       const signalIngest = signalMonitorService ? await signalMonitorService.ingestBars(body.bars) : { accepted: 0 };
+      const researchIngest = marketResearchService ? await marketResearchService.ingestBars(body.bars) : { accepted: 0 };
       return reply.status(200).send({
         ingest,
         signalMonitor: signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false },
         signalIngest,
+        research: marketResearchService ? marketResearchService.status() : { enabled: false, started: false },
+        researchIngest,
         training: continuousTrainingService
           ? continuousTrainingService.status()
           : { enabled: false, started: false }
@@ -2481,6 +2554,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     nativePushNotificationService,
     webPushNotificationService,
     telegramAlertService,
-    operationalReminderService
+    operationalReminderService,
+    marketResearchService
   };
 };

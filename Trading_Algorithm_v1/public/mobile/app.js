@@ -55,6 +55,7 @@ const homeTopIdeaEl = document.getElementById('homeTopIdea');
 const homeActionStateEl = document.getElementById('homeActionState');
 const homeReplayStateEl = document.getElementById('homeReplayState');
 const homeModelStateEl = document.getElementById('homeModelState');
+const homeResearchStateEl = document.getElementById('homeResearchState');
 const homeAlertStateEl = document.getElementById('homeAlertState');
 const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
 const homeMacroListEl = document.getElementById('homeMacroList');
@@ -131,6 +132,11 @@ const diagLastAlertEl = document.getElementById('diagLastAlert');
 const diagCalendarSourceEl = document.getElementById('diagCalendarSource');
 const diagCalendarCoverageEl = document.getElementById('diagCalendarCoverage');
 const diagCalendarNextEl = document.getElementById('diagCalendarNext');
+const diagResearchOverallEl = document.getElementById('diagResearchOverall');
+const diagResearchLeadEl = document.getElementById('diagResearchLead');
+const diagResearchConfidenceEl = document.getElementById('diagResearchConfidence');
+const diagResearchComputedEl = document.getElementById('diagResearchComputed');
+const diagResearchWhyEl = document.getElementById('diagResearchWhy');
 const calendarEventsListEl = document.getElementById('calendarEventsList');
 const diagTrainingCadenceEl = document.getElementById('diagTrainingCadence');
 const diagTrainingLastRunEl = document.getElementById('diagTrainingLastRun');
@@ -284,6 +290,20 @@ const reviewOutcomeLabels = {
 const setupLabel = (code) => setupLabels[code] ?? code;
 const reviewValidityLabel = (code) => reviewValidityLabels[code] ?? code ?? '--';
 const reviewOutcomeLabel = (code) => reviewOutcomeLabels[code] ?? code ?? '--';
+const researchDirectionLabel = (direction) => {
+  switch (direction) {
+    case 'BULLISH':
+      return 'Bullish';
+    case 'BEARISH':
+      return 'Bearish';
+    case 'BALANCED':
+      return 'Balanced';
+    case 'STAND_ASIDE':
+      return 'Stand Aside';
+    default:
+      return '--';
+  }
+};
 
 const readStoredJson = (key, fallback) => {
   try {
@@ -630,6 +650,8 @@ const renderHomeDashboard = () => {
   const board = buildBoardPressure(latestAlerts);
   const topAlert = board.readyAlerts[0] ?? board.topAlert;
   const effectiveCalendar = diagnostics?.calendar?.sourceName ? diagnostics.calendar : latestCalendar?.calendar ?? null;
+  const research = diagnostics?.research ?? null;
+  const researchTrend = research?.overallTrend ?? null;
   const upcomingEvents = effectiveCalendar?.upcomingEvents ?? effectiveCalendar?.events ?? [];
   const nextMacroEvent =
     upcomingEvents.find((event) => isDirectUsdMacroEvent(event) || isHighImpactEvent(event)) ?? upcomingEvents[0] ?? null;
@@ -664,6 +686,19 @@ const renderHomeDashboard = () => {
     directionReason = topAlert
       ? `${topAlert.symbol} has a ${topAlert.side} 5m idea, but ${macroRead.detail}`
       : macroRead.detail;
+  } else if (
+    researchTrend
+    && (researchTrend.direction === 'BULLISH' || researchTrend.direction === 'BEARISH')
+    && Number(researchTrend.confidence) >= 0.55
+  ) {
+    const bullish = researchTrend.direction === 'BULLISH';
+    directionTone = bullish ? 'bullish' : 'bearish';
+    directionLabel = bullish ? 'Bullish' : 'Bearish';
+    directionDetail = `${researchTrend.leadSymbol ?? 'NQ/ES'} is leading the autonomous research bias.`;
+    directionConfidence = `Confidence ${Math.round(Number(researchTrend.confidence) * 100)}%`;
+    directionReason = topAlert
+      ? `${researchTrend.reason} Board lead: ${topAlert.symbol} ${topAlert.side} ${setupLabel(topAlert.setupType)}.`
+      : researchTrend.reason;
   } else if (board.bullish > 0 && board.bearish > 0 && Math.abs(board.bullish - board.bearish) < 1.2) {
     directionTone = 'neutral';
     directionLabel = 'Mixed';
@@ -694,6 +729,7 @@ const renderHomeDashboard = () => {
   renderDirectionTags([
     topAlert ? `${topAlert.symbol} ${topAlert.side}` : 'No lead setup',
     topAlert ? setupLabel(topAlert.setupType) : 'Watchlist only',
+    researchTrend ? `Research ${researchDirectionLabel(researchTrend.direction)}` : 'Research loading',
     effectiveCalendar?.sourceName ? `Macro ${effectiveCalendar.sourceName}` : 'Macro offline',
     diagnostics?.latestBarTimestamp ? `Last bar ${fmtRelativeMinutes(diagnostics.latestBarTimestamp)}` : 'No bar'
   ]);
@@ -707,6 +743,9 @@ const renderHomeDashboard = () => {
   homeModelStateEl.textContent = diagnostics?.rankingModel?.modelId
     ? `${diagnostics.rankingModel.modelId} • ${lastRetrainAt ? fmtRelativeMinutes(lastRetrainAt) : 'fresh run unknown'}`
     : 'Model not loaded';
+  homeResearchStateEl.textContent = researchTrend
+    ? `${researchDirectionLabel(researchTrend.direction)} • ${Math.round(Number(researchTrend.confidence ?? 0) * 100)}%`
+    : 'Research loading';
   homeAlertStateEl.textContent =
     getNotificationPrefs().enabled
       ? diagnostics?.notifications?.telegramReady
@@ -3517,6 +3556,11 @@ const renderDiagnostics = () => {
     diagCalendarSourceEl.textContent = '--';
     diagCalendarCoverageEl.textContent = '--';
     diagCalendarNextEl.textContent = '--';
+    diagResearchOverallEl.textContent = '--';
+    diagResearchLeadEl.textContent = '--';
+    diagResearchConfidenceEl.textContent = '--';
+    diagResearchComputedEl.textContent = '--';
+    diagResearchWhyEl.textContent = '--';
     renderCalendarEvents(null);
     diagTrainingCadenceEl.textContent = '--';
     diagTrainingLastRunEl.textContent = '--';
@@ -3540,6 +3584,7 @@ const renderDiagnostics = () => {
   const learningPerformance = diagnostics.learningPerformance ?? null;
   const recovery = diagnostics.ibkrRecovery ?? null;
   const calendar = diagnostics.calendar?.sourceName ? diagnostics.calendar : latestCalendar?.calendar ?? diagnostics.calendar ?? null;
+  const research = diagnostics.research ?? null;
   const feedState = getFeedStateMeta(diagnostics);
   const cadence = training?.cadence ?? null;
   const analysisFrames = training?.data?.analysisTimeframes ?? [];
@@ -3567,6 +3612,19 @@ const renderDiagnostics = () => {
   diagCalendarNextEl.textContent = calendar?.nextEventAt
     ? `${fmtDateTimeCompact(calendar.nextEventAt)} • ${fmtRelativeMinutes(calendar.nextEventAt)}`
     : 'No upcoming event';
+  diagResearchOverallEl.textContent = research?.overallTrend
+    ? `${researchDirectionLabel(research.overallTrend.direction)} • ${fmtNum((Number(research.overallTrend.confidence) || 0) * 100, 0)}%`
+    : 'Research loading';
+  diagResearchLeadEl.textContent = research?.overallTrend?.leadSymbol
+    ? `${research.overallTrend.leadSymbol} • ${researchDirectionLabel(research.overallTrend.direction)}`
+    : 'No lead market';
+  diagResearchConfidenceEl.textContent = research?.overallTrend
+    ? `${fmtNum(Number(research.overallTrend.score) || 0, 2)} score`
+    : '--';
+  diagResearchComputedEl.textContent = research?.lastComputedAt
+    ? `${fmtDateTimeCompact(research.lastComputedAt)} • ${fmtRelativeMinutes(research.lastComputedAt)}`
+    : 'No research pass yet';
+  diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
   renderCalendarEvents(calendar);
   diagTrainingCadenceEl.textContent = training?.enabled
     ? `${cadence?.retrainIntervalMinutes ?? '--'}m cadence • ${cadence?.minNewBarsForRetrain ?? '--'} bars`
