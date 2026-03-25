@@ -359,6 +359,70 @@ const signalBiasLabel = (alert) => {
   return 'Mixed';
 };
 
+const researchAgreementMeta = (alertLike) => {
+  const metadata = alertLike?.candidate?.metadata ?? {};
+  const aligned = metadata.researchTrendAligned;
+  const direction = metadata.researchTrendDirection;
+  const confidence = Number(metadata.researchTrendConfidence);
+  const leadSymbol = metadata.researchTrendLeadSymbol;
+  const summary = metadata.researchTrendSummary;
+  const confidenceLabel = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : null;
+
+  if (aligned === true) {
+    return {
+      chips: [
+        { label: 'Research aligned', className: 'chip chip-online' },
+        {
+          label: `Research ${researchDirectionLabel(direction)}${confidenceLabel ? ` ${confidenceLabel}` : ''}`,
+          className: 'chip chip-neutral'
+        }
+      ],
+      note: summary || `${leadSymbol ?? 'NQ/ES'} is supporting this setup.`
+    };
+  }
+
+  if (aligned === false && (direction === 'BULLISH' || direction === 'BEARISH')) {
+    return {
+      chips: [
+        { label: 'Research opposed', className: 'chip chip-offline' },
+        {
+          label: `Research ${researchDirectionLabel(direction)}${confidenceLabel ? ` ${confidenceLabel}` : ''}`,
+          className: 'chip chip-neutral'
+        }
+      ],
+      note: summary || `${leadSymbol ?? 'NQ/ES'} is leaning the other way.`
+    };
+  }
+
+  if (direction === 'STAND_ASIDE') {
+    return {
+      chips: [{ label: 'Research says stand aside', className: 'chip chip-offline' }],
+      note: summary || 'The autonomous engine does not trust a clean directional read right now.'
+    };
+  }
+
+  return {
+    chips: [{ label: 'Research neutral', className: 'chip chip-neutral' }],
+    note: summary || 'The autonomous engine is not giving this setup a directional edge yet.'
+  };
+};
+
+const renderResearchAgreement = (container, noteEl, alertLike) => {
+  if (!container || !noteEl) {
+    return;
+  }
+
+  const agreement = researchAgreementMeta(alertLike);
+  container.innerHTML = '';
+  agreement.chips.forEach((chipData) => {
+    const chip = document.createElement('span');
+    chip.className = chipData.className;
+    chip.textContent = chipData.label;
+    container.appendChild(chip);
+  });
+  noteEl.textContent = agreement.note;
+};
+
 const signalEvidenceTags = (alert) => {
   const metadata = alert.candidate?.metadata ?? {};
   const tags = [];
@@ -2459,6 +2523,7 @@ const renderChartLightboxDetails = (context) => {
   const reviewedAt = review?.reviewedAt ?? review?.autoLabeledAt ?? alert?.reviewState?.reviewedAt;
   const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Setup context unavailable';
   const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Guardrail context unavailable';
+  const researchAgreement = alertLike ? researchAgreementMeta(alertLike) : null;
   const evidence = alertLike ? signalEvidenceTags(alertLike) : [];
   const hiddenContextLevels = (snapshot?.referenceLevels ?? []).filter(
     (level) => level.role === 'context' || level.onChart === false
@@ -2536,6 +2601,17 @@ const renderChartLightboxDetails = (context) => {
         <p class="chart-lightbox-detail-label">Guardrails</p>
         <p class="chart-lightbox-story-copy">${guardrailSummary}</p>
       </article>
+      ${
+        researchAgreement
+          ? `<article class="chart-lightbox-story-card">
+              <p class="chart-lightbox-detail-label">Engine Agreement</p>
+              <div class="chart-lightbox-chip-row">
+                ${researchAgreement.chips.map((chip) => `<span class="${chip.className}">${chip.label}</span>`).join('')}
+              </div>
+              <p class="chart-lightbox-story-copy">${researchAgreement.note}</p>
+            </article>`
+          : ''
+      }
       ${evidence.length ? `<div class="chart-lightbox-chip-row">${evidence.map((tag) => `<span class="evidence-chip">${tag}</span>`).join('')}</div>` : ''}
       ${
         visibleStructureLevels.length || visibleZones.length || hiddenContextLevels.length
@@ -3853,6 +3929,11 @@ const loadAlerts = async () => {
       node.dataset.alertId = alert.alertId;
       node.querySelector('.symbol').textContent = `${alert.symbol} ${alert.side}`;
       node.querySelector('.setupType').textContent = setupLabel(alert.setupType);
+      renderResearchAgreement(
+        node.querySelector('.engineAgreementRow'),
+        node.querySelector('.signalResearchNote'),
+        alert
+      );
       node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
       const signalChartEl = node.querySelector('.signalChart');
@@ -4157,6 +4238,11 @@ const renderReviewCard = (review) => {
       : undefined;
   node.querySelector('.symbol').textContent = `${review.symbol} ${review.side}`;
   node.querySelector('.setupType').textContent = setupLabel(review.setupType);
+  renderResearchAgreement(
+    node.querySelector('.engineAgreementRow'),
+    node.querySelector('.reviewResearchNote'),
+    review.alertSnapshot ?? review
+  );
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
   reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
   configureExpandableChart(

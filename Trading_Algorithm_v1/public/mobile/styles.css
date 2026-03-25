@@ -869,6 +869,19 @@ textarea {
   margin: 0 0 var(--space-1);
 }
 
+.engineAgreementRow {
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.signalResearchNote,
+.reviewResearchNote {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.4;
+}
+
 .signal-chart-tools {
   display: flex;
   flex-wrap: wrap;
