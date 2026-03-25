@@ -99,4 +99,31 @@ describe('market research service', () => {
 
     expect(trendFlips).toEqual(['STAND_ASIDE->BULLISH', 'BULLISH->BEARISH']);
   });
+
+  it('tracks directional prediction performance over the evaluation window', async () => {
+    const service = new MarketResearchService({
+      enabled: true,
+      bootstrapRecursive: true,
+      maxBarsPerSymbol: 1000,
+      focusSymbols: ['NQ', 'ES'],
+      evaluationMinutes: 60
+    });
+
+    await service.start();
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T13:30:00.000Z', 20100),
+      ...buildTrendBars('ES', 'up', '2026-03-25T13:30:00.000Z', 5800)
+    ]);
+
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T17:31:00.000Z', 20750, 0.6),
+      ...buildTrendBars('ES', 'up', '2026-03-25T17:31:00.000Z', 5950, 0.4)
+    ]);
+
+    const status = service.status();
+    expect(status.performance.totalPredictions).toBeGreaterThanOrEqual(1);
+    expect(status.performance.evaluatedPredictions).toBeGreaterThanOrEqual(1);
+    expect(status.performance.winningPredictions).toBeGreaterThanOrEqual(1);
+    expect(status.performance.hitRate).toBeGreaterThan(0);
+  });
 });

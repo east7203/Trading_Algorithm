@@ -167,6 +167,7 @@ interface MarketResearchConfigInput {
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
   flipNotificationMinConfidence: number;
+  evaluationMinutes: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -677,7 +678,8 @@ const resolveMarketResearchConfig = (
     bootstrapRecursive: parseBooleanEnv('MARKET_RESEARCH_BOOTSTRAP_RECURSIVE', true),
     maxBarsPerSymbol: parseIntEnv('MARKET_RESEARCH_MAX_BARS_PER_SYMBOL', 6_000, 500),
     focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
-    flipNotificationMinConfidence: parseFloatEnv('MARKET_RESEARCH_FLIP_NOTIFY_CONFIDENCE', 0.55, 0, 1)
+    flipNotificationMinConfidence: parseFloatEnv('MARKET_RESEARCH_FLIP_NOTIFY_CONFIDENCE', 0.55, 0, 1),
+    evaluationMinutes: parseIntEnv('MARKET_RESEARCH_EVALUATION_MINUTES', 60, 15, 240)
   };
 
   return {

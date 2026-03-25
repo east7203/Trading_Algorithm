@@ -45,6 +45,7 @@ export interface LearningPerformanceSummary {
   byScoreBucket: LearningPerformanceBucket[];
   byDetectionTimeframe: LearningPerformanceBucket[];
   byExecutionTimeframe: LearningPerformanceBucket[];
+  byResearchAlignment: LearningPerformanceBucket[];
   blockedVsReady: {
     readyResolved: number;
     blockedResolved: number;
@@ -235,6 +236,7 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
   const byScoreBucket = new Map<string, { wins: number; losses: number }>();
   const byDetectionTimeframe = new Map<string, { wins: number; losses: number }>();
   const byExecutionTimeframe = new Map<string, { wins: number; losses: number }>();
+  const byResearchAlignment = new Map<string, { wins: number; losses: number }>();
   const setupPreference = new Map<SetupType, number>();
   const symbolPreference = new Map<SymbolCode, number>();
 
@@ -285,6 +287,15 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
         review.alertSnapshot?.candidate?.executionTimeframe ?? '5m',
         isWin
       );
+      pushBucket(
+        byResearchAlignment,
+        review.alertSnapshot?.candidate?.metadata?.researchTrendAligned === true
+          ? 'Aligned'
+          : review.alertSnapshot?.candidate?.metadata?.researchTrendAligned === false
+            ? 'Opposed'
+            : 'Neutral',
+        isWin
+      );
 
       if (review.alertSnapshot?.riskDecision?.allowed) {
         readyResolved += 1;
@@ -328,6 +339,7 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
     byScoreBucket: summarizeBuckets(byScoreBucket, (key) => `Score ${key}`),
     byDetectionTimeframe: summarizeBuckets(byDetectionTimeframe),
     byExecutionTimeframe: summarizeBuckets(byExecutionTimeframe),
+    byResearchAlignment: summarizeBuckets(byResearchAlignment),
     blockedVsReady: {
       readyResolved,
       blockedResolved,

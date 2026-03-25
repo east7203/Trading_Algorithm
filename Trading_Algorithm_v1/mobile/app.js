@@ -136,6 +136,8 @@ const diagResearchOverallEl = document.getElementById('diagResearchOverall');
 const diagResearchLeadEl = document.getElementById('diagResearchLead');
 const diagResearchConfidenceEl = document.getElementById('diagResearchConfidence');
 const diagResearchComputedEl = document.getElementById('diagResearchComputed');
+const diagResearchHitRateEl = document.getElementById('diagResearchHitRate');
+const diagResearchPredictionsEl = document.getElementById('diagResearchPredictions');
 const diagResearchWhyEl = document.getElementById('diagResearchWhy');
 const calendarEventsListEl = document.getElementById('calendarEventsList');
 const diagTrainingCadenceEl = document.getElementById('diagTrainingCadence');
@@ -3560,6 +3562,8 @@ const renderDiagnostics = () => {
     diagResearchLeadEl.textContent = '--';
     diagResearchConfidenceEl.textContent = '--';
     diagResearchComputedEl.textContent = '--';
+    diagResearchHitRateEl.textContent = '--';
+    diagResearchPredictionsEl.textContent = '--';
     diagResearchWhyEl.textContent = '--';
     renderCalendarEvents(null);
     diagTrainingCadenceEl.textContent = '--';
@@ -3624,6 +3628,12 @@ const renderDiagnostics = () => {
   diagResearchComputedEl.textContent = research?.lastComputedAt
     ? `${fmtDateTimeCompact(research.lastComputedAt)} • ${fmtRelativeMinutes(research.lastComputedAt)}`
     : 'No research pass yet';
+  diagResearchHitRateEl.textContent = research?.performance
+    ? `${fmtNum((Number(research.performance.hitRate) || 0) * 100, 0)}% • ${research.performance.winningPredictions ?? 0}/${research.performance.evaluatedPredictions ?? 0}`
+    : '--';
+  diagResearchPredictionsEl.textContent = research?.performance
+    ? `${research.performance.totalPredictions ?? 0} total • ${research.performance.openPredictions ?? 0} open`
+    : '--';
   diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
   renderCalendarEvents(calendar);
   diagTrainingCadenceEl.textContent = training?.enabled

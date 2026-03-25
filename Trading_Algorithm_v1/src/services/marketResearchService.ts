@@ -32,6 +32,29 @@ export interface MarketResearchOverallTrend {
   reasons: string[];
 }
 
+export interface MarketResearchPredictionEpisode {
+  direction: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>;
+  openedAt: string;
+  evaluatedAt?: string;
+  leadSymbol?: SymbolCode;
+  confidence: number;
+  outcome?: 'WIN' | 'LOSS';
+  moveBySymbol: Partial<Record<SymbolCode, number>>;
+}
+
+export interface MarketResearchPerformanceSummary {
+  evaluationMinutes: number;
+  totalPredictions: number;
+  openPredictions: number;
+  evaluatedPredictions: number;
+  winningPredictions: number;
+  losingPredictions: number;
+  hitRate: number;
+  lastEvaluatedAt?: string;
+  lastOutcome?: 'WIN' | 'LOSS';
+  recentEpisodes: MarketResearchPredictionEpisode[];
+}
+
 export interface MarketResearchStatus {
   enabled: boolean;
   started: boolean;
@@ -48,6 +71,7 @@ export interface MarketResearchStatus {
     focusSymbols: SymbolCode[];
     analysisTimeframes: Array<Extract<Timeframe, '5m' | '15m' | '1H'>>;
   };
+  performance: MarketResearchPerformanceSummary;
 }
 
 export interface MarketResearchTrendFlipEvent {
@@ -65,6 +89,7 @@ export interface MarketResearchConfig {
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
   flipNotificationMinConfidence?: number;
+  evaluationMinutes?: number;
   onTrendFlip?: (event: MarketResearchTrendFlipEvent) => Promise<void> | void;
 }
 
@@ -267,6 +292,17 @@ const defaultOverallTrend = (): MarketResearchOverallTrend => ({
   reasons: ['The autonomous trend model needs more live data before it can lean.']
 });
 
+const defaultPerformanceSummary = (evaluationMinutes: number): MarketResearchPerformanceSummary => ({
+  evaluationMinutes,
+  totalPredictions: 0,
+  openPredictions: 0,
+  evaluatedPredictions: 0,
+  winningPredictions: 0,
+  losingPredictions: 0,
+  hitRate: 0,
+  recentEpisodes: []
+});
+
 const buildOverallTrend = (symbols: MarketResearchSymbolStatus[]): MarketResearchOverallTrend => {
   if (symbols.length === 0) {
     return defaultOverallTrend();
@@ -349,8 +385,127 @@ export class MarketResearchService {
   private overallTrend: MarketResearchOverallTrend = defaultOverallTrend();
   private symbolStatuses: MarketResearchSymbolStatus[] = [];
   private initialComputeComplete = false;
+  private predictionEpisodes: MarketResearchPredictionEpisode[] = [];
 
   constructor(private readonly config: MarketResearchConfig) {}
+
+  private get evaluationMinutes(): number {
+    return this.config.evaluationMinutes ?? 60;
+  }
+
+  private buildPerformanceSummary(): MarketResearchPerformanceSummary {
+    if (this.predictionEpisodes.length === 0) {
+      return defaultPerformanceSummary(this.evaluationMinutes);
+    }
+    const evaluatedPredictions = this.predictionEpisodes.filter((episode) => episode.outcome);
+    const winningPredictions = evaluatedPredictions.filter((episode) => episode.outcome === 'WIN').length;
+    const losingPredictions = evaluatedPredictions.filter((episode) => episode.outcome === 'LOSS').length;
+    const lastEvaluatedEpisode = evaluatedPredictions
+      .slice()
+      .sort((left, right) => (right.evaluatedAt ?? '').localeCompare(left.evaluatedAt ?? ''))[0];
+
+    return {
+      evaluationMinutes: this.evaluationMinutes,
+      totalPredictions: this.predictionEpisodes.length,
+      openPredictions: this.predictionEpisodes.length - evaluatedPredictions.length,
+      evaluatedPredictions: evaluatedPredictions.length,
+      winningPredictions,
+      losingPredictions,
+      hitRate:
+        evaluatedPredictions.length > 0 ? Number((winningPredictions / evaluatedPredictions.length).toFixed(2)) : 0,
+      lastEvaluatedAt: lastEvaluatedEpisode?.evaluatedAt,
+      lastOutcome: lastEvaluatedEpisode?.outcome,
+      recentEpisodes: this.predictionEpisodes
+        .slice(-6)
+        .reverse()
+        .map((episode) => ({
+          ...episode,
+          moveBySymbol: { ...episode.moveBySymbol }
+        }))
+    };
+  }
+
+  private maybeOpenPrediction(
+    previousTrend: MarketResearchOverallTrend,
+    nextTrend: MarketResearchOverallTrend,
+    symbolStatuses: MarketResearchSymbolStatus[],
+    changedAt: string
+  ): void {
+    if (!['BULLISH', 'BEARISH'].includes(nextTrend.direction)) {
+      return;
+    }
+    if (previousTrend.direction === nextTrend.direction) {
+      return;
+    }
+
+    const entryPrices = Object.fromEntries(
+      symbolStatuses
+        .filter((status) => typeof status.latestPrice === 'number')
+        .map((status) => [status.symbol, status.latestPrice as number])
+    ) as Partial<Record<SymbolCode, number>>;
+
+    this.predictionEpisodes.push({
+      direction: nextTrend.direction as Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>,
+      openedAt: changedAt,
+      leadSymbol: nextTrend.leadSymbol,
+      confidence: nextTrend.confidence,
+      moveBySymbol: entryPrices
+    });
+
+    if (this.predictionEpisodes.length > 48) {
+      this.predictionEpisodes = this.predictionEpisodes.slice(-48);
+    }
+  }
+
+  private evaluatePredictions(changedAt: string, symbolStatuses: MarketResearchSymbolStatus[]): void {
+    const nowMs = Date.parse(changedAt);
+    const horizonMs = this.evaluationMinutes * 60_000;
+    const latestPrices = new Map(
+      symbolStatuses
+        .filter((status) => typeof status.latestPrice === 'number')
+        .map((status) => [status.symbol, status.latestPrice as number])
+    );
+
+    this.predictionEpisodes = this.predictionEpisodes.map((episode) => {
+      if (episode.outcome || nowMs - Date.parse(episode.openedAt) < horizonMs) {
+        return episode;
+      }
+
+      const directionalMoves = Object.entries(episode.moveBySymbol)
+        .map(([symbol, entryPrice]) => {
+          if (entryPrice === undefined) {
+            return undefined;
+          }
+          const latestPrice = latestPrices.get(symbol as SymbolCode);
+          if (latestPrice === undefined) {
+            return undefined;
+          }
+
+          const rawMove = latestPrice - entryPrice;
+          return {
+            symbol: symbol as SymbolCode,
+            move: episode.direction === 'BULLISH' ? rawMove : -rawMove,
+            rawMove
+          };
+        })
+        .filter(
+          (value): value is { symbol: SymbolCode; move: number; rawMove: number } => typeof value?.move === 'number'
+        );
+
+      const wins = directionalMoves.filter((value) => value.move > 0).length;
+      const losses = directionalMoves.length - wins;
+      const updatedMoveBySymbol = Object.fromEntries(
+        directionalMoves.map((value) => [value.symbol, Number(value.rawMove.toFixed(2))])
+      ) as Partial<Record<SymbolCode, number>>;
+
+      return {
+        ...episode,
+        evaluatedAt: changedAt,
+        outcome: wins > losses ? 'WIN' : 'LOSS',
+        moveBySymbol: updatedMoveBySymbol
+      };
+    });
+  }
 
   private shouldNotifyTrendFlip(
     previousTrend: MarketResearchOverallTrend,
@@ -375,8 +530,16 @@ export class MarketResearchService {
       .filter((value): value is MarketResearchSymbolStatus => Boolean(value));
 
     const nextTrend = buildOverallTrend(symbols);
-    const changedAt = new Date().toISOString();
+    const changedAt =
+      symbols
+        .map((status) => status.latestBarTimestamp)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) ?? new Date().toISOString();
     const shouldNotifyTrendFlip = this.shouldNotifyTrendFlip(previousTrend, nextTrend);
+
+    this.maybeOpenPrediction(previousTrend, nextTrend, symbols, changedAt);
+    this.evaluatePredictions(changedAt, symbols);
 
     this.symbolStatuses = symbols;
     this.overallTrend = nextTrend;
@@ -519,7 +682,8 @@ export class MarketResearchService {
         maxBarsPerSymbol: this.config.maxBarsPerSymbol,
         focusSymbols: [...this.config.focusSymbols],
         analysisTimeframes: [...ANALYSIS_TIMEFRAMES]
-      }
+      },
+      performance: this.buildPerformanceSummary()
     };
   }
 }

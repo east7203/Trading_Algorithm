@@ -181,6 +181,14 @@ export const deriveResearchAiContext = (
 
   const overallTrend = researchStatus.overallTrend;
   const symbolTrend = researchStatus.symbols.find((status) => status.symbol === candidate.symbol);
+  const researchPerformance = researchStatus.performance ?? {
+    evaluatedPredictions: 0,
+    hitRate: 0
+  };
+  const performanceMultiplier =
+    researchPerformance.evaluatedPredictions >= 3
+      ? clamp(0.5 + researchPerformance.hitRate, 0.5, 1.35)
+      : 1;
 
   if (overallTrend.direction === 'BALANCED') {
     return {
@@ -195,7 +203,7 @@ export const deriveResearchAiContext = (
 
   if (overallTrend.direction === 'STAND_ASIDE') {
     return {
-      scoreAdjustment: clamp(-(0.75 + overallTrend.confidence), -2.5, -0.75),
+      scoreAdjustment: clamp((-(0.75 + overallTrend.confidence)) * performanceMultiplier, -2.5, -0.75),
       summary: overallTrend.reason,
       direction: overallTrend.direction,
       confidence: overallTrend.confidence,
@@ -228,7 +236,7 @@ export const deriveResearchAiContext = (
   }
 
   return {
-    scoreAdjustment: clamp(scoreAdjustment, -4, 4),
+    scoreAdjustment: clamp(scoreAdjustment * performanceMultiplier, -4, 4),
     summary: overallTrend.reason,
     direction: overallTrend.direction,
     confidence: overallTrend.confidence,
