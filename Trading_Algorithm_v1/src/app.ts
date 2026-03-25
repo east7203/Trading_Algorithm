@@ -166,6 +166,7 @@ interface MarketResearchConfigInput {
   bootstrapRecursive: boolean;
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
+  flipNotificationMinConfidence: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -675,7 +676,8 @@ const resolveMarketResearchConfig = (
     bootstrapCsvDir: parseOptionalPathEnv('MARKET_RESEARCH_BOOTSTRAP_DIR'),
     bootstrapRecursive: parseBooleanEnv('MARKET_RESEARCH_BOOTSTRAP_RECURSIVE', true),
     maxBarsPerSymbol: parseIntEnv('MARKET_RESEARCH_MAX_BARS_PER_SYMBOL', 6_000, 500),
-    focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES']
+    focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
+    flipNotificationMinConfidence: parseFloatEnv('MARKET_RESEARCH_FLIP_NOTIFY_CONFIDENCE', 0.55, 0, 1)
   };
 
   return {
@@ -1064,7 +1066,30 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       ? marketResearchEnabled
         ? new MarketResearchService({
             ...resolvedMarketResearchConfig,
-            enabled: true
+            enabled: true,
+            onTrendFlip: async (event) => {
+              const directionLabel = event.nextTrend.direction === 'BULLISH' ? 'bullish' : 'bearish';
+              const confidenceLabel = `${Math.round(event.nextTrend.confidence * 100)}%`;
+              const leadSymbol = event.nextTrend.leadSymbol ?? 'NQ/ES';
+
+              await notifyTradeAssistChannels(
+                {
+                  title: `Research trend flipped ${directionLabel}`,
+                  body: `${leadSymbol} leading • ${confidenceLabel} confidence • ${event.nextTrend.reason}`,
+                  url: '/mobile/?tab=home&focus=research-trend'
+                },
+                {
+                  title: `Research trend flipped ${directionLabel}`,
+                  lines: [
+                    `Previous: ${event.previousDirection}`,
+                    `Now: ${event.nextTrend.direction}`,
+                    `Lead: ${leadSymbol}`,
+                    `Confidence: ${confidenceLabel}`,
+                    `Why: ${event.nextTrend.reason}`
+                  ]
+                }
+              );
+            }
           })
         : null
       : options.marketResearchService;
@@ -1341,6 +1366,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               enabled: true
             },
             () => signalMonitorSettingsStore.get(),
+            () => marketResearchService?.status() ?? null,
             signalReviewStore,
             nativePushNotificationService,
             webPushNotificationService,

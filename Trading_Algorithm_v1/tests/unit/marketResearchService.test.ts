@@ -67,4 +67,36 @@ describe('market research service', () => {
     expect(status.overallTrend.direction).toBe('STAND_ASIDE');
     expect(status.overallTrend.aligned).toBe(false);
   });
+
+  it('notifies once when the autonomous trend flips into a directional state', async () => {
+    const trendFlips: string[] = [];
+    const service = new MarketResearchService({
+      enabled: true,
+      bootstrapRecursive: true,
+      maxBarsPerSymbol: 240,
+      focusSymbols: ['NQ', 'ES'],
+      flipNotificationMinConfidence: 0.4,
+      onTrendFlip: async (event) => {
+        trendFlips.push(`${event.previousDirection}->${event.nextTrend.direction}`);
+      }
+    });
+
+    await service.start();
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T13:30:00.000Z', 20100),
+      ...buildTrendBars('ES', 'up', '2026-03-25T13:30:00.000Z', 5800)
+    ]);
+
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T17:30:00.000Z', 20600),
+      ...buildTrendBars('ES', 'up', '2026-03-25T17:30:00.000Z', 5920)
+    ]);
+
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'down', '2026-03-25T21:30:00.000Z', 20800, 1.4),
+      ...buildTrendBars('ES', 'down', '2026-03-25T21:30:00.000Z', 5980, 0.9)
+    ]);
+
+    expect(trendFlips).toEqual(['STAND_ASIDE->BULLISH', 'BULLISH->BEARISH']);
+  });
 });

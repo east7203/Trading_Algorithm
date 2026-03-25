@@ -33,6 +33,7 @@ import type { SignalReviewStore } from '../stores/signalReviewStore.js';
 import type { NativePushNotificationService } from './nativePushNotificationService.js';
 import type { TelegramAlertService } from './telegramAlertService.js';
 import type { WebPushNotificationService } from './webPushNotificationService.js';
+import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
 
 interface LocalTimeParts {
   dayKey: string;
@@ -154,6 +155,86 @@ const relatedSymbolFor = (symbol: SymbolCode): SymbolCode | null => {
     return 'NQ';
   }
   return null;
+};
+
+export interface ResearchAiContext {
+  scoreAdjustment: number;
+  summary: string;
+  direction: ResearchTrendDirection;
+  confidence: number;
+  leadSymbol?: SymbolCode;
+  aligned?: boolean;
+}
+
+export const deriveResearchAiContext = (
+  candidate: Pick<SetupCandidate, 'symbol' | 'side'>,
+  researchStatus: MarketResearchStatus | null | undefined
+): ResearchAiContext => {
+  if (!researchStatus?.enabled || !researchStatus.started) {
+    return {
+      scoreAdjustment: 0,
+      summary: 'Research model is not active yet.',
+      direction: 'STAND_ASIDE',
+      confidence: 0
+    };
+  }
+
+  const overallTrend = researchStatus.overallTrend;
+  const symbolTrend = researchStatus.symbols.find((status) => status.symbol === candidate.symbol);
+
+  if (overallTrend.direction === 'BALANCED') {
+    return {
+      scoreAdjustment: 0,
+      summary: overallTrend.reason,
+      direction: overallTrend.direction,
+      confidence: overallTrend.confidence,
+      leadSymbol: overallTrend.leadSymbol,
+      aligned: false
+    };
+  }
+
+  if (overallTrend.direction === 'STAND_ASIDE') {
+    return {
+      scoreAdjustment: clamp(-(0.75 + overallTrend.confidence), -2.5, -0.75),
+      summary: overallTrend.reason,
+      direction: overallTrend.direction,
+      confidence: overallTrend.confidence,
+      leadSymbol: overallTrend.leadSymbol,
+      aligned: false
+    };
+  }
+
+  const overallAligned =
+    (overallTrend.direction === 'BULLISH' && candidate.side === 'LONG') ||
+    (overallTrend.direction === 'BEARISH' && candidate.side === 'SHORT');
+  let scoreAdjustment = (overallAligned ? 1 : -1) * (0.9 + overallTrend.confidence * 1.6);
+
+  if (symbolTrend) {
+    if (
+      (symbolTrend.direction === 'BULLISH' && candidate.side === 'LONG') ||
+      (symbolTrend.direction === 'BEARISH' && candidate.side === 'SHORT')
+    ) {
+      scoreAdjustment += 0.6 + symbolTrend.confidence;
+    } else if (
+      (symbolTrend.direction === 'BULLISH' && candidate.side === 'SHORT') ||
+      (symbolTrend.direction === 'BEARISH' && candidate.side === 'LONG')
+    ) {
+      scoreAdjustment -= 0.6 + symbolTrend.confidence;
+    }
+  }
+
+  if (overallTrend.leadSymbol === candidate.symbol) {
+    scoreAdjustment += overallAligned ? 0.35 : -0.35;
+  }
+
+  return {
+    scoreAdjustment: clamp(scoreAdjustment, -4, 4),
+    summary: overallTrend.reason,
+    direction: overallTrend.direction,
+    confidence: overallTrend.confidence,
+    leadSymbol: overallTrend.leadSymbol,
+    aligned: overallAligned
+  };
 };
 
 const buildAlertKey = (candidate: SetupCandidate): string =>
@@ -377,6 +458,7 @@ export class SignalMonitorService {
     private readonly getRiskConfig: () => RiskConfig,
     private readonly config: SignalMonitorConfig,
     private readonly getSettings: () => SignalMonitorSettings,
+    private readonly getMarketResearchStatus: () => MarketResearchStatus | null,
     private readonly signalReviewStore: SignalReviewStore,
     private readonly nativePushNotificationService?: NativePushNotificationService | null,
     private readonly webPushNotificationService?: WebPushNotificationService | null,
@@ -659,8 +741,9 @@ export class SignalMonitorService {
         continue;
       }
 
-      const detectedMs = Date.parse(review.detectedAt);
-      if (!Number.isFinite(detectedMs) || nowMs - detectedMs < thresholdMs) {
+      const escalationAnchorAt = review.lastEscalatedAt ?? review.createdAt ?? review.detectedAt;
+      const escalationAnchorMs = Date.parse(escalationAnchorAt);
+      if (!Number.isFinite(escalationAnchorMs) || nowMs - escalationAnchorMs < thresholdMs) {
         continue;
       }
 
@@ -1127,10 +1210,12 @@ export class SignalMonitorService {
 
     const newsEvents = await this.calendarClient.listUpcomingEvents();
     const newsContext = evaluateNewsContext(newsEvents, currentBar.timestamp, symbol);
+    const researchStatus = this.getMarketResearchStatus();
     const contextualCandidates = candidates.map((candidate) => {
       const regimeAiContextScore =
         typeof candidate.metadata.aiContextScore === 'number' ? candidate.metadata.aiContextScore : 0;
       const newsAiContextScore = newsContext.scoreAdjustment;
+      const researchAiContext = deriveResearchAiContext(candidate, researchStatus);
 
       return {
         ...candidate,
@@ -1138,7 +1223,17 @@ export class SignalMonitorService {
           ...candidate.metadata,
           regimeAiContextScore,
           newsAiContextScore,
-          aiContextScore: clamp(regimeAiContextScore + newsAiContextScore, -6, 6),
+          researchAiContextScore: researchAiContext.scoreAdjustment,
+          researchTrendDirection: researchAiContext.direction,
+          researchTrendConfidence: researchAiContext.confidence,
+          researchTrendLeadSymbol: researchAiContext.leadSymbol,
+          researchTrendAligned: researchAiContext.aligned,
+          researchTrendSummary: researchAiContext.summary,
+          aiContextScore: clamp(
+            regimeAiContextScore + newsAiContextScore + researchAiContext.scoreAdjustment,
+            -8,
+            8
+          ),
           macroBlocked: newsContext.blocked,
           macroContextSummary: newsContext.summary,
           macroRelevantEventCount: newsContext.relevantEvents.length,

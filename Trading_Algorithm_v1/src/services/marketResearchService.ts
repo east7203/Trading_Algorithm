@@ -50,6 +50,13 @@ export interface MarketResearchStatus {
   };
 }
 
+export interface MarketResearchTrendFlipEvent {
+  previousDirection: ResearchTrendDirection;
+  nextTrend: MarketResearchOverallTrend;
+  changedAt: string;
+  symbolStatuses: MarketResearchSymbolStatus[];
+}
+
 export interface MarketResearchConfig {
   enabled: boolean;
   archivePath?: string;
@@ -57,6 +64,8 @@ export interface MarketResearchConfig {
   bootstrapRecursive: boolean;
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
+  flipNotificationMinConfidence?: number;
+  onTrendFlip?: (event: MarketResearchTrendFlipEvent) => Promise<void> | void;
 }
 
 const ANALYSIS_TIMEFRAMES: Array<Extract<Timeframe, '5m' | '15m' | '1H'>> = ['5m', '15m', '1H'];
@@ -339,17 +348,49 @@ export class MarketResearchService {
   private barKeys = new Set<string>();
   private overallTrend: MarketResearchOverallTrend = defaultOverallTrend();
   private symbolStatuses: MarketResearchSymbolStatus[] = [];
+  private initialComputeComplete = false;
 
   constructor(private readonly config: MarketResearchConfig) {}
 
-  private recompute(): void {
+  private shouldNotifyTrendFlip(
+    previousTrend: MarketResearchOverallTrend,
+    nextTrend: MarketResearchOverallTrend
+  ): boolean {
+    if (!this.initialComputeComplete || !this.config.onTrendFlip) {
+      return false;
+    }
+    if (previousTrend.direction === nextTrend.direction) {
+      return false;
+    }
+    if (!['BULLISH', 'BEARISH'].includes(nextTrend.direction)) {
+      return false;
+    }
+    return nextTrend.confidence >= (this.config.flipNotificationMinConfidence ?? 0.55);
+  }
+
+  private async recompute(): Promise<void> {
+    const previousTrend = this.overallTrend;
     const symbols = this.config.focusSymbols
       .map((symbol) => buildSymbolStatus(symbol, this.barsBySymbol.get(symbol) ?? []))
       .filter((value): value is MarketResearchSymbolStatus => Boolean(value));
 
+    const nextTrend = buildOverallTrend(symbols);
+    const changedAt = new Date().toISOString();
+    const shouldNotifyTrendFlip = this.shouldNotifyTrendFlip(previousTrend, nextTrend);
+
     this.symbolStatuses = symbols;
-    this.overallTrend = buildOverallTrend(symbols);
-    this.lastComputedAt = new Date().toISOString();
+    this.overallTrend = nextTrend;
+    this.lastComputedAt = changedAt;
+    this.initialComputeComplete = true;
+
+    if (shouldNotifyTrendFlip) {
+      await this.config.onTrendFlip?.({
+        previousDirection: previousTrend.direction,
+        nextTrend,
+        changedAt,
+        symbolStatuses: symbols
+      });
+    }
   }
 
   private mergeBars(bars: OneMinuteBar[]): void {
@@ -434,7 +475,7 @@ export class MarketResearchService {
     try {
       await this.loadArchiveBars();
       await this.loadBootstrapCsv();
-      this.recompute();
+      await this.recompute();
       this.lastError = undefined;
     } catch (error) {
       this.lastError = (error as Error).message;
@@ -452,7 +493,7 @@ export class MarketResearchService {
 
     const beforeCount = this.barKeys.size;
     this.mergeBars(rawBars);
-    this.recompute();
+    await this.recompute();
     return { accepted: this.barKeys.size - beforeCount };
   }
 
