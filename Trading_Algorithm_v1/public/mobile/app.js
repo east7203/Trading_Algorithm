@@ -57,6 +57,8 @@ const homeDeskBriefSummaryEl = document.getElementById('homeDeskBriefSummary');
 const homeDeskBriefActionsEl = document.getElementById('homeDeskBriefActions');
 const homeDeskBriefReasonsEl = document.getElementById('homeDeskBriefReasons');
 const homeDeskBriefWatchEl = document.getElementById('homeDeskBriefWatch');
+const homeDeckStampEl = document.getElementById('homeDeckStamp');
+const homeWatchlistListEl = document.getElementById('homeWatchlistList');
 const homeDeskStateEl = document.getElementById('homeDeskState');
 const homeTopIdeaEl = document.getElementById('homeTopIdea');
 const homeActionStateEl = document.getElementById('homeActionState');
@@ -217,6 +219,7 @@ let latestReviews = [];
 let latestDiagnostics = null;
 let latestCalendar = null;
 let latestDeskBrief = null;
+let latestHomeDeck = null;
 let latestRiskConfig = null;
 let latestHealth = null;
 let lastSyncAt = null;
@@ -752,6 +755,74 @@ const renderDeskBrief = () => {
   }
 };
 
+const renderHomeDeck = () => {
+  if (!homeWatchlistListEl) {
+    return;
+  }
+
+  const deck = latestHomeDeck?.deck ?? null;
+  if (homeDeckStampEl) {
+    homeDeckStampEl.textContent = deck?.generatedAt ? `Updated ${fmtRelativeMinutes(deck.generatedAt)}` : 'Updating';
+  }
+
+  homeWatchlistListEl.innerHTML = '';
+  if (!deck?.watchlist?.length) {
+    renderEmpty(homeWatchlistListEl, 'Watchlist is loading.');
+    return;
+  }
+
+  deck.watchlist.forEach((item) => {
+    const trendDirection = item.researchDirection ?? 'BALANCED';
+    const tone =
+      trendDirection === 'BULLISH'
+        ? 'bullish'
+        : trendDirection === 'BEARISH'
+          ? 'bearish'
+          : deck.tone === 'risk'
+            ? 'risk'
+            : 'neutral';
+    const confidence = Number.isFinite(Number(item.researchConfidence))
+      ? `${Math.round(Number(item.researchConfidence) * 100)}%`
+      : '--';
+    const latestAlertLabel = item.latestAlert
+      ? `${item.latestAlert.side} • ${setupLabel(item.latestAlert.setupType)}`
+      : 'No live setup';
+    const latestAlertState = item.latestAlert
+      ? item.latestAlert.allowed
+        ? 'Ready'
+        : 'Blocked'
+      : 'Watching';
+
+    const card = document.createElement('article');
+    card.className = 'home-watchlist-card';
+    card.dataset.tone = tone;
+    card.innerHTML = `
+      <div class="home-watchlist-head">
+        <div>
+          <div class="home-watchlist-symbol-row">
+            <p class="home-watchlist-symbol">${item.symbol}</p>
+            ${item.lead ? '<span class="chip chip-online">Lead</span>' : ''}
+          </div>
+          <p class="home-watchlist-setup">${latestAlertLabel}</p>
+        </div>
+        <div class="home-watchlist-price-block">
+          <p class="home-watchlist-price">${item.latestPrice !== null && item.latestPrice !== undefined ? fmtNum(item.latestPrice, 2) : '--'}</p>
+          <span class="chip ${latestAlertState === 'Ready' ? 'chip-online' : latestAlertState === 'Blocked' ? 'chip-offline' : 'chip-neutral'}">${latestAlertState}</span>
+        </div>
+      </div>
+      <div class="home-watchlist-meter">
+        <span class="home-watchlist-meter-fill" style="width:${Math.max(8, Math.min(100, Number(item.researchConfidence ?? 0) * 100))}%"></span>
+      </div>
+      <div class="home-watchlist-meta">
+        <span>${researchDirectionLabel(trendDirection)} • ${confidence}</span>
+        <span>${item.latestBarTimestamp ? fmtRelativeMinutes(item.latestBarTimestamp) : 'No bar'}</span>
+      </div>
+      <p class="home-watchlist-note">${item.researchReason ?? 'Waiting for a clearer symbol-specific read.'}</p>
+    `;
+    homeWatchlistListEl.appendChild(card);
+  });
+};
+
 const renderHomeMacroList = (events) => {
   if (!homeMacroListEl) {
     return;
@@ -906,6 +977,7 @@ const renderHomeDashboard = () => {
     ? `${nextMacroEvent.title} • ${fmtDateTimeCompact(nextMacroEvent.startsAt)} • ${macroRead.summary}`
     : 'No near-term macro catalyst in the current Forex Factory window.';
   renderDeskBrief();
+  renderHomeDeck();
   renderHomeMacroList(upcomingEvents);
 };
 
@@ -3968,6 +4040,16 @@ const loadDeskBrief = async () => {
   renderHomeDashboard();
 };
 
+const loadHomeDeck = async () => {
+  try {
+    latestHomeDeck = await apiFetch('/home/deck');
+  } catch {
+    latestHomeDeck = null;
+  }
+  renderHomeDeck();
+  renderHomeDashboard();
+};
+
 const loadRiskConfig = async () => {
   try {
     latestRiskConfig = await apiFetch('/risk/config');
@@ -4523,6 +4605,7 @@ const refreshAll = async () => {
     loadReviews(),
     loadDiagnostics(),
     loadDeskBrief(),
+    loadHomeDeck(),
     loadCalendar(),
     loadRiskConfig()
   ])

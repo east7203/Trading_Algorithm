@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, minimum-scale=0.75, maximum-scale=5, user-scalable=yes, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#120d0c" />
+    <meta name="theme-color" content="#f4f7f2" />
     <title>East Futures Desk</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
@@ -33,15 +33,15 @@
             <span class="brand-mark" aria-hidden="true"></span>
             <div>
               <p class="eyebrow">EAST FUTURES DESK</p>
-              <h1>Opening Range Control</h1>
+              <h1>TradeAssist Morning Market</h1>
             </div>
           </div>
           <div class="masthead-tags">
-            <span class="micro-pill micro-pill-strong">Manual</span>
+            <span class="micro-pill micro-pill-strong">5m Desk</span>
             <span class="micro-pill">NQ + ES</span>
           </div>
         </div>
-        <p class="subtitle">Built for your morning NQ + ES workflow: read the board, approve in the app, and execute manually in Tradovate.</p>
+        <p class="subtitle">Robinhood-style morning shell for your live desk: read the market, confirm the 5m board, then execute manually in Tradovate.</p>
         <div class="chip-row">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
@@ -223,6 +223,17 @@
               <p class="card-section-label">Watch</p>
               <div id="homeDeskBriefWatch" class="home-direction-tags"></div>
             </div>
+          </section>
+
+          <section class="home-market-panel">
+            <div class="section-subhead">
+              <div>
+                <h3>Market Watchlist</h3>
+                <p class="section-kicker">Fast symbol-level read on NQ and ES with the current research bias, live tape state, and latest board setup.</p>
+              </div>
+              <span id="homeDeckStamp" class="chip chip-neutral">Updating</span>
+            </div>
+            <div id="homeWatchlistList" class="home-watchlist-list"></div>
           </section>
 
           <section class="home-snapshot-grid">

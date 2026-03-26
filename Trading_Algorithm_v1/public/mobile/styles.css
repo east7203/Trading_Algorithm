@@ -4009,3 +4009,404 @@ body.tv-viewer-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* Robinhood-inspired shell refresh */
+:root {
+  color-scheme: light;
+  --display-font: 'Avenir Next', 'Helvetica Neue', 'Gill Sans', sans-serif;
+  --body-font: 'Avenir Next', 'Helvetica Neue', 'Segoe UI', sans-serif;
+  --bg: #f4f7f2;
+  --bg2: #e7f0e8;
+  --card: rgba(255, 255, 255, 0.95);
+  --card-strong: rgba(255, 255, 255, 0.98);
+  --line: rgba(17, 24, 39, 0.08);
+  --text: #11161c;
+  --text-soft: #435160;
+  --muted: #6c7683;
+  --accent: #00c805;
+  --accent-ink: #04230d;
+  --good: #067a2f;
+  --good-bg: rgba(0, 200, 5, 0.1);
+  --warn: #8c5a00;
+  --warn-bg: rgba(255, 184, 0, 0.12);
+  --danger: #b42318;
+  --danger-bg: rgba(228, 72, 72, 0.1);
+  --shadow-lg: 0 20px 45px rgba(16, 24, 40, 0.08);
+}
+
+html,
+body {
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(0, 200, 5, 0.08), transparent 42%),
+    linear-gradient(180deg, #f7faf7 0%, #f4f7f2 56%, #eef3ee 100%);
+  color: var(--text);
+}
+
+.ambient {
+  display: none;
+}
+
+.phone-shell {
+  width: min(920px, 100%);
+  padding: max(12px, env(safe-area-inset-top)) 16px max(22px, env(safe-area-inset-bottom));
+}
+
+.pull-refresh {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(17, 24, 39, 0.08);
+  box-shadow: 0 16px 36px rgba(16, 24, 40, 0.12);
+  color: var(--text);
+}
+
+.top-card,
+.view,
+.stat-card,
+.tabbar,
+.item-card,
+.insight-card,
+.desk-card,
+.hero-panel,
+.home-direction-card,
+.home-brief-card,
+.home-macro-panel,
+.home-market-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.top-card {
+  border-radius: 28px;
+  padding: 18px;
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.08), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 252, 251, 0.96));
+  box-shadow: 0 24px 54px rgba(16, 24, 40, 0.08);
+}
+
+.brand-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #00c805 0%, #0a8d12 100%);
+  box-shadow: 0 0 0 8px rgba(0, 200, 5, 0.08);
+}
+
+.eyebrow {
+  color: #00a104;
+  letter-spacing: 0.18em;
+}
+
+h1 {
+  font-size: 1.58rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #0a0f14;
+}
+
+.subtitle,
+.panel-note,
+.desk-note,
+.section-kicker,
+.hint,
+.status,
+.insight-text,
+.setupType,
+.item-meta,
+.home-direction-detail,
+.home-why-copy,
+.home-snapshot-note,
+.home-macro-summary,
+.home-macro-note,
+.home-macro-meta,
+.home-brief-summary {
+  color: var(--muted);
+}
+
+.chip,
+.chip-btn,
+.micro-pill,
+.toggle-chip,
+.level-chip,
+.evidence-chip,
+.signalChartLegendChip {
+  border-color: rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+}
+
+.chip-online {
+  color: #067a2f;
+  background: rgba(0, 200, 5, 0.12);
+}
+
+.chip-neutral {
+  color: #73510d;
+  background: rgba(255, 184, 0, 0.12);
+}
+
+.chip-offline {
+  color: #b42318;
+  background: rgba(228, 72, 72, 0.12);
+}
+
+.chip-btn,
+.quick-action,
+.segment-btn,
+.tab-btn,
+.secondary-btn {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  border-color: rgba(17, 24, 39, 0.08);
+}
+
+.chip-btn {
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.03);
+}
+
+.micro-pill {
+  color: #304051;
+}
+
+.micro-pill-strong,
+.tab-btn.is-active,
+.segment-btn.is-active,
+.primary-btn {
+  background: linear-gradient(180deg, #00c805 0%, #00b104 100%);
+  color: #f8fff8;
+  border-color: rgba(0, 177, 4, 0.32);
+  box-shadow: 0 10px 24px rgba(0, 177, 4, 0.2);
+}
+
+.quick-actions {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quick-action.is-active {
+  background: rgba(0, 200, 5, 0.12);
+  color: #076829;
+  border-color: rgba(0, 177, 4, 0.2);
+}
+
+.ops-ribbon {
+  color: var(--muted);
+}
+
+.ops-dot {
+  background: rgba(17, 24, 39, 0.14);
+}
+
+.hero-panel,
+.stat-card,
+.desk-card,
+.insight-card,
+.item-card,
+.view,
+.home-direction-card,
+.home-brief-card,
+.home-market-panel,
+.home-macro-panel,
+.home-snapshot-card,
+.home-why-card,
+.home-brief-column,
+.home-macro-card {
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 40px rgba(16, 24, 40, 0.06);
+}
+
+.hero-panel-primary,
+.desk-card-spotlight,
+.home-snapshot-card-strong {
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(250, 253, 250, 0.97));
+}
+
+.panel-label,
+.stat-label,
+.group-label,
+.review-section-label,
+.card-section-label {
+  color: #7a8491;
+}
+
+.hero-title,
+.panel-value,
+.desk-value,
+.stat-value,
+.home-direction-label,
+.home-snapshot-value,
+.home-macro-title,
+.home-brief-headline {
+  color: #0c1218;
+}
+
+.heroFeedBadge,
+.heroPushBadge {
+  color: var(--text);
+}
+
+.tabbar {
+  border: 1px solid rgba(17, 24, 39, 0.07);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 34px rgba(16, 24, 40, 0.08);
+}
+
+.tabbar-top .tab-btn,
+.tab-btn {
+  color: #6b7280;
+}
+
+.tab-btn.is-active .tab-label,
+.tab-btn.is-active .tab-icon {
+  color: #f8fff8;
+}
+
+.section-head {
+  align-items: flex-end;
+}
+
+.signal-card::after {
+  background: radial-gradient(circle, rgba(0, 200, 5, 0.14), transparent 64%);
+}
+
+.signalChart {
+  border-color: rgba(17, 24, 39, 0.06);
+  background: linear-gradient(180deg, #0e1411 0%, #181f1a 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.signalChartLegend {
+  border-top-color: rgba(17, 24, 39, 0.08);
+  background: linear-gradient(180deg, rgba(248, 250, 248, 0.92), rgba(255, 255, 255, 0));
+}
+
+.signalChartLegendChip,
+.signalChartLegendChip.is-muted {
+  background: rgba(255, 255, 255, 0.9);
+  color: #334155;
+  border-color: rgba(17, 24, 39, 0.07);
+}
+
+.signalChartLegendText,
+.signalChartLegendPrice {
+  color: #334155;
+}
+
+.signalChart.is-expandable::after {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(17, 24, 39, 0.08);
+  color: #1f2937;
+}
+
+input,
+textarea,
+select {
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--text);
+  border-color: rgba(17, 24, 39, 0.08);
+}
+
+.home-market-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 28px;
+}
+
+.home-watchlist-list {
+  display: grid;
+  gap: 12px;
+}
+
+.home-watchlist-card {
+  display: grid;
+  gap: 10px;
+  padding: 15px 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 251, 249, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.home-watchlist-card[data-tone='bullish'] {
+  border-color: rgba(0, 177, 4, 0.16);
+}
+
+.home-watchlist-card[data-tone='bearish'] {
+  border-color: rgba(180, 35, 24, 0.14);
+}
+
+.home-watchlist-card[data-tone='risk'] {
+  border-color: rgba(255, 184, 0, 0.18);
+}
+
+.home-watchlist-head,
+.home-watchlist-meta,
+.home-watchlist-symbol-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.home-watchlist-symbol {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0c1218;
+}
+
+.home-watchlist-setup,
+.home-watchlist-note,
+.home-watchlist-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.home-watchlist-price-block {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.home-watchlist-price {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #0c1218;
+}
+
+.home-watchlist-meter {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.06);
+  overflow: hidden;
+}
+
+.home-watchlist-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #00c805 0%, #0aa62c 100%);
+}
+
+@media (max-width: 720px) {
+  .quick-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hero-primary,
+  .home-watchlist-head,
+  .home-watchlist-meta,
+  .home-watchlist-symbol-row {
+    display: grid;
+    justify-content: stretch;
+  }
+}

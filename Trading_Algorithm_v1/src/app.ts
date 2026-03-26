@@ -1728,6 +1728,67 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     };
   };
 
+  const buildHomeDeck = async () => {
+    const deskBrief = await buildDeskBrief();
+    const context = deskBrief.brief.context;
+    const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
+    const latestBarTimestampBySymbol =
+      'latestBarTimestampBySymbol' in monitor ? monitor.latestBarTimestampBySymbol ?? {} : {};
+    const alerts = signalMonitorService?.listAlerts(20) ?? [];
+    const readyCount = alerts.filter((alert) => alert.riskDecision.allowed).length;
+    const reviewSummary = await signalReviewStore.summary();
+    const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
+    const research = marketResearchService?.status() ?? null;
+    const signalConfig = signalMonitorSettingsStore.get();
+    const watchlist = signalConfig.enabledSymbols.slice(0, 2).map((symbol) => {
+      const symbolResearch = research?.symbols?.find((entry) => entry.symbol === symbol);
+      const latestAlert = alerts.find((alert) => alert.symbol === symbol) ?? null;
+      return {
+        symbol,
+        latestPrice: symbolResearch?.latestPrice ?? null,
+        latestBarTimestamp: symbolResearch?.latestBarTimestamp ?? latestBarTimestampBySymbol[symbol],
+        researchDirection: symbolResearch?.direction ?? context.research?.direction ?? 'BALANCED',
+        researchConfidence:
+          typeof symbolResearch?.confidence === 'number' ? Number(symbolResearch.confidence.toFixed(2)) : null,
+        researchReason: compactText(symbolResearch?.reason ?? context.research?.reason, 120),
+        lead: context.research?.leadSymbol === symbol,
+        latestAlert: latestAlert
+          ? {
+              side: latestAlert.side,
+              setupType: latestAlert.setupType,
+              detectedAt: latestAlert.detectedAt,
+              finalScore:
+                typeof latestAlert.candidate.finalScore === 'number'
+                  ? Number(latestAlert.candidate.finalScore.toFixed(1))
+                  : null,
+              allowed: latestAlert.riskDecision.allowed
+            }
+          : null
+      };
+    });
+
+    return {
+      deck: {
+        generatedAt: context.generatedAt,
+        tone: deskBrief.brief.tone,
+        headline: deskBrief.brief.headline,
+        summary: deskBrief.brief.summary,
+        signalCount: alerts.length,
+        readyCount,
+        blockedCount: Math.max(0, alerts.length - readyCount),
+        reviewPending: reviewSummary.pending,
+        modelId: context.desk.rankingModelId,
+        lastRetrainedAt:
+          'lastRun' in training && typeof training.lastRun?.trainedAt === 'string'
+            ? training.lastRun.trainedAt
+            : 'lastTrainedAt' in training && typeof training.lastTrainedAt === 'string'
+              ? training.lastTrainedAt
+              : undefined,
+        watchlist
+      }
+    };
+  };
+
   const mobileRoot = path.resolve(process.cwd(), 'public', 'mobile');
 
   app.register(fastifyStatic, {
@@ -2096,6 +2157,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.get('/ai/desk-brief', async (_request, reply) => {
     return reply.status(200).send(await buildDeskBrief());
+  });
+
+  app.get('/home/deck', async (_request, reply) => {
+    return reply.status(200).send(await buildHomeDeck());
   });
 
   app.get('/calendar/events', async (request, reply) => {

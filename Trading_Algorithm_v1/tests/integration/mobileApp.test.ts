@@ -73,4 +73,18 @@ describe('mobile app endpoints', () => {
     expect(payload.brief.context).toBeTruthy();
     expect(payload.brief.context.macro.nextEvents.length).toBeLessThanOrEqual(3);
   });
+
+  it('serves a home deck payload for the home watchlist shell', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({ method: 'GET', path: '/home/deck' });
+    expect(response.statusCode).toBe(200);
+
+    const payload = response.json();
+    expect(payload.deck).toBeTruthy();
+    expect(payload.deck.watchlist).toBeTruthy();
+    expect(Array.isArray(payload.deck.watchlist)).toBe(true);
+    expect(payload.deck.watchlist.length).toBeLessThanOrEqual(2);
+    expect(typeof payload.deck.headline).toBe('string');
+  });
 });
