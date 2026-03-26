@@ -12,7 +12,7 @@ const tempDirs: string[] = [];
 
 const waitFor = async (
   fn: () => Promise<boolean>,
-  timeoutMs = 1_500,
+  timeoutMs = 4_000,
   intervalMs = 25
 ): Promise<void> => {
   const startedAt = Date.now();

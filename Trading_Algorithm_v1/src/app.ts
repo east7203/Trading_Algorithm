@@ -163,11 +163,16 @@ interface MarketResearchConfigInput {
   enabled: boolean;
   archivePath?: string;
   bootstrapCsvDir?: string;
+  statePath?: string;
   bootstrapRecursive: boolean;
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
   flipNotificationMinConfidence: number;
   evaluationMinutes: number;
+  proactiveMinConfidence: number;
+  experimentCooldownMinutes: number;
+  maxExperiments: number;
+  maxInsights: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -686,11 +691,19 @@ const resolveMarketResearchConfig = (
       path.resolve(process.cwd(), 'data', 'live', 'one-minute-bars.ndjson')
     ),
     bootstrapCsvDir: parseOptionalPathEnv('MARKET_RESEARCH_BOOTSTRAP_DIR'),
+    statePath: parseOptionalPathEnv(
+      'MARKET_RESEARCH_STATE_PATH',
+      path.resolve(process.cwd(), 'data', 'research', 'market-research-state.json')
+    ),
     bootstrapRecursive: parseBooleanEnv('MARKET_RESEARCH_BOOTSTRAP_RECURSIVE', true),
     maxBarsPerSymbol: parseIntEnv('MARKET_RESEARCH_MAX_BARS_PER_SYMBOL', 6_000, 500),
     focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
     flipNotificationMinConfidence: parseFloatEnv('MARKET_RESEARCH_FLIP_NOTIFY_CONFIDENCE', 0.55, 0, 1),
-    evaluationMinutes: parseIntEnv('MARKET_RESEARCH_EVALUATION_MINUTES', 60, 15, 240)
+    evaluationMinutes: parseIntEnv('MARKET_RESEARCH_EVALUATION_MINUTES', 60, 15, 240),
+    proactiveMinConfidence: parseFloatEnv('MARKET_RESEARCH_PROACTIVE_MIN_CONFIDENCE', 0.64, 0, 1),
+    experimentCooldownMinutes: parseIntEnv('MARKET_RESEARCH_EXPERIMENT_COOLDOWN_MINUTES', 45, 5, 720),
+    maxExperiments: parseIntEnv('MARKET_RESEARCH_MAX_EXPERIMENTS', 160, 12, 1000),
+    maxInsights: parseIntEnv('MARKET_RESEARCH_MAX_INSIGHTS', 48, 12, 200)
   };
 
   return {
@@ -1575,8 +1588,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             leadSymbol: research.overallTrend.leadSymbol,
             reason: compactText(research.overallTrend.reason, 160),
             hitRate: Number(research.performance.hitRate.toFixed(3)),
+            adaptiveHitRate: Number((research.performance.adaptiveHitRate ?? research.performance.hitRate).toFixed(3)),
             evaluatedPredictions: research.performance.evaluatedPredictions,
-            openPredictions: research.performance.openPredictions
+            openPredictions: research.performance.openPredictions,
+            bestThesis: research.knowledgeBase.bestThesis
+              ? {
+                  label: research.knowledgeBase.bestThesis.label,
+                  hitRate: Number(research.knowledgeBase.bestThesis.hitRate.toFixed(3)),
+                  sampleSize: research.knowledgeBase.bestThesis.evaluated
+                }
+              : null
           }
         : null,
       learning: {

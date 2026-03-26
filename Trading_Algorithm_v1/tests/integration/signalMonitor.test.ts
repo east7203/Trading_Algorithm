@@ -300,7 +300,7 @@ describe('signal monitor integration', () => {
         lookbackBars1m: 60,
         maxBarsPerSymbol: 500,
         escalationCheckIntervalMs: 25,
-        escalationDelaysMs: [200]
+        escalationDelaysMs: [750]
       }
     });
     contexts.push(ctx);
@@ -327,7 +327,7 @@ describe('signal monitor integration', () => {
     expect(alertsResponse.json().alerts[0].symbol).toBe('ES');
     expect(alertsResponse.json().alerts[0].reviewState.escalationCount).toBe(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 260));
+    await new Promise((resolve) => setTimeout(resolve, 820));
 
     const escalatedResponse = await ctx.app.inject({
       method: 'GET',

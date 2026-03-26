@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MarketResearchService } from '../../src/services/marketResearchService.js';
 import type { OneMinuteBar } from '../../src/training/historicalTrainer.js';
@@ -125,5 +128,65 @@ describe('market research service', () => {
     expect(status.performance.evaluatedPredictions).toBeGreaterThanOrEqual(1);
     expect(status.performance.winningPredictions).toBeGreaterThanOrEqual(1);
     expect(status.performance.hitRate).toBeGreaterThan(0);
+  });
+
+  it('opens proactive experiments and learns thesis performance', async () => {
+    const service = new MarketResearchService({
+      enabled: true,
+      bootstrapRecursive: true,
+      maxBarsPerSymbol: 1000,
+      focusSymbols: ['NQ', 'ES'],
+      evaluationMinutes: 60,
+      proactiveMinConfidence: 0.4
+    });
+
+    await service.start();
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T13:30:00.000Z', 20100),
+      ...buildTrendBars('ES', 'up', '2026-03-25T13:30:00.000Z', 5800)
+    ]);
+
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T17:31:00.000Z', 20750, 0.6),
+      ...buildTrendBars('ES', 'up', '2026-03-25T17:31:00.000Z', 5950, 0.4)
+    ]);
+
+    const status = service.status();
+    expect(status.performance.proactiveExperiments).toBeGreaterThanOrEqual(1);
+    expect(status.performance.evaluatedProactiveExperiments).toBeGreaterThanOrEqual(1);
+    expect(status.performance.proactiveHitRate).toBeGreaterThan(0);
+    expect(status.knowledgeBase.thesisPerformance.some((item) => item.thesis === 'ALIGNED_CONTINUATION')).toBe(true);
+    expect(status.knowledgeBase.recentInsights.length).toBeGreaterThan(0);
+  });
+
+  it('persists the research book so autonomous learning survives restarts', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'market-research-service-'));
+    const statePath = path.join(tempDir, 'research-state.json');
+    const config = {
+      enabled: true,
+      bootstrapRecursive: true,
+      maxBarsPerSymbol: 1000,
+      focusSymbols: ['NQ', 'ES'] as const,
+      statePath,
+      proactiveMinConfidence: 0.4
+    };
+
+    const first = new MarketResearchService(config);
+    await first.start();
+    await first.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T13:30:00.000Z', 20100),
+      ...buildTrendBars('ES', 'up', '2026-03-25T13:30:00.000Z', 5800)
+    ]);
+
+    const firstStatus = first.status();
+    expect(firstStatus.knowledgeBase.totalExperiments).toBeGreaterThanOrEqual(1);
+
+    const second = new MarketResearchService(config);
+    await second.start();
+
+    const secondStatus = second.status();
+    expect(secondStatus.data.statePath).toBe(statePath);
+    expect(secondStatus.knowledgeBase.totalExperiments).toBeGreaterThanOrEqual(firstStatus.knowledgeBase.totalExperiments);
+    expect(secondStatus.knowledgeBase.recentInsights.length).toBeGreaterThanOrEqual(1);
   });
 });

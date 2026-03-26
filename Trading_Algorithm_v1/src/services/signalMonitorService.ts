@@ -185,9 +185,13 @@ export const deriveResearchAiContext = (
     evaluatedPredictions: 0,
     hitRate: 0
   };
+  const effectiveResearchHitRate =
+    typeof researchPerformance.adaptiveHitRate === 'number'
+      ? researchPerformance.adaptiveHitRate
+      : researchPerformance.hitRate;
   const performanceMultiplier =
     researchPerformance.evaluatedPredictions >= 3
-      ? clamp(0.5 + researchPerformance.hitRate, 0.5, 1.35)
+      ? clamp(0.5 + effectiveResearchHitRate, 0.5, 1.35)
       : 1;
 
   if (overallTrend.direction === 'BALANCED') {

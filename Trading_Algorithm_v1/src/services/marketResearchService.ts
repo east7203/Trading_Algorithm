@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { SymbolCode, Timeframe } from '../domain/types.js';
 import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training/historicalTrainer.js';
 
@@ -37,9 +38,69 @@ export interface MarketResearchPredictionEpisode {
   openedAt: string;
   evaluatedAt?: string;
   leadSymbol?: SymbolCode;
+  symbol?: SymbolCode;
   confidence: number;
   outcome?: 'WIN' | 'LOSS';
   moveBySymbol: Partial<Record<SymbolCode, number>>;
+  thesis?: MarketResearchExperimentThesis;
+  thesisSummary?: string;
+  source?: MarketResearchExperimentSource;
+}
+
+export type MarketResearchExperimentThesis =
+  | 'TREND_FLIP_DIRECTIONAL'
+  | 'ALIGNED_CONTINUATION'
+  | 'LEADERSHIP_BREAKOUT'
+  | 'DIVERGENCE_RESOLUTION';
+
+export type MarketResearchExperimentSource = 'TREND_FLIP' | 'PROACTIVE';
+
+export interface MarketResearchExperiment extends MarketResearchPredictionEpisode {
+  id: string;
+  thesis: MarketResearchExperimentThesis;
+  thesisSummary: string;
+  source: MarketResearchExperimentSource;
+  horizonMinutes: number;
+  evidence: string[];
+  evaluationMode: 'ALL_SYMBOLS' | 'PRIMARY_SYMBOL';
+}
+
+export interface MarketResearchInsight {
+  kind: 'EXPERIMENT_OPENED' | 'EXPERIMENT_EVALUATED';
+  at: string;
+  thesis: MarketResearchExperimentThesis;
+  direction: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>;
+  symbol?: SymbolCode;
+  outcome?: 'WIN' | 'LOSS';
+  headline: string;
+  detail: string;
+}
+
+export interface MarketResearchThesisPerformanceSummary {
+  thesis: MarketResearchExperimentThesis;
+  label: string;
+  total: number;
+  open: number;
+  evaluated: number;
+  wins: number;
+  losses: number;
+  hitRate: number;
+  averageConfidence: number;
+  lastOpenedAt?: string;
+  lastEvaluatedAt?: string;
+  lastOutcome?: 'WIN' | 'LOSS';
+}
+
+export interface MarketResearchKnowledgeBaseSummary {
+  totalExperiments: number;
+  openExperiments: number;
+  evaluatedExperiments: number;
+  hitRate: number;
+  proactiveHitRate: number;
+  bestThesis?: MarketResearchThesisPerformanceSummary;
+  thesisPerformance: MarketResearchThesisPerformanceSummary[];
+  activeHypotheses: MarketResearchExperiment[];
+  recentInsights: MarketResearchInsight[];
 }
 
 export interface MarketResearchPerformanceSummary {
@@ -50,6 +111,10 @@ export interface MarketResearchPerformanceSummary {
   winningPredictions: number;
   losingPredictions: number;
   hitRate: number;
+  proactiveExperiments: number;
+  evaluatedProactiveExperiments: number;
+  proactiveHitRate: number;
+  adaptiveHitRate: number;
   lastEvaluatedAt?: string;
   lastOutcome?: 'WIN' | 'LOSS';
   recentEpisodes: MarketResearchPredictionEpisode[];
@@ -66,12 +131,17 @@ export interface MarketResearchStatus {
   data: {
     archivePath?: string;
     bootstrapCsvDir?: string;
+    statePath?: string;
     bootstrapRecursive: boolean;
     maxBarsPerSymbol: number;
     focusSymbols: SymbolCode[];
     analysisTimeframes: Array<Extract<Timeframe, '5m' | '15m' | '1H'>>;
+    proactiveMinConfidence: number;
+    experimentCooldownMinutes: number;
+    maxExperiments: number;
   };
   performance: MarketResearchPerformanceSummary;
+  knowledgeBase: MarketResearchKnowledgeBaseSummary;
 }
 
 export interface MarketResearchTrendFlipEvent {
@@ -85,15 +155,28 @@ export interface MarketResearchConfig {
   enabled: boolean;
   archivePath?: string;
   bootstrapCsvDir?: string;
+  statePath?: string;
   bootstrapRecursive: boolean;
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
   flipNotificationMinConfidence?: number;
   evaluationMinutes?: number;
+  proactiveMinConfidence?: number;
+  experimentCooldownMinutes?: number;
+  maxExperiments?: number;
+  maxInsights?: number;
   onTrendFlip?: (event: MarketResearchTrendFlipEvent) => Promise<void> | void;
 }
 
 const ANALYSIS_TIMEFRAMES: Array<Extract<Timeframe, '5m' | '15m' | '1H'>> = ['5m', '15m', '1H'];
+const MAX_RECENT_RESEARCH_ITEMS = 6;
+const DEFAULT_MAX_EXPERIMENTS = 160;
+const DEFAULT_MAX_INSIGHTS = 48;
+
+interface MarketResearchPersistedState {
+  experiments: MarketResearchExperiment[];
+  insights: MarketResearchInsight[];
+}
 
 const clamp = (value: number, min: number, max: number): number => {
   if (value < min) {
@@ -107,6 +190,173 @@ const clamp = (value: number, min: number, max: number): number => {
 
 const takeLast = <T>(items: T[], count: number): T[] =>
   items.length <= count ? items : items.slice(items.length - count);
+
+const round = (value: number, digits = 2): number => Number(value.toFixed(digits));
+
+const isDirectionalResearchTrend = (
+  value: ResearchTrendDirection
+): value is Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'> => value === 'BULLISH' || value === 'BEARISH';
+
+const thesisLabel = (thesis: MarketResearchExperimentThesis): string => {
+  if (thesis === 'TREND_FLIP_DIRECTIONAL') {
+    return 'Trend Flip';
+  }
+  if (thesis === 'ALIGNED_CONTINUATION') {
+    return 'Aligned Continuation';
+  }
+  if (thesis === 'LEADERSHIP_BREAKOUT') {
+    return 'Leadership Breakout';
+  }
+  return 'Divergence Resolution';
+};
+
+const thesisHorizonMinutes = (
+  thesis: MarketResearchExperimentThesis,
+  evaluationMinutes: number
+): number => {
+  if (thesis === 'LEADERSHIP_BREAKOUT') {
+    return Math.max(30, Math.round(evaluationMinutes * 0.75));
+  }
+  if (thesis === 'DIVERGENCE_RESOLUTION') {
+    return Math.max(45, Math.round(evaluationMinutes * 1.25));
+  }
+  return evaluationMinutes;
+};
+
+const normalizeIsoTimestamp = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms)) {
+    return undefined;
+  }
+  return new Date(ms).toISOString();
+};
+
+const normalizeSymbol = (value: unknown): SymbolCode | undefined => (value === 'NQ' || value === 'ES' ? value : undefined);
+
+const normalizeDirectionalOutcome = (value: unknown): 'WIN' | 'LOSS' | undefined =>
+  value === 'WIN' || value === 'LOSS' ? value : undefined;
+
+const normalizeDirectionalTrend = (
+  value: unknown
+): Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'> | undefined => (value === 'BULLISH' || value === 'BEARISH' ? value : undefined);
+
+const normalizeMoveBySymbol = (value: unknown): Partial<Record<SymbolCode, number>> => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const candidate = value as Partial<Record<SymbolCode, unknown>>;
+  const normalized: Partial<Record<SymbolCode, number>> = {};
+  for (const symbol of ['NQ', 'ES'] as const) {
+    const move = candidate[symbol];
+    if (typeof move === 'number' && Number.isFinite(move)) {
+      normalized[symbol] = round(move, 2);
+    }
+  }
+  return normalized;
+};
+
+const normalizeExperiment = (value: unknown): MarketResearchExperiment | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<MarketResearchExperiment>;
+  const id = typeof candidate.id === 'string' && candidate.id.trim().length > 0 ? candidate.id.trim() : undefined;
+  const thesis =
+    candidate.thesis === 'TREND_FLIP_DIRECTIONAL'
+      || candidate.thesis === 'ALIGNED_CONTINUATION'
+      || candidate.thesis === 'LEADERSHIP_BREAKOUT'
+      || candidate.thesis === 'DIVERGENCE_RESOLUTION'
+      ? candidate.thesis
+      : undefined;
+  const source = candidate.source === 'TREND_FLIP' || candidate.source === 'PROACTIVE' ? candidate.source : undefined;
+  const direction = normalizeDirectionalTrend(candidate.direction);
+  const openedAt = normalizeIsoTimestamp(candidate.openedAt);
+  if (!id || !thesis || !source || !direction || !openedAt) {
+    return null;
+  }
+
+  const thesisSummary =
+    typeof candidate.thesisSummary === 'string' && candidate.thesisSummary.trim().length > 0
+      ? candidate.thesisSummary.trim()
+      : thesisLabel(thesis);
+  const confidence = typeof candidate.confidence === 'number' && Number.isFinite(candidate.confidence)
+    ? clamp(candidate.confidence, 0, 1)
+    : 0;
+  const evaluatedAt = normalizeIsoTimestamp(candidate.evaluatedAt);
+  const horizonMinutes =
+    typeof candidate.horizonMinutes === 'number' && Number.isFinite(candidate.horizonMinutes)
+      ? Math.max(5, Math.round(candidate.horizonMinutes))
+      : 60;
+  const evaluationMode =
+    candidate.evaluationMode === 'PRIMARY_SYMBOL' || candidate.evaluationMode === 'ALL_SYMBOLS'
+      ? candidate.evaluationMode
+      : 'ALL_SYMBOLS';
+
+  return {
+    id,
+    thesis,
+    thesisSummary,
+    source,
+    direction,
+    openedAt,
+    evaluatedAt,
+    leadSymbol: normalizeSymbol(candidate.leadSymbol),
+    symbol: normalizeSymbol(candidate.symbol),
+    confidence: round(confidence, 2),
+    outcome: normalizeDirectionalOutcome(candidate.outcome),
+    moveBySymbol: normalizeMoveBySymbol(candidate.moveBySymbol),
+    horizonMinutes,
+    evidence: Array.isArray(candidate.evidence)
+      ? candidate.evidence.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 6)
+      : [],
+    evaluationMode
+  };
+};
+
+const normalizeInsight = (value: unknown): MarketResearchInsight | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<MarketResearchInsight>;
+  const kind =
+    candidate.kind === 'EXPERIMENT_OPENED' || candidate.kind === 'EXPERIMENT_EVALUATED' ? candidate.kind : undefined;
+  const thesis =
+    candidate.thesis === 'TREND_FLIP_DIRECTIONAL'
+      || candidate.thesis === 'ALIGNED_CONTINUATION'
+      || candidate.thesis === 'LEADERSHIP_BREAKOUT'
+      || candidate.thesis === 'DIVERGENCE_RESOLUTION'
+      ? candidate.thesis
+      : undefined;
+  const direction = normalizeDirectionalTrend(candidate.direction);
+  const at = normalizeIsoTimestamp(candidate.at);
+  const headline = typeof candidate.headline === 'string' && candidate.headline.trim().length > 0 ? candidate.headline.trim() : undefined;
+  const detail = typeof candidate.detail === 'string' && candidate.detail.trim().length > 0 ? candidate.detail.trim() : undefined;
+
+  if (!kind || !thesis || !direction || !at || !headline || !detail) {
+    return null;
+  }
+
+  return {
+    kind,
+    thesis,
+    direction,
+    at,
+    symbol: normalizeSymbol(candidate.symbol),
+    outcome: normalizeDirectionalOutcome(candidate.outcome),
+    headline,
+    detail
+  };
+};
 
 const listCsvFiles = async (dirPath: string, recursive: boolean): Promise<string[]> => {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -300,7 +550,22 @@ const defaultPerformanceSummary = (evaluationMinutes: number): MarketResearchPer
   winningPredictions: 0,
   losingPredictions: 0,
   hitRate: 0,
+  proactiveExperiments: 0,
+  evaluatedProactiveExperiments: 0,
+  proactiveHitRate: 0,
+  adaptiveHitRate: 0,
   recentEpisodes: []
+});
+
+const defaultKnowledgeBaseSummary = (): MarketResearchKnowledgeBaseSummary => ({
+  totalExperiments: 0,
+  openExperiments: 0,
+  evaluatedExperiments: 0,
+  hitRate: 0,
+  proactiveHitRate: 0,
+  thesisPerformance: [],
+  activeHypotheses: [],
+  recentInsights: []
 });
 
 const buildOverallTrend = (symbols: MarketResearchSymbolStatus[]): MarketResearchOverallTrend => {
@@ -385,7 +650,9 @@ export class MarketResearchService {
   private overallTrend: MarketResearchOverallTrend = defaultOverallTrend();
   private symbolStatuses: MarketResearchSymbolStatus[] = [];
   private initialComputeComplete = false;
-  private predictionEpisodes: MarketResearchPredictionEpisode[] = [];
+  private experiments: MarketResearchExperiment[] = [];
+  private insights: MarketResearchInsight[] = [];
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly config: MarketResearchConfig) {}
 
@@ -393,30 +660,60 @@ export class MarketResearchService {
     return this.config.evaluationMinutes ?? 60;
   }
 
+  private get proactiveMinConfidence(): number {
+    return this.config.proactiveMinConfidence ?? 0.64;
+  }
+
+  private get experimentCooldownMinutes(): number {
+    return this.config.experimentCooldownMinutes ?? 45;
+  }
+
+  private get maxExperiments(): number {
+    return this.config.maxExperiments ?? DEFAULT_MAX_EXPERIMENTS;
+  }
+
+  private get maxInsights(): number {
+    return this.config.maxInsights ?? DEFAULT_MAX_INSIGHTS;
+  }
+
   private buildPerformanceSummary(): MarketResearchPerformanceSummary {
-    if (this.predictionEpisodes.length === 0) {
+    if (this.experiments.length === 0) {
       return defaultPerformanceSummary(this.evaluationMinutes);
     }
-    const evaluatedPredictions = this.predictionEpisodes.filter((episode) => episode.outcome);
+    const evaluatedPredictions = this.experiments.filter((episode) => episode.outcome);
     const winningPredictions = evaluatedPredictions.filter((episode) => episode.outcome === 'WIN').length;
     const losingPredictions = evaluatedPredictions.filter((episode) => episode.outcome === 'LOSS').length;
+    const proactiveExperiments = this.experiments.filter((episode) => episode.source === 'PROACTIVE');
+    const evaluatedProactiveExperiments = proactiveExperiments.filter((episode) => episode.outcome);
+    const proactiveWins = evaluatedProactiveExperiments.filter((episode) => episode.outcome === 'WIN').length;
     const lastEvaluatedEpisode = evaluatedPredictions
       .slice()
       .sort((left, right) => (right.evaluatedAt ?? '').localeCompare(left.evaluatedAt ?? ''))[0];
+    const hitRate =
+      evaluatedPredictions.length > 0 ? round(winningPredictions / evaluatedPredictions.length, 2) : 0;
+    const proactiveHitRate =
+      evaluatedProactiveExperiments.length > 0 ? round(proactiveWins / evaluatedProactiveExperiments.length, 2) : 0;
+    const adaptiveHitRate =
+      evaluatedProactiveExperiments.length > 0
+        ? round(hitRate * 0.55 + proactiveHitRate * 0.45, 2)
+        : hitRate;
 
     return {
       evaluationMinutes: this.evaluationMinutes,
-      totalPredictions: this.predictionEpisodes.length,
-      openPredictions: this.predictionEpisodes.length - evaluatedPredictions.length,
+      totalPredictions: this.experiments.length,
+      openPredictions: this.experiments.length - evaluatedPredictions.length,
       evaluatedPredictions: evaluatedPredictions.length,
       winningPredictions,
       losingPredictions,
-      hitRate:
-        evaluatedPredictions.length > 0 ? Number((winningPredictions / evaluatedPredictions.length).toFixed(2)) : 0,
+      hitRate,
+      proactiveExperiments: proactiveExperiments.length,
+      evaluatedProactiveExperiments: evaluatedProactiveExperiments.length,
+      proactiveHitRate,
+      adaptiveHitRate,
       lastEvaluatedAt: lastEvaluatedEpisode?.evaluatedAt,
       lastOutcome: lastEvaluatedEpisode?.outcome,
-      recentEpisodes: this.predictionEpisodes
-        .slice(-6)
+      recentEpisodes: this.experiments
+        .slice(-MAX_RECENT_RESEARCH_ITEMS)
         .reverse()
         .map((episode) => ({
           ...episode,
@@ -425,66 +722,294 @@ export class MarketResearchService {
     };
   }
 
+  private buildKnowledgeBaseSummary(): MarketResearchKnowledgeBaseSummary {
+    if (this.experiments.length === 0) {
+      return defaultKnowledgeBaseSummary();
+    }
+
+    const evaluated = this.experiments.filter((experiment) => experiment.outcome);
+    const proactive = this.experiments.filter((experiment) => experiment.source === 'PROACTIVE');
+    const evaluatedProactive = proactive.filter((experiment) => experiment.outcome);
+    const grouped = new Map<MarketResearchExperimentThesis, MarketResearchExperiment[]>();
+    for (const experiment of this.experiments) {
+      const existing = grouped.get(experiment.thesis) ?? [];
+      existing.push(experiment);
+      grouped.set(experiment.thesis, existing);
+    }
+
+    const thesisPerformance = Array.from(grouped.entries())
+      .map(([thesis, experiments]) => {
+        const evaluatedExperiments = experiments.filter((experiment) => experiment.outcome);
+        const wins = evaluatedExperiments.filter((experiment) => experiment.outcome === 'WIN').length;
+        const losses = evaluatedExperiments.length - wins;
+        const lastOpened = experiments
+          .slice()
+          .sort((left, right) => right.openedAt.localeCompare(left.openedAt))[0];
+        const lastEvaluated = evaluatedExperiments
+          .slice()
+          .sort((left, right) => (right.evaluatedAt ?? '').localeCompare(left.evaluatedAt ?? ''))[0];
+
+        return {
+          thesis,
+          label: thesisLabel(thesis),
+          total: experiments.length,
+          open: experiments.length - evaluatedExperiments.length,
+          evaluated: evaluatedExperiments.length,
+          wins,
+          losses,
+          hitRate: evaluatedExperiments.length > 0 ? round(wins / evaluatedExperiments.length, 2) : 0,
+          averageConfidence: round(average(experiments.map((experiment) => experiment.confidence)), 2),
+          lastOpenedAt: lastOpened?.openedAt,
+          lastEvaluatedAt: lastEvaluated?.evaluatedAt,
+          lastOutcome: lastEvaluated?.outcome
+        } satisfies MarketResearchThesisPerformanceSummary;
+      })
+      .sort((left, right) => {
+        if (right.evaluated !== left.evaluated) {
+          return right.evaluated - left.evaluated;
+        }
+        if (right.hitRate !== left.hitRate) {
+          return right.hitRate - left.hitRate;
+        }
+        return right.total - left.total;
+      });
+
+    const bestThesis = thesisPerformance.find((item) => item.evaluated >= 2) ?? thesisPerformance[0];
+    const evaluatedWins = evaluated.filter((experiment) => experiment.outcome === 'WIN').length;
+    const proactiveWins = evaluatedProactive.filter((experiment) => experiment.outcome === 'WIN').length;
+
+    return {
+      totalExperiments: this.experiments.length,
+      openExperiments: this.experiments.length - evaluated.length,
+      evaluatedExperiments: evaluated.length,
+      hitRate: evaluated.length > 0 ? round(evaluatedWins / evaluated.length, 2) : 0,
+      proactiveHitRate: evaluatedProactive.length > 0 ? round(proactiveWins / evaluatedProactive.length, 2) : 0,
+      bestThesis,
+      thesisPerformance: thesisPerformance.slice(0, 4),
+      activeHypotheses: this.experiments
+        .filter((experiment) => !experiment.outcome)
+        .slice(-MAX_RECENT_RESEARCH_ITEMS)
+        .reverse()
+        .map((experiment) => ({
+          ...experiment,
+          evidence: [...experiment.evidence],
+          moveBySymbol: { ...experiment.moveBySymbol }
+        })),
+      recentInsights: this.insights
+        .slice(-MAX_RECENT_RESEARCH_ITEMS)
+        .reverse()
+        .map((insight) => ({ ...insight }))
+    };
+  }
+
+  private buildEntryPrices(symbolStatuses: MarketResearchSymbolStatus[]): Partial<Record<SymbolCode, number>> {
+    return Object.fromEntries(
+      symbolStatuses
+        .filter((status) => typeof status.latestPrice === 'number')
+        .map((status) => [status.symbol, status.latestPrice as number])
+    ) as Partial<Record<SymbolCode, number>>;
+  }
+
+  private appendInsight(insight: MarketResearchInsight): void {
+    this.insights.push(insight);
+    if (this.insights.length > this.maxInsights) {
+      this.insights = this.insights.slice(-this.maxInsights);
+    }
+  }
+
+  private trimExperimentHistory(): void {
+    if (this.experiments.length > this.maxExperiments) {
+      this.experiments = this.experiments.slice(-this.maxExperiments);
+    }
+  }
+
+  private canOpenExperiment(
+    thesis: MarketResearchExperimentThesis,
+    direction: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>,
+    symbol: SymbolCode | undefined,
+    openedAt: string
+  ): boolean {
+    const openedAtMs = Date.parse(openedAt);
+    const cooldownMs = this.experimentCooldownMinutes * 60_000;
+    return !this.experiments.some((experiment) => {
+      if (experiment.thesis !== thesis || experiment.direction !== direction || experiment.symbol !== symbol) {
+        return false;
+      }
+      if (!experiment.outcome) {
+        return true;
+      }
+      return openedAtMs - Date.parse(experiment.openedAt) < cooldownMs;
+    });
+  }
+
+  private openExperiment(candidate: Omit<MarketResearchExperiment, 'id'>): boolean {
+    if (!this.canOpenExperiment(candidate.thesis, candidate.direction, candidate.symbol, candidate.openedAt)) {
+      return false;
+    }
+
+    const experiment: MarketResearchExperiment = {
+      ...candidate,
+      id: `${candidate.openedAt}|${candidate.thesis}|${candidate.symbol ?? candidate.leadSymbol ?? 'market'}`
+    };
+    this.experiments.push(experiment);
+    this.trimExperimentHistory();
+    this.appendInsight({
+      kind: 'EXPERIMENT_OPENED',
+      at: candidate.openedAt,
+      thesis: candidate.thesis,
+      direction: candidate.direction,
+      symbol: candidate.symbol,
+      headline: `${thesisLabel(candidate.thesis)} opened ${candidate.direction.toLowerCase()}.`,
+      detail: candidate.thesisSummary
+    });
+    return true;
+  }
+
   private maybeOpenPrediction(
     previousTrend: MarketResearchOverallTrend,
     nextTrend: MarketResearchOverallTrend,
     symbolStatuses: MarketResearchSymbolStatus[],
     changedAt: string
-  ): void {
-    if (!['BULLISH', 'BEARISH'].includes(nextTrend.direction)) {
-      return;
+  ): boolean {
+    if (!isDirectionalResearchTrend(nextTrend.direction)) {
+      return false;
     }
     if (previousTrend.direction === nextTrend.direction) {
-      return;
+      return false;
     }
 
-    const entryPrices = Object.fromEntries(
-      symbolStatuses
-        .filter((status) => typeof status.latestPrice === 'number')
-        .map((status) => [status.symbol, status.latestPrice as number])
-    ) as Partial<Record<SymbolCode, number>>;
-
-    this.predictionEpisodes.push({
-      direction: nextTrend.direction as Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>,
+    return this.openExperiment({
+      thesis: 'TREND_FLIP_DIRECTIONAL',
+      thesisSummary: `The autonomous trend flipped ${nextTrend.direction.toLowerCase()} and is tracking whether that directional change follows through.`,
+      source: 'TREND_FLIP',
+      direction: nextTrend.direction,
       openedAt: changedAt,
       leadSymbol: nextTrend.leadSymbol,
+      symbol: nextTrend.leadSymbol,
       confidence: nextTrend.confidence,
-      moveBySymbol: entryPrices
+      moveBySymbol: this.buildEntryPrices(symbolStatuses),
+      horizonMinutes: thesisHorizonMinutes('TREND_FLIP_DIRECTIONAL', this.evaluationMinutes),
+      evidence: takeLast(nextTrend.reasons, 3),
+      evaluationMode: 'ALL_SYMBOLS'
     });
-
-    if (this.predictionEpisodes.length > 48) {
-      this.predictionEpisodes = this.predictionEpisodes.slice(-48);
-    }
   }
 
-  private evaluatePredictions(changedAt: string, symbolStatuses: MarketResearchSymbolStatus[]): void {
+  private maybeOpenProactiveExperiments(
+    nextTrend: MarketResearchOverallTrend,
+    symbolStatuses: MarketResearchSymbolStatus[],
+    changedAt: string
+  ): boolean {
+    let opened = false;
+    const leadStatus = nextTrend.leadSymbol
+      ? symbolStatuses.find((status) => status.symbol === nextTrend.leadSymbol)
+      : undefined;
+
+    if (isDirectionalResearchTrend(nextTrend.direction) && nextTrend.aligned && nextTrend.confidence >= this.proactiveMinConfidence) {
+      opened =
+        this.openExperiment({
+          thesis: 'ALIGNED_CONTINUATION',
+          thesisSummary: `${nextTrend.direction === 'BULLISH' ? 'Bullish' : 'Bearish'} continuation experiment while NQ and ES are aligned across the research stack.`,
+          source: 'PROACTIVE',
+          direction: nextTrend.direction,
+          openedAt: changedAt,
+          leadSymbol: nextTrend.leadSymbol,
+          confidence: nextTrend.confidence,
+          moveBySymbol: this.buildEntryPrices(symbolStatuses),
+          horizonMinutes: thesisHorizonMinutes('ALIGNED_CONTINUATION', this.evaluationMinutes),
+          evidence: [
+            nextTrend.reason,
+            ...symbolStatuses.flatMap((status) => takeLast(status.reasons, 1))
+          ].slice(0, 4),
+          evaluationMode: 'ALL_SYMBOLS'
+        }) || opened;
+    }
+
+    if (
+      isDirectionalResearchTrend(nextTrend.direction)
+      && !nextTrend.aligned
+      && leadStatus
+      && leadStatus.direction === nextTrend.direction
+      && leadStatus.confidence >= this.proactiveMinConfidence
+      && Math.abs(leadStatus.compositeScore) >= 1.15
+    ) {
+      opened =
+        this.openExperiment({
+          thesis: 'LEADERSHIP_BREAKOUT',
+          thesisSummary: `${leadStatus.symbol} is leading a ${nextTrend.direction.toLowerCase()} breakout before full breadth confirms.`,
+          source: 'PROACTIVE',
+          direction: nextTrend.direction,
+          openedAt: changedAt,
+          leadSymbol: leadStatus.symbol,
+          symbol: leadStatus.symbol,
+          confidence: leadStatus.confidence,
+          moveBySymbol: this.buildEntryPrices(symbolStatuses),
+          horizonMinutes: thesisHorizonMinutes('LEADERSHIP_BREAKOUT', this.evaluationMinutes),
+          evidence: [leadStatus.reason, ...takeLast(leadStatus.reasons, 2)],
+          evaluationMode: 'PRIMARY_SYMBOL'
+        }) || opened;
+    }
+
+    if (nextTrend.direction === 'STAND_ASIDE' && symbolStatuses.length >= 2) {
+      const [lead, lag] = symbolStatuses.slice().sort((left, right) => Math.abs(right.compositeScore) - Math.abs(left.compositeScore));
+      if (
+        lead
+        && lag
+        && lead.direction !== 'BALANCED'
+        && lag.direction !== 'BALANCED'
+        && lead.direction !== lag.direction
+        && lead.confidence >= this.proactiveMinConfidence
+        && Math.abs(lead.compositeScore) - Math.abs(lag.compositeScore) >= 0.45
+      ) {
+        opened =
+          this.openExperiment({
+            thesis: 'DIVERGENCE_RESOLUTION',
+            thesisSummary: `${lead.symbol} is leading the divergence. The experiment tracks whether the tape resolves in ${lead.symbol}'s ${lead.direction.toLowerCase()} direction.`,
+            source: 'PROACTIVE',
+            direction: lead.direction,
+            openedAt: changedAt,
+            leadSymbol: lead.symbol,
+            symbol: lead.symbol,
+            confidence: lead.confidence,
+            moveBySymbol: this.buildEntryPrices(symbolStatuses),
+            horizonMinutes: thesisHorizonMinutes('DIVERGENCE_RESOLUTION', this.evaluationMinutes),
+            evidence: [nextTrend.reason, lead.reason, lag.reason],
+            evaluationMode: 'PRIMARY_SYMBOL'
+          }) || opened;
+      }
+    }
+
+    return opened;
+  }
+
+  private evaluateExperiments(changedAt: string, symbolStatuses: MarketResearchSymbolStatus[]): boolean {
     const nowMs = Date.parse(changedAt);
-    const horizonMs = this.evaluationMinutes * 60_000;
     const latestPrices = new Map(
       symbolStatuses
         .filter((status) => typeof status.latestPrice === 'number')
         .map((status) => [status.symbol, status.latestPrice as number])
     );
+    let changed = false;
 
-    this.predictionEpisodes = this.predictionEpisodes.map((episode) => {
-      if (episode.outcome || nowMs - Date.parse(episode.openedAt) < horizonMs) {
-        return episode;
+    this.experiments = this.experiments.map((experiment) => {
+      if (experiment.outcome || nowMs - Date.parse(experiment.openedAt) < experiment.horizonMinutes * 60_000) {
+        return experiment;
       }
 
-      const directionalMoves = Object.entries(episode.moveBySymbol)
-        .map(([symbol, entryPrice]) => {
-          if (entryPrice === undefined) {
+      const trackedSymbols =
+        experiment.evaluationMode === 'PRIMARY_SYMBOL' && experiment.symbol
+          ? [experiment.symbol]
+          : (Object.keys(experiment.moveBySymbol) as SymbolCode[]);
+      const directionalMoves = trackedSymbols
+        .map((symbol) => {
+          const entryPrice = experiment.moveBySymbol[symbol];
+          const latestPrice = latestPrices.get(symbol);
+          if (entryPrice === undefined || latestPrice === undefined) {
             return undefined;
           }
-          const latestPrice = latestPrices.get(symbol as SymbolCode);
-          if (latestPrice === undefined) {
-            return undefined;
-          }
-
           const rawMove = latestPrice - entryPrice;
           return {
-            symbol: symbol as SymbolCode,
-            move: episode.direction === 'BULLISH' ? rawMove : -rawMove,
+            symbol,
+            move: experiment.direction === 'BULLISH' ? rawMove : -rawMove,
             rawMove
           };
         })
@@ -492,19 +1017,39 @@ export class MarketResearchService {
           (value): value is { symbol: SymbolCode; move: number; rawMove: number } => typeof value?.move === 'number'
         );
 
+      if (directionalMoves.length === 0) {
+        return experiment;
+      }
+
+      changed = true;
       const wins = directionalMoves.filter((value) => value.move > 0).length;
       const losses = directionalMoves.length - wins;
+      const aggregateMove = directionalMoves.reduce((sum, value) => sum + value.move, 0);
+      const outcome = wins === losses ? (aggregateMove > 0 ? 'WIN' : 'LOSS') : wins > losses ? 'WIN' : 'LOSS';
       const updatedMoveBySymbol = Object.fromEntries(
-        directionalMoves.map((value) => [value.symbol, Number(value.rawMove.toFixed(2))])
+        directionalMoves.map((value) => [value.symbol, round(value.rawMove, 2)])
       ) as Partial<Record<SymbolCode, number>>;
 
+      this.appendInsight({
+        kind: 'EXPERIMENT_EVALUATED',
+        at: changedAt,
+        thesis: experiment.thesis,
+        direction: experiment.direction,
+        symbol: experiment.symbol,
+        outcome,
+        headline: `${thesisLabel(experiment.thesis)} ${outcome === 'WIN' ? 'worked' : 'failed'}.`,
+        detail: `${experiment.thesisSummary} Outcome after ${experiment.horizonMinutes}m: ${outcome}.`
+      });
+
       return {
-        ...episode,
+        ...experiment,
         evaluatedAt: changedAt,
-        outcome: wins > losses ? 'WIN' : 'LOSS',
+        outcome,
         moveBySymbol: updatedMoveBySymbol
       };
     });
+
+    return changed;
   }
 
   private shouldNotifyTrendFlip(
@@ -538,13 +1083,19 @@ export class MarketResearchService {
         .at(-1) ?? new Date().toISOString();
     const shouldNotifyTrendFlip = this.shouldNotifyTrendFlip(previousTrend, nextTrend);
 
-    this.maybeOpenPrediction(previousTrend, nextTrend, symbols, changedAt);
-    this.evaluatePredictions(changedAt, symbols);
+    const openedTrendFlipExperiment = this.maybeOpenPrediction(previousTrend, nextTrend, symbols, changedAt);
+    const openedProactiveExperiments = this.maybeOpenProactiveExperiments(nextTrend, symbols, changedAt);
+    const evaluatedExperiments = this.evaluateExperiments(changedAt, symbols);
+    const researchBookChanged = openedTrendFlipExperiment || openedProactiveExperiments || evaluatedExperiments;
 
     this.symbolStatuses = symbols;
     this.overallTrend = nextTrend;
     this.lastComputedAt = changedAt;
     this.initialComputeComplete = true;
+
+    if (researchBookChanged) {
+      await this.persistState();
+    }
 
     if (shouldNotifyTrendFlip) {
       await this.config.onTrendFlip?.({
@@ -581,6 +1132,55 @@ export class MarketResearchService {
 
       this.barsBySymbol.set(bar.symbol, existing);
     }
+  }
+
+  private async loadPersistedState(): Promise<void> {
+    if (!this.config.statePath) {
+      return;
+    }
+
+    try {
+      const raw = await fs.readFile(this.config.statePath, 'utf8');
+      const parsed = JSON.parse(raw) as Partial<MarketResearchPersistedState>;
+      this.experiments = Array.isArray(parsed.experiments)
+        ? parsed.experiments.map((item) => normalizeExperiment(item)).filter((item): item is MarketResearchExperiment => item !== null)
+        : [];
+      this.insights = Array.isArray(parsed.insights)
+        ? parsed.insights.map((item) => normalizeInsight(item)).filter((item): item is MarketResearchInsight => item !== null)
+        : [];
+      this.trimExperimentHistory();
+      if (this.insights.length > this.maxInsights) {
+        this.insights = this.insights.slice(-this.maxInsights);
+      }
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== 'ENOENT') {
+        this.lastError = err.message;
+      }
+      this.experiments = [];
+      this.insights = [];
+    }
+  }
+
+  private async persistState(): Promise<void> {
+    if (!this.config.statePath) {
+      return;
+    }
+
+    const snapshot: MarketResearchPersistedState = {
+      experiments: this.experiments.map((experiment) => ({
+        ...experiment,
+        evidence: [...experiment.evidence],
+        moveBySymbol: { ...experiment.moveBySymbol }
+      })),
+      insights: this.insights.map((insight) => ({ ...insight }))
+    };
+
+    this.writeChain = this.writeChain.then(async () => {
+      await fs.mkdir(path.dirname(this.config.statePath as string), { recursive: true });
+      await fs.writeFile(this.config.statePath as string, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+    });
+    await this.writeChain;
   }
 
   private async loadArchiveBars(): Promise<void> {
@@ -636,6 +1236,7 @@ export class MarketResearchService {
 
     this.started = true;
     try {
+      await this.loadPersistedState();
       await this.loadArchiveBars();
       await this.loadBootstrapCsv();
       await this.recompute();
@@ -678,12 +1279,17 @@ export class MarketResearchService {
       data: {
         archivePath: this.config.archivePath,
         bootstrapCsvDir: this.config.bootstrapCsvDir,
+        statePath: this.config.statePath,
         bootstrapRecursive: this.config.bootstrapRecursive,
         maxBarsPerSymbol: this.config.maxBarsPerSymbol,
         focusSymbols: [...this.config.focusSymbols],
-        analysisTimeframes: [...ANALYSIS_TIMEFRAMES]
+        analysisTimeframes: [...ANALYSIS_TIMEFRAMES],
+        proactiveMinConfidence: this.proactiveMinConfidence,
+        experimentCooldownMinutes: this.experimentCooldownMinutes,
+        maxExperiments: this.maxExperiments
       },
-      performance: this.buildPerformanceSummary()
+      performance: this.buildPerformanceSummary(),
+      knowledgeBase: this.buildKnowledgeBaseSummary()
     };
   }
 }
