@@ -1757,11 +1757,29 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               side: latestAlert.side,
               setupType: latestAlert.setupType,
               detectedAt: latestAlert.detectedAt,
+              entry:
+                typeof latestAlert.candidate.entry === 'number'
+                  ? Number(latestAlert.candidate.entry.toFixed(2))
+                  : null,
+              stopLoss:
+                typeof latestAlert.candidate.stopLoss === 'number'
+                  ? Number(latestAlert.candidate.stopLoss.toFixed(2))
+                  : null,
+              takeProfitOne:
+                typeof latestAlert.candidate.takeProfit?.[0] === 'number'
+                  ? Number(latestAlert.candidate.takeProfit[0].toFixed(2))
+                  : null,
               finalScore:
                 typeof latestAlert.candidate.finalScore === 'number'
                   ? Number(latestAlert.candidate.finalScore.toFixed(1))
                   : null,
-              allowed: latestAlert.riskDecision.allowed
+              oneMinuteConfidence:
+                typeof latestAlert.candidate.oneMinuteConfidence === 'number'
+                  ? Number(latestAlert.candidate.oneMinuteConfidence.toFixed(2))
+                  : null,
+              allowed: latestAlert.riskDecision.allowed,
+              guardrails: (latestAlert.riskDecision.reasonCodes ?? []).slice(0, 3),
+              reasons: (latestAlert.candidate.eligibility?.passReasons ?? []).slice(0, 3)
             }
           : null
       };

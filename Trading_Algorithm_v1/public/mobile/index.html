@@ -1105,6 +1105,66 @@
       </section>
     </div>
 
+    <div id="symbolDetailViewer" class="symbol-viewer" hidden aria-hidden="true">
+      <button id="symbolDetailViewerBackdrop" class="symbol-viewer-backdrop" type="button" aria-label="Close symbol detail"></button>
+      <section id="symbolDetailViewerSheet" class="symbol-viewer-sheet" role="dialog" aria-modal="true" aria-labelledby="symbolDetailViewerTitle">
+        <div class="symbol-viewer-head">
+          <div class="symbol-viewer-copy">
+            <p class="symbol-viewer-label">Watchlist Detail</p>
+            <h2 id="symbolDetailViewerTitle" class="symbol-viewer-title">Symbol</h2>
+            <p id="symbolDetailViewerMeta" class="symbol-viewer-meta">Loading symbol detail.</p>
+          </div>
+          <div class="symbol-viewer-actions">
+            <button id="symbolDetailViewerTradingView" class="chip-btn secondary-btn" type="button">Open in TradingView</button>
+            <button id="symbolDetailViewerClose" class="chip-btn secondary-btn" type="button">Done</button>
+          </div>
+        </div>
+        <div id="symbolDetailViewerBody" class="symbol-viewer-body">
+          <section class="symbol-viewer-hero">
+            <div>
+              <p id="symbolDetailViewerPrice" class="symbol-viewer-price">--</p>
+              <p id="symbolDetailViewerDirection" class="symbol-viewer-direction">Waiting for symbol context.</p>
+            </div>
+            <div class="symbol-viewer-hero-side">
+              <span id="symbolDetailViewerTone" class="chip chip-neutral">Watching</span>
+              <p id="symbolDetailViewerFreshness" class="symbol-viewer-freshness">No bar yet</p>
+            </div>
+          </section>
+          <div class="symbol-viewer-meter">
+            <span id="symbolDetailViewerMeterFill" class="symbol-viewer-meter-fill"></span>
+          </div>
+          <div id="symbolDetailViewerStats" class="symbol-viewer-stats"></div>
+          <section class="symbol-viewer-section">
+            <div class="section-subhead">
+              <div>
+                <h3>Latest Setup</h3>
+                <p class="section-kicker">The most recent board idea for this symbol.</p>
+              </div>
+            </div>
+            <div id="symbolDetailViewerSetup" class="symbol-viewer-setup"></div>
+          </section>
+          <section class="symbol-viewer-section">
+            <div class="section-subhead">
+              <div>
+                <h3>Desk Read</h3>
+                <p class="section-kicker">Why the desk currently leans this way.</p>
+              </div>
+            </div>
+            <div id="symbolDetailViewerReasonList" class="symbol-viewer-reason-list"></div>
+          </section>
+          <section class="symbol-viewer-section">
+            <div class="section-subhead">
+              <div>
+                <h3>TradingView</h3>
+                <p class="section-kicker">5m confirmation chart for this watchlist symbol.</p>
+              </div>
+            </div>
+            <div id="symbolDetailViewerFrame" class="symbol-viewer-frame"></div>
+          </section>
+        </div>
+      </section>
+    </div>
+
     <div id="tradingViewViewer" class="tv-viewer" hidden aria-hidden="true">
       <button id="tradingViewViewerBackdrop" class="tv-viewer-backdrop" type="button" aria-label="Close TradingView confirmation"></button>
       <section id="tradingViewViewerSheet" class="tv-viewer-sheet" role="dialog" aria-modal="true" aria-labelledby="tradingViewViewerTitle">

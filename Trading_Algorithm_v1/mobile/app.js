@@ -190,6 +190,22 @@ const chartLightboxFrameEl = document.getElementById('chartLightboxFrame');
 const chartLightboxTitleEl = document.getElementById('chartLightboxTitle');
 const chartLightboxMetaEl = document.getElementById('chartLightboxMeta');
 const chartLightboxCloseEl = document.getElementById('chartLightboxClose');
+const symbolDetailViewerEl = document.getElementById('symbolDetailViewer');
+const symbolDetailViewerBackdropEl = document.getElementById('symbolDetailViewerBackdrop');
+const symbolDetailViewerSheetEl = document.getElementById('symbolDetailViewerSheet');
+const symbolDetailViewerTitleEl = document.getElementById('symbolDetailViewerTitle');
+const symbolDetailViewerMetaEl = document.getElementById('symbolDetailViewerMeta');
+const symbolDetailViewerTradingViewEl = document.getElementById('symbolDetailViewerTradingView');
+const symbolDetailViewerCloseEl = document.getElementById('symbolDetailViewerClose');
+const symbolDetailViewerPriceEl = document.getElementById('symbolDetailViewerPrice');
+const symbolDetailViewerDirectionEl = document.getElementById('symbolDetailViewerDirection');
+const symbolDetailViewerToneEl = document.getElementById('symbolDetailViewerTone');
+const symbolDetailViewerFreshnessEl = document.getElementById('symbolDetailViewerFreshness');
+const symbolDetailViewerMeterFillEl = document.getElementById('symbolDetailViewerMeterFill');
+const symbolDetailViewerStatsEl = document.getElementById('symbolDetailViewerStats');
+const symbolDetailViewerSetupEl = document.getElementById('symbolDetailViewerSetup');
+const symbolDetailViewerReasonListEl = document.getElementById('symbolDetailViewerReasonList');
+const symbolDetailViewerFrameEl = document.getElementById('symbolDetailViewerFrame');
 const tradingViewViewerEl = document.getElementById('tradingViewViewer');
 const tradingViewViewerBackdropEl = document.getElementById('tradingViewViewerBackdrop');
 const tradingViewViewerSheetEl = document.getElementById('tradingViewViewerSheet');
@@ -265,6 +281,8 @@ const chartLightboxGesture = {
   offsetY: 0,
   scrollTop: 0
 };
+let symbolDetailViewerBound = false;
+let symbolDetailViewerContext = null;
 
 const setupToggleMap = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: setupSweepMssToggleEl,
@@ -792,10 +810,15 @@ const renderHomeDeck = () => {
         ? 'Ready'
         : 'Blocked'
       : 'Watching';
+    const latestScore =
+      typeof item.latestAlert?.finalScore === 'number' ? `Score ${fmtNum(item.latestAlert.finalScore, 1)}` : 'No score';
 
     const card = document.createElement('article');
     card.className = 'home-watchlist-card';
     card.dataset.tone = tone;
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', `Open ${item.symbol} detail`);
     card.innerHTML = `
       <div class="home-watchlist-head">
         <div>
@@ -817,9 +840,264 @@ const renderHomeDeck = () => {
         <span>${researchDirectionLabel(trendDirection)} • ${confidence}</span>
         <span>${item.latestBarTimestamp ? fmtRelativeMinutes(item.latestBarTimestamp) : 'No bar'}</span>
       </div>
+      <div class="home-watchlist-meta home-watchlist-meta-secondary">
+        <span>${latestScore}</span>
+        <span>Tap for detail</span>
+      </div>
       <p class="home-watchlist-note">${item.researchReason ?? 'Waiting for a clearer symbol-specific read.'}</p>
     `;
+    const openDetail = () => openSymbolDetailViewer(item, deck);
+    card.addEventListener('click', openDetail);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openDetail();
+      }
+    });
     homeWatchlistListEl.appendChild(card);
+  });
+};
+
+const buildSymbolDetailStats = (item, deck) => {
+  const researchPct = Number.isFinite(Number(item.researchConfidence))
+    ? `${Math.round(Number(item.researchConfidence) * 100)}%`
+    : '--';
+  const latestAlert = item.latestAlert ?? null;
+  return [
+    {
+      label: 'Research',
+      value: researchDirectionLabel(item.researchDirection ?? 'BALANCED'),
+      note: `Confidence ${researchPct}`
+    },
+    {
+      label: 'Latest Setup',
+      value: latestAlert ? `${latestAlert.side} • ${setupLabel(latestAlert.setupType)}` : 'Watching only',
+      note: latestAlert?.detectedAt ? `Seen ${fmtRelativeMinutes(latestAlert.detectedAt)}` : 'No live board idea'
+    },
+    {
+      label: 'Desk Queue',
+      value: `${deck.readyCount ?? 0} ready`,
+      note: `${deck.blockedCount ?? 0} blocked • ${deck.signalCount ?? 0} total`
+    },
+    {
+      label: 'Model',
+      value: deck.modelId ? deck.modelId.slice(-8) : '--',
+      note: deck.lastRetrainedAt ? `Retrained ${fmtRelativeMinutes(deck.lastRetrainedAt)}` : 'No retrain yet'
+    }
+  ];
+};
+
+const renderSymbolDetailStats = (item, deck) => {
+  if (!symbolDetailViewerStatsEl) {
+    return;
+  }
+
+  symbolDetailViewerStatsEl.innerHTML = '';
+  buildSymbolDetailStats(item, deck).forEach((stat) => {
+    const card = document.createElement('article');
+    card.className = 'symbol-viewer-stat-card';
+    card.innerHTML = `
+      <p class="symbol-viewer-stat-label">${stat.label}</p>
+      <p class="symbol-viewer-stat-value">${stat.value}</p>
+      <p class="symbol-viewer-stat-note">${stat.note}</p>
+    `;
+    symbolDetailViewerStatsEl.appendChild(card);
+  });
+};
+
+const renderSymbolDetailSetup = (item) => {
+  if (!symbolDetailViewerSetupEl) {
+    return;
+  }
+
+  const latestAlert = item.latestAlert ?? null;
+  if (!latestAlert) {
+    symbolDetailViewerSetupEl.innerHTML = `
+      <div class="symbol-viewer-empty">
+        <p class="symbol-viewer-empty-title">No live setup on the board</p>
+        <p class="symbol-viewer-empty-note">This symbol is still being watched, but there is no current 5m setup worth surfacing yet.</p>
+      </div>
+    `;
+    return;
+  }
+
+  symbolDetailViewerSetupEl.innerHTML = `
+    <div class="symbol-viewer-setup-head">
+      <div>
+        <p class="symbol-viewer-setup-title">${latestAlert.side} • ${setupLabel(latestAlert.setupType)}</p>
+        <p class="symbol-viewer-setup-subtitle">${latestAlert.detectedAt ? `Seen ${fmtDateTimeCompact(latestAlert.detectedAt)}` : 'Seen time unavailable'}</p>
+      </div>
+      <span class="chip ${latestAlert.allowed ? 'chip-online' : 'chip-offline'}">${latestAlert.allowed ? 'Ready' : 'Blocked'}</span>
+    </div>
+    <div class="symbol-viewer-level-row">
+      <span class="level-chip level-chip-entry">Entry <b>${fmtNum(latestAlert.entry, 2)}</b></span>
+      <span class="level-chip level-chip-stop">SL <b>${fmtNum(latestAlert.stopLoss, 2)}</b></span>
+      <span class="level-chip level-chip-target">TP1 <b>${fmtNum(latestAlert.takeProfitOne, 2)}</b></span>
+    </div>
+    <div class="symbol-viewer-setup-grid">
+      <article class="symbol-viewer-setup-card">
+        <p class="symbol-viewer-stat-label">Score</p>
+        <p class="symbol-viewer-stat-value">${fmtNum(latestAlert.finalScore, 1)}</p>
+      </article>
+      <article class="symbol-viewer-setup-card">
+        <p class="symbol-viewer-stat-label">1m Confidence</p>
+        <p class="symbol-viewer-stat-value">${fmtNum(latestAlert.oneMinuteConfidence, 2)}</p>
+      </article>
+      <article class="symbol-viewer-setup-card">
+        <p class="symbol-viewer-stat-label">Risk / Reward</p>
+        <p class="symbol-viewer-stat-value">${calcRr(latestAlert.entry, latestAlert.stopLoss, latestAlert.takeProfitOne)}</p>
+      </article>
+    </div>
+    <div class="symbol-viewer-chip-group">
+      ${(latestAlert.reasons ?? []).map((reason) => `<span class="chip chip-neutral">${reason}</span>`).join('')}
+      ${(latestAlert.guardrails ?? []).map((reason) => `<span class="chip chip-offline">${humanizeRiskReason(reason)}</span>`).join('')}
+    </div>
+  `;
+};
+
+const renderSymbolDetailReasons = (item, deck) => {
+  if (!symbolDetailViewerReasonListEl) {
+    return;
+  }
+
+  const reasons = [
+    item.researchReason,
+    deck.headline,
+    deck.summary,
+    item.latestAlert?.reasons?.[0],
+    item.latestAlert?.guardrails?.[0] ? humanizeRiskReason(item.latestAlert.guardrails[0]) : null
+  ].filter(Boolean);
+
+  symbolDetailViewerReasonListEl.innerHTML = '';
+  reasons.slice(0, 4).forEach((reason) => {
+    const row = document.createElement('article');
+    row.className = 'symbol-viewer-reason-item';
+    row.innerHTML = `<p class="symbol-viewer-reason-copy">${reason}</p>`;
+    symbolDetailViewerReasonListEl.appendChild(row);
+  });
+
+  if (!symbolDetailViewerReasonListEl.childElementCount) {
+    symbolDetailViewerReasonListEl.innerHTML = `
+      <div class="symbol-viewer-empty">
+        <p class="symbol-viewer-empty-title">No symbol note yet</p>
+        <p class="symbol-viewer-empty-note">The desk will populate this once the research engine or the board has a cleaner read.</p>
+      </div>
+    `;
+  }
+};
+
+const closeSymbolDetailViewer = () => {
+  if (!symbolDetailViewerEl || symbolDetailViewerEl.hidden) {
+    return;
+  }
+
+  symbolDetailViewerEl.hidden = true;
+  symbolDetailViewerEl.setAttribute('aria-hidden', 'true');
+  symbolDetailViewerContext = null;
+  symbolDetailViewerFrameEl.innerHTML = '';
+  document.body.classList.remove('symbol-viewer-open');
+};
+
+const openSymbolDetailViewer = (item, deck) => {
+  if (!symbolDetailViewerEl || !symbolDetailViewerFrameEl) {
+    openTradingViewViewer({
+      symbol: item.symbol,
+      interval: '5',
+      title: `${item.symbol} TradingView`,
+      meta: 'Confirm the current 5m structure in TradingView.'
+    });
+    return;
+  }
+
+  symbolDetailViewerContext = { item, deck };
+  const trendDirection = item.researchDirection ?? 'BALANCED';
+  const confidencePct = Math.max(8, Math.min(100, Number(item.researchConfidence ?? 0) * 100));
+  const latestAlert = item.latestAlert ?? null;
+  const freshness = item.latestBarTimestamp ? fmtRelativeMinutes(item.latestBarTimestamp) : 'No bar yet';
+
+  symbolDetailViewerTitleEl.textContent = `${item.symbol} Detail`;
+  symbolDetailViewerMetaEl.textContent = latestAlert
+    ? `${setupLabel(latestAlert.setupType)} • ${deck.headline ?? 'Desk read unavailable'}`
+    : deck.headline ?? 'Desk read unavailable';
+  symbolDetailViewerPriceEl.textContent =
+    item.latestPrice !== null && item.latestPrice !== undefined ? fmtNum(item.latestPrice, 2) : '--';
+  symbolDetailViewerDirectionEl.textContent = `${researchDirectionLabel(trendDirection)} • ${item.researchReason ?? 'Waiting for a clearer symbol-specific read.'}`;
+  symbolDetailViewerToneEl.textContent =
+    latestAlert ? (latestAlert.allowed ? 'Ready on board' : 'Board blocked') : 'Watching';
+  symbolDetailViewerToneEl.className = `chip ${
+    latestAlert ? (latestAlert.allowed ? 'chip-online' : 'chip-offline') : 'chip-neutral'
+  }`;
+  symbolDetailViewerFreshnessEl.textContent = item.latestBarTimestamp
+    ? `Latest bar ${freshness}`
+    : 'No fresh bar yet';
+  if (symbolDetailViewerMeterFillEl) {
+    symbolDetailViewerMeterFillEl.style.width = `${confidencePct}%`;
+  }
+
+  renderSymbolDetailStats(item, deck);
+  renderSymbolDetailSetup(item);
+  renderSymbolDetailReasons(item, deck);
+
+  symbolDetailViewerFrameEl.innerHTML = `
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+    </div>
+  `;
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.async = true;
+  script.src = tradingViewWidgetScriptUrl;
+  script.text = JSON.stringify({
+    autosize: true,
+    symbol: tradingViewSymbolMap[item.symbol] ?? item.symbol,
+    interval: '5',
+    timezone: 'America/Chicago',
+    theme: 'light',
+    style: '1',
+    locale: 'en',
+    enable_publishing: false,
+    allow_symbol_change: false,
+    hide_top_toolbar: false,
+    hide_legend: false,
+    save_image: false,
+    calendar: false,
+    details: false,
+    support_host: 'https://www.tradingview.com'
+  });
+  script.onerror = () => {
+    symbolDetailViewerFrameEl.innerHTML = `
+      <div class="symbol-viewer-empty">
+        <p class="symbol-viewer-empty-title">TradingView chart did not load</p>
+        <p class="symbol-viewer-empty-note">Use the TradingView button above to open the full chart directly.</p>
+      </div>
+    `;
+  };
+  symbolDetailViewerFrameEl.querySelector('.tradingview-widget-container')?.appendChild(script);
+
+  symbolDetailViewerEl.hidden = false;
+  symbolDetailViewerEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('symbol-viewer-open');
+};
+
+const bindSymbolDetailViewer = () => {
+  if (symbolDetailViewerBound || !symbolDetailViewerEl) {
+    return;
+  }
+
+  symbolDetailViewerBound = true;
+  symbolDetailViewerBackdropEl?.addEventListener('click', closeSymbolDetailViewer);
+  symbolDetailViewerCloseEl?.addEventListener('click', closeSymbolDetailViewer);
+  symbolDetailViewerTradingViewEl?.addEventListener('click', () => {
+    if (!symbolDetailViewerContext?.item?.symbol) {
+      return;
+    }
+    window.open(buildTradingViewUrl(symbolDetailViewerContext.item.symbol, '5'), '_blank', 'noopener,noreferrer');
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && symbolDetailViewerEl && !symbolDetailViewerEl.hidden) {
+      closeSymbolDetailViewer();
+    }
   });
 };
 
@@ -4929,6 +5207,7 @@ const bootstrap = async () => {
   bindSignalSettingsControls();
   bindStatusRecoveryControls();
   bindChartLightbox();
+  bindSymbolDetailViewer();
   bindTradingViewViewer();
   bindPullToRefresh();
   resetPullRefreshUi();
