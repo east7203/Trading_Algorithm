@@ -55,6 +55,11 @@ interface SignalMonitorConfig {
   marketConditions: MarketConditions;
 }
 
+interface PublishedAlertContext {
+  alert: SignalAlert;
+  source: string;
+}
+
 interface EvaluateSymbolOptions {
   source: string;
   publishAlerts: boolean;
@@ -472,6 +477,8 @@ export class SignalMonitorService {
     private readonly getSettings: () => SignalMonitorSettings,
     private readonly getMarketResearchStatus: () => MarketResearchStatus | null,
     private readonly signalReviewStore: SignalReviewStore,
+    private readonly getAccountSnapshot?: ((now: string) => AccountSnapshot) | null,
+    private readonly onAlertPublished?: ((context: PublishedAlertContext) => Promise<void> | void) | null,
     private readonly nativePushNotificationService?: NativePushNotificationService | null,
     private readonly webPushNotificationService?: WebPushNotificationService | null,
     private readonly telegramAlertService?: TelegramAlertService | null
@@ -635,7 +642,7 @@ export class SignalMonitorService {
     const riskDecision = evaluateRisk(
       {
         candidate,
-        account: this.config.accountSnapshot,
+        account: this.getAccountSnapshot?.(detectedAt) ?? this.config.accountSnapshot,
         market: this.config.marketConditions,
         now: detectedAt,
         newsEvents: []
@@ -1317,7 +1324,7 @@ export class SignalMonitorService {
       const riskDecision = evaluateRisk(
         {
           candidate,
-          account: this.config.accountSnapshot,
+          account: this.getAccountSnapshot?.(currentBar.timestamp) ?? this.config.accountSnapshot,
           market: this.config.marketConditions,
           now: currentBar.timestamp,
           newsEvents
@@ -1428,6 +1435,11 @@ export class SignalMonitorService {
         reminderCount: alert.reviewState?.escalationCount ?? 0
       });
     }
+
+    await this.onAlertPublished?.({
+      alert,
+      source: context.source
+    });
   }
 
   private async notifyAlertChannels(

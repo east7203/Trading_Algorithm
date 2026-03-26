@@ -176,6 +176,58 @@ describe('signal monitor integration', () => {
     expect(top.chartSnapshot.referenceLevels.some((level: { key: string }) => level.key === 'entry')).toBe(true);
   });
 
+  it('opens a paper trade from a live allowed alert', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      },
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json')
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+    await confirmPolicy(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const paperStatus = await ctx.app.inject({
+      method: 'GET',
+      path: '/paper-account/status'
+    });
+
+    expect(paperStatus.statusCode).toBe(200);
+    const paperAccount = paperStatus.json().paperAccount;
+    expect(paperAccount.enabled).toBe(true);
+    expect(paperAccount.initialBalance).toBe(100000);
+    expect(
+      (paperAccount.pendingEntries ?? 0)
+      + (paperAccount.openTrades ?? 0)
+      + (paperAccount.closedTrades ?? 0)
+      + (paperAccount.canceledTrades ?? 0)
+    ).toBeGreaterThanOrEqual(1);
+  });
+
   it('adds macro-news context to ranked candidates and blocks setups during critical windows', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-macro-news-'));
     tempDirs.push(tempDir);

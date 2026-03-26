@@ -19,6 +19,7 @@ import { defaultRankingModel, loadRankingModelFromPath, type RankingModel } from
 import { RankingModelStore } from './services/rankingModelStore.js';
 import { SignalMonitorService, type SignalMonitorStatus } from './services/signalMonitorService.js';
 import { MarketResearchService, type MarketResearchConfig, type MarketResearchStatus } from './services/marketResearchService.js';
+import { PaperTradingService, type PaperTradingConfig, type PaperTradingStatus } from './services/paperTradingService.js';
 import {
   NativePushNotificationService,
   type NativePushNotificationConfig,
@@ -89,6 +90,7 @@ export interface AppContext {
   telegramAlertService: TelegramAlertService | null;
   operationalReminderService: OperationalReminderService | null;
   marketResearchService: MarketResearchService | null;
+  paperTradingService: PaperTradingService | null;
 }
 
 interface BuildAppOptions {
@@ -119,6 +121,9 @@ interface BuildAppOptions {
   marketResearchEnabled?: boolean;
   marketResearchConfig?: Partial<MarketResearchConfig>;
   marketResearchService?: MarketResearchService | null;
+  paperTradingEnabled?: boolean;
+  paperTradingConfig?: Partial<PaperTradingConfig>;
+  paperTradingService?: PaperTradingService | null;
   ibkrLoginTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
   ibkrResendPushTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
   webPushEnabled?: boolean;
@@ -173,6 +178,17 @@ interface MarketResearchConfigInput {
   experimentCooldownMinutes: number;
   maxExperiments: number;
   maxInsights: number;
+}
+
+interface PaperTradingConfigInput {
+  enabled: boolean;
+  statePath?: string;
+  initialBalance: number;
+  maxHoldMinutes: number;
+  timezone: string;
+  sessionStartHour: number;
+  sessionStartMinute: number;
+  maxClosedTrades: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -710,6 +726,45 @@ const resolveMarketResearchConfig = (
     ...defaults,
     ...overrides,
     focusSymbols: overrides.focusSymbols ?? defaults.focusSymbols
+  };
+};
+
+const resolvePaperTradingConfig = (
+  signalMonitorConfig: SignalMonitorConfigInput,
+  overrides: Partial<PaperTradingConfig> = {}
+): PaperTradingConfigInput => {
+  const defaults: PaperTradingConfigInput = {
+    enabled: parseBooleanEnv('PAPER_TRADING_ENABLED', true),
+    statePath: parseOptionalPathEnv(
+      'PAPER_TRADING_STATE_PATH',
+      path.resolve(process.cwd(), 'data', 'paper-trading', 'paper-account.json')
+    ),
+    initialBalance: parseFloatEnv('PAPER_TRADING_INITIAL_BALANCE', 100_000, 1),
+    maxHoldMinutes: parseIntEnv(
+      'PAPER_TRADING_MAX_HOLD_MINUTES',
+      Math.max(30, Math.round(signalMonitorConfig.outcomeLookaheadBars1m)),
+      15,
+      1440
+    ),
+    timezone: process.env.PAPER_TRADING_TIMEZONE ?? signalMonitorConfig.timezone,
+    sessionStartHour: parseIntEnv(
+      'PAPER_TRADING_SESSION_START_HOUR',
+      signalMonitorConfig.sessionStartHour,
+      0,
+      23
+    ),
+    sessionStartMinute: parseIntEnv(
+      'PAPER_TRADING_SESSION_START_MINUTE',
+      signalMonitorConfig.sessionStartMinute,
+      0,
+      59
+    ),
+    maxClosedTrades: parseIntEnv('PAPER_TRADING_MAX_CLOSED_TRADES', 20, 5, 200)
+  };
+
+  return {
+    ...defaults,
+    ...overrides
   };
 };
 
@@ -1368,6 +1423,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       : options.continuousTrainingService;
 
   const resolvedSignalMonitorConfig = resolveSignalMonitorConfig(options.signalMonitorConfig);
+  const resolvedPaperTradingConfig = resolvePaperTradingConfig(resolvedSignalMonitorConfig, options.paperTradingConfig);
+  const paperTradingEnabled = options.paperTradingEnabled ?? resolvedPaperTradingConfig.enabled;
+  const paperTradingService =
+    options.paperTradingService === undefined
+      ? paperTradingEnabled
+        ? new PaperTradingService({
+            ...resolvedPaperTradingConfig,
+            enabled: true
+          })
+        : null
+      : options.paperTradingService;
   signalMonitorSettingsStore.seed({
     timezone: resolvedSignalMonitorConfig.timezone,
     sessionStartHour: resolvedSignalMonitorConfig.sessionStartHour,
@@ -1394,6 +1460,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             () => signalMonitorSettingsStore.get(),
             () => marketResearchService?.status() ?? null,
             signalReviewStore,
+            paperTradingService ? (now: string) => paperTradingService.getRiskAccountSnapshot(now) : null,
+            paperTradingService
+              ? async ({ alert, source }) => {
+                  await paperTradingService.recordAlert(alert, source);
+                }
+              : null,
             nativePushNotificationService,
             webPushNotificationService,
             telegramAlertService
@@ -1403,6 +1475,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   if (nativePushNotificationService) {
     void nativePushNotificationService.start();
+  }
+
+  if (paperTradingService) {
+    void paperTradingService.start();
+    app.addHook('onClose', async () => {
+      paperTradingService.stop();
+    });
   }
 
   if (webPushNotificationService) {
@@ -1564,6 +1643,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const allReviews = await signalReviewStore.listAllReviews();
     const learningPerformance = summarizeLearningPerformance(allReviews);
     const research = marketResearchService ? marketResearchService.status() : null;
+    const paper = paperTradingService ? paperTradingService.status() : null;
     const lastAlert = signalMonitorService?.listAlerts(1)[0];
     const calendarEvents = (await calendarClient.listUpcomingEvents())
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
@@ -1598,6 +1678,15 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   sampleSize: research.knowledgeBase.bestThesis.evaluated
                 }
               : null
+          }
+        : null,
+      paper: paper
+        ? {
+            balance: Number(paper.balance.toFixed(2)),
+            equity: Number(paper.equity.toFixed(2)),
+            hitRate: Number(paper.hitRate.toFixed(3)),
+            openTrades: paper.openTrades,
+            closedTrades: paper.closedTrades
           }
         : null,
       learning: {
@@ -1760,6 +1849,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const reviewSummary = await signalReviewStore.summary();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
     const research = marketResearchService?.status() ?? null;
+    const paper = paperTradingService?.status() ?? null;
     const signalConfig = signalMonitorSettingsStore.get();
     const watchlist = signalConfig.enabledSymbols.slice(0, 2).map((symbol) => {
       const symbolResearch = research?.symbols?.find((entry) => entry.symbol === symbol);
@@ -1817,6 +1907,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         blockedCount: Math.max(0, alerts.length - readyCount),
         reviewPending: reviewSummary.pending,
         modelId: context.desk.rankingModelId,
+        paperAccount: paper
+          ? {
+              balance: Number(paper.balance.toFixed(2)),
+              equity: Number(paper.equity.toFixed(2)),
+              realizedPnl: Number(paper.realizedPnl.toFixed(2)),
+              unrealizedPnl: Number(paper.unrealizedPnl.toFixed(2)),
+              openTrades: paper.openTrades,
+              closedTrades: paper.closedTrades,
+              hitRate: Number(paper.hitRate.toFixed(3))
+            }
+          : null,
         lastRetrainedAt:
           'lastRun' in training && typeof training.lastRun?.trainedAt === 'string'
             ? training.lastRun.trainedAt
@@ -2099,6 +2200,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const research: MarketResearchStatus | { enabled: false; started: false } = marketResearchService
       ? marketResearchService.status()
       : { enabled: false, started: false };
+    const paperAccount: PaperTradingStatus | { enabled: false; started: false } = paperTradingService
+      ? paperTradingService.status()
+      : { enabled: false, started: false };
     const trainingLatestBarTimestamp =
       'latestBarTimestamp' in training && typeof training.latestBarTimestamp === 'string'
         ? training.latestBarTimestamp
@@ -2166,6 +2270,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           ...calendarStatus,
           upcomingEvents: upcomingCalendarEvents
         },
+        paperAccount,
         ibkrRecovery,
         operationalReminder,
         training,
@@ -2226,6 +2331,23 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   app.get('/research/status', async (_request, reply) => {
     return reply.status(200).send({
       research: marketResearchService ? marketResearchService.status() : { enabled: false, started: false }
+    });
+  });
+
+  app.get('/paper-account/status', async (_request, reply) => {
+    return reply.status(200).send({
+      paperAccount: paperTradingService ? paperTradingService.status() : { enabled: false, started: false }
+    });
+  });
+
+  app.post('/paper-account/reset', async (_request, reply) => {
+    const paperAccount = paperTradingService
+      ? await paperTradingService.reset()
+      : { enabled: false, started: false };
+
+    return reply.status(200).send({
+      ok: true,
+      paperAccount
     });
   });
 
@@ -2850,7 +2972,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.post('/training/ingest-bars', async (request, reply) => {
     try {
-      if (!continuousTrainingService && !signalMonitorService) {
+      if (!continuousTrainingService && !signalMonitorService && !marketResearchService && !paperTradingService) {
         return reply.status(409).send({
           message: 'No live bar consumers are enabled'
         });
@@ -2863,16 +2985,19 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             accepted: 0,
             deduped: 0,
             barCount: 0,
-            latestBarTimestamp: undefined
+          latestBarTimestamp: undefined
           };
       const signalIngest = signalMonitorService ? await signalMonitorService.ingestBars(body.bars) : { accepted: 0 };
       const researchIngest = marketResearchService ? await marketResearchService.ingestBars(body.bars) : { accepted: 0 };
+      const paperIngest = paperTradingService ? await paperTradingService.ingestBars(body.bars) : { accepted: 0, settled: 0 };
       return reply.status(200).send({
         ingest,
         signalMonitor: signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false },
         signalIngest,
         research: marketResearchService ? marketResearchService.status() : { enabled: false, started: false },
         researchIngest,
+        paperAccount: paperTradingService ? paperTradingService.status() : { enabled: false, started: false },
+        paperIngest,
         training: continuousTrainingService
           ? continuousTrainingService.status()
           : { enabled: false, started: false }
@@ -2917,6 +3042,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     webPushNotificationService,
     telegramAlertService,
     operationalReminderService,
-    marketResearchService
+    marketResearchService,
+    paperTradingService
   };
 };

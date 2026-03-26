@@ -7,6 +7,17 @@ import { buildApp, type AppContext } from '../../src/app.js';
 const contexts: AppContext[] = [];
 const tempDirs: string[] = [];
 
+const waitFor = async (fn: () => Promise<boolean>, timeoutMs = 3_000, intervalMs = 50): Promise<void> => {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await fn()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Condition not met within ${timeoutMs}ms`);
+};
+
 afterEach(async () => {
   while (contexts.length > 0) {
     const ctx = contexts.pop();
@@ -71,6 +82,13 @@ describe('IBKR reconnect state persistence', () => {
     contexts.pop();
 
     const secondCtx = buildContext();
+    await waitFor(async () => {
+      const poll = await secondCtx.app.inject({
+        method: 'GET',
+        path: '/diagnostics'
+      });
+      return poll.json().diagnostics.ibkrRecovery.pendingReconnect === true;
+    });
     const persistedPending = await secondCtx.app.inject({
       method: 'GET',
       path: '/diagnostics'
@@ -103,6 +121,13 @@ describe('IBKR reconnect state persistence', () => {
     contexts.pop();
 
     const thirdCtx = buildContext();
+    await waitFor(async () => {
+      const poll = await thirdCtx.app.inject({
+        method: 'GET',
+        path: '/diagnostics'
+      });
+      return poll.json().diagnostics.ibkrRecovery.pendingReconnect === false;
+    });
     const persistedConnected = await thirdCtx.app.inject({
       method: 'GET',
       path: '/diagnostics'
