@@ -233,6 +233,17 @@ const parseCsvEnv = (name: string, fallback: string[]): string[] => {
   return parsed.length > 0 ? parsed : fallback;
 };
 
+const compactText = (value: string | undefined, maxLength = 180): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+};
+
 const formatWinRateDelta = (value?: number): string => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return '--';
@@ -1508,6 +1519,123 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
   });
 
+  const buildCompactAiContext = async () => {
+    const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
+    const monitorLatestBarTimestamp =
+      'latestBarTimestampBySymbol' in monitor
+        ? Object.values(monitor.latestBarTimestampBySymbol ?? {})
+            .filter((value): value is string => Boolean(value))
+            .sort()
+            .at(-1)
+        : undefined;
+    const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
+    const trainingLatestBarTimestamp =
+      'latestBarTimestamp' in training && typeof training.latestBarTimestamp === 'string'
+        ? training.latestBarTimestamp
+        : undefined;
+    const latestBarTimestamp = [monitorLatestBarTimestamp, trainingLatestBarTimestamp]
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1);
+    const recentArchiveBars = await readRecentArchiveBars(resolvedContinuousConfig.liveArchivePath);
+    const frozenFeed = detectFrozenArchiveFeed(
+      recentArchiveBars,
+      Object.keys(('latestBarTimestampBySymbol' in monitor ? monitor.latestBarTimestampBySymbol ?? {} : {}) || {}),
+      latestBarTimestamp
+    );
+    const liveFeed = classifyLiveFeedStatus(
+      Boolean('started' in monitor && monitor.started),
+      latestBarTimestamp,
+      frozenFeed
+    );
+    const allReviews = await signalReviewStore.listAllReviews();
+    const learningPerformance = summarizeLearningPerformance(allReviews);
+    const research = marketResearchService ? marketResearchService.status() : null;
+    const lastAlert = signalMonitorService?.listAlerts(1)[0];
+    const calendarEvents = (await calendarClient.listUpcomingEvents())
+      .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
+      .slice(0, 3);
+    const calendarStatus = calendarClient.status();
+    const topSetup = learningPerformance.bySetup[0];
+    const topResearchAlignment = learningPerformance.byResearchAlignment[0];
+
+    return {
+      generatedAt: new Date().toISOString(),
+      desk: {
+        feedStatus: liveFeed.status,
+        marketSessionState: liveFeed.sessionState,
+        latestBarTimestamp,
+        rankingModelId: rankingModelStore.get().modelId,
+        retrainCadenceMinutes: Math.round(resolvedContinuousConfig.retrainIntervalMs / 60_000)
+      },
+      research: research
+        ? {
+            direction: research.overallTrend.direction,
+            confidence: Number(research.overallTrend.confidence.toFixed(2)),
+            leadSymbol: research.overallTrend.leadSymbol,
+            reason: compactText(research.overallTrend.reason, 160),
+            hitRate: Number(research.performance.hitRate.toFixed(3)),
+            evaluatedPredictions: research.performance.evaluatedPredictions,
+            openPredictions: research.performance.openPredictions
+          }
+        : null,
+      learning: {
+        resolvedReviews: learningPerformance.resolvedReviews,
+        pendingOutcomeReviews: learningPerformance.pendingOutcomeReviews,
+        winRate: Number(learningPerformance.winRate.toFixed(3)),
+        topSetup: topSetup
+          ? {
+              setupType: topSetup.key,
+              winRate: Number(topSetup.winRate.toFixed(3)),
+              sampleSize: topSetup.total
+            }
+          : null,
+        researchAlignmentEdge: topResearchAlignment
+          ? {
+              label: topResearchAlignment.label,
+              winRate: Number(topResearchAlignment.winRate.toFixed(3)),
+              sampleSize: topResearchAlignment.total
+            }
+          : null,
+        preferredSetups: learningPerformance.preference.preferredSetups.slice(0, 3),
+        preferredSymbols: learningPerformance.preference.preferredSymbols.slice(0, 3)
+      },
+      macro: {
+        source: calendarStatus.sourceName,
+        mode: calendarStatus.mode,
+        nextEvents: calendarEvents.map((event) => ({
+          startsAt: event.startsAt,
+          title: compactText(event.title ?? event.category ?? `${event.currency} macro event`, 80),
+          impact: event.impact,
+          currency: event.currency
+        }))
+      },
+      ibkr: {
+        pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,
+        lastLoginRequiredAt:
+          ibkrReconnectState.lastLoginRequiredAtMs > 0 ? new Date(ibkrReconnectState.lastLoginRequiredAtMs).toISOString() : undefined,
+        lastConnectedAt:
+          ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined
+      },
+      lastAlert: lastAlert
+        ? {
+            symbol: lastAlert.symbol,
+            side: lastAlert.side,
+            setupType: lastAlert.setupType,
+            detectedAt: lastAlert.detectedAt,
+            finalScore:
+              typeof lastAlert.candidate.finalScore === 'number'
+                ? Number(lastAlert.candidate.finalScore.toFixed(2))
+                : null,
+            researchAligned:
+              typeof lastAlert.candidate.metadata?.researchTrendAligned === 'boolean'
+                ? lastAlert.candidate.metadata.researchTrendAligned
+                : null
+          }
+        : null
+    };
+  };
+
   const mobileRoot = path.resolve(process.cwd(), 'public', 'mobile');
 
   app.register(fastifyStatic, {
@@ -1865,6 +1993,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             }
           : null
       }
+    });
+  });
+
+  app.get('/ai/context/compact', async (_request, reply) => {
+    return reply.status(200).send({
+      context: await buildCompactAiContext()
     });
   });
 

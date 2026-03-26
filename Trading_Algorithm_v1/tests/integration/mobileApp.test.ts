@@ -40,4 +40,20 @@ describe('mobile app endpoints', () => {
     expect(opener.statusCode).toBe(200);
     expect(opener.body).toContain('Opening App');
   });
+
+  it('serves compact ai context with bounded arrays', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({ method: 'GET', path: '/ai/context/compact' });
+    expect(response.statusCode).toBe(200);
+
+    const payload = response.json();
+    expect(payload.context).toBeTruthy();
+    expect(payload.context.desk).toBeTruthy();
+    expect(payload.context.learning).toBeTruthy();
+    expect(payload.context.macro).toBeTruthy();
+    expect(payload.context.macro.nextEvents.length).toBeLessThanOrEqual(3);
+    expect(payload.context.learning.preferredSetups.length).toBeLessThanOrEqual(3);
+    expect(payload.context.learning.preferredSymbols.length).toBeLessThanOrEqual(3);
+  });
 });
