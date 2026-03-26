@@ -56,4 +56,21 @@ describe('mobile app endpoints', () => {
     expect(payload.context.learning.preferredSetups.length).toBeLessThanOrEqual(3);
     expect(payload.context.learning.preferredSymbols.length).toBeLessThanOrEqual(3);
   });
+
+  it('serves a desk brief built from compact context', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({ method: 'GET', path: '/ai/desk-brief' });
+    expect(response.statusCode).toBe(200);
+
+    const payload = response.json();
+    expect(payload.brief).toBeTruthy();
+    expect(payload.brief.headline).toBeTruthy();
+    expect(payload.brief.summary).toBeTruthy();
+    expect(payload.brief.actions.length).toBeLessThanOrEqual(3);
+    expect(payload.brief.reasons.length).toBeLessThanOrEqual(3);
+    expect(payload.brief.watch.length).toBeLessThanOrEqual(3);
+    expect(payload.brief.context).toBeTruthy();
+    expect(payload.brief.context.macro.nextEvents.length).toBeLessThanOrEqual(3);
+  });
 });

@@ -50,6 +50,13 @@ const homeBiasWindowEl = document.getElementById('homeBiasWindow');
 const homeBiasReasonEl = document.getElementById('homeBiasReason');
 const homeMacroReasonEl = document.getElementById('homeMacroReason');
 const homeDirectionTagsEl = document.getElementById('homeDirectionTags');
+const homeDeskBriefCardEl = document.getElementById('homeDeskBriefCard');
+const homeDeskBriefStampEl = document.getElementById('homeDeskBriefStamp');
+const homeDeskBriefHeadlineEl = document.getElementById('homeDeskBriefHeadline');
+const homeDeskBriefSummaryEl = document.getElementById('homeDeskBriefSummary');
+const homeDeskBriefActionsEl = document.getElementById('homeDeskBriefActions');
+const homeDeskBriefReasonsEl = document.getElementById('homeDeskBriefReasons');
+const homeDeskBriefWatchEl = document.getElementById('homeDeskBriefWatch');
 const homeDeskStateEl = document.getElementById('homeDeskState');
 const homeTopIdeaEl = document.getElementById('homeTopIdea');
 const homeActionStateEl = document.getElementById('homeActionState');
@@ -209,6 +216,7 @@ let latestEvents = [];
 let latestReviews = [];
 let latestDiagnostics = null;
 let latestCalendar = null;
+let latestDeskBrief = null;
 let latestRiskConfig = null;
 let latestHealth = null;
 let lastSyncAt = null;
@@ -668,6 +676,82 @@ const renderDirectionTags = (tags) => {
   });
 };
 
+const renderBriefList = (target, items, fallback) => {
+  if (!target) {
+    return;
+  }
+
+  target.innerHTML = '';
+  const values = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!values.length) {
+    const item = document.createElement('li');
+    item.className = 'home-brief-item is-muted';
+    item.textContent = fallback;
+    target.appendChild(item);
+    return;
+  }
+
+  values.forEach((value) => {
+    const item = document.createElement('li');
+    item.className = 'home-brief-item';
+    item.textContent = value;
+    target.appendChild(item);
+  });
+};
+
+const renderDeskBrief = () => {
+  if (!homeDeskBriefCardEl) {
+    return;
+  }
+
+  const brief = latestDeskBrief?.brief ?? null;
+  if (!brief) {
+    homeDeskBriefCardEl.dataset.tone = 'neutral';
+    homeDeskBriefHeadlineEl.textContent = 'Waiting for the desk brief.';
+    homeDeskBriefSummaryEl.textContent = 'The app is loading the compact market summary.';
+    if (homeDeskBriefStampEl) {
+      homeDeskBriefStampEl.textContent = 'Updating';
+    }
+    renderBriefList(homeDeskBriefActionsEl, [], 'No action items yet.');
+    renderBriefList(homeDeskBriefReasonsEl, [], 'No desk context yet.');
+    if (homeDeskBriefWatchEl) {
+      homeDeskBriefWatchEl.innerHTML = '';
+      const chip = document.createElement('span');
+      chip.className = 'chip chip-neutral';
+      chip.textContent = 'Waiting for market context';
+      homeDeskBriefWatchEl.appendChild(chip);
+    }
+    return;
+  }
+
+  homeDeskBriefCardEl.dataset.tone = brief.tone || 'neutral';
+  homeDeskBriefHeadlineEl.textContent = brief.headline || 'Wait for a clean 5m setup.';
+  homeDeskBriefSummaryEl.textContent = brief.summary || 'No desk summary available yet.';
+  if (homeDeskBriefStampEl) {
+    homeDeskBriefStampEl.textContent = brief.generatedAt ? `Updated ${fmtRelativeMinutes(brief.generatedAt)}` : 'Updated';
+  }
+  renderBriefList(homeDeskBriefActionsEl, brief.actions, 'No action items yet.');
+  renderBriefList(homeDeskBriefReasonsEl, brief.reasons, 'No desk context yet.');
+
+  if (homeDeskBriefWatchEl) {
+    homeDeskBriefWatchEl.innerHTML = '';
+    const watchItems = Array.isArray(brief.watch) ? brief.watch.filter(Boolean) : [];
+    if (!watchItems.length) {
+      const chip = document.createElement('span');
+      chip.className = 'chip chip-neutral';
+      chip.textContent = 'No immediate watch item';
+      homeDeskBriefWatchEl.appendChild(chip);
+    } else {
+      watchItems.forEach((value) => {
+        const chip = document.createElement('span');
+        chip.className = 'chip chip-neutral';
+        chip.textContent = value;
+        homeDeskBriefWatchEl.appendChild(chip);
+      });
+    }
+  }
+};
+
 const renderHomeMacroList = (events) => {
   if (!homeMacroListEl) {
     return;
@@ -821,6 +905,7 @@ const renderHomeDashboard = () => {
   homeMacroSummaryEl.textContent = nextMacroEvent
     ? `${nextMacroEvent.title} • ${fmtDateTimeCompact(nextMacroEvent.startsAt)} • ${macroRead.summary}`
     : 'No near-term macro catalyst in the current Forex Factory window.';
+  renderDeskBrief();
   renderHomeMacroList(upcomingEvents);
 };
 
@@ -3873,6 +3958,16 @@ const loadDiagnostics = async () => {
   }
 };
 
+const loadDeskBrief = async () => {
+  try {
+    latestDeskBrief = await apiFetch('/ai/desk-brief');
+  } catch {
+    latestDeskBrief = null;
+  }
+  renderDeskBrief();
+  renderHomeDashboard();
+};
+
 const loadRiskConfig = async () => {
   try {
     latestRiskConfig = await apiFetch('/risk/config');
@@ -4427,6 +4522,7 @@ const refreshAll = async () => {
     loadTrades(),
     loadReviews(),
     loadDiagnostics(),
+    loadDeskBrief(),
     loadCalendar(),
     loadRiskConfig()
   ])

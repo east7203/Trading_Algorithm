@@ -1636,6 +1636,98 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     };
   };
 
+  const buildDeskBrief = async () => {
+    const context = await buildCompactAiContext();
+    const nextMacroEvent = context.macro.nextEvents[0] ?? null;
+    const nextMacroStartsAtMs = nextMacroEvent ? Date.parse(nextMacroEvent.startsAt) : Number.NaN;
+    const minutesToMacro = Number.isFinite(nextMacroStartsAtMs)
+      ? Math.round((nextMacroStartsAtMs - Date.now()) / 60_000)
+      : null;
+    const macroIsNear =
+      nextMacroEvent
+      && nextMacroEvent.impact === 'high'
+      && typeof minutesToMacro === 'number'
+      && minutesToMacro >= -5
+      && minutesToMacro <= 45;
+
+    let tone: 'neutral' | 'bullish' | 'bearish' | 'risk' = 'neutral';
+    let headline = 'Wait for a clean 5m setup.';
+    let summary = 'The desk does not have enough aligned evidence to press directional risk yet.';
+
+    if (context.ibkr.pendingReconnect) {
+      tone = 'risk';
+      headline = 'Restore IBKR before trusting the board.';
+      summary = 'The broker session still needs recovery, so live setup decisions should be treated as incomplete.';
+    } else if (context.desk.feedStatus !== 'LIVE') {
+      tone = 'risk';
+      headline = `Treat the feed as ${context.desk.feedStatus.toLowerCase()}.`;
+      summary = 'The desk is connected, but the live tape quality is not strong enough to lean hard on new signals.';
+    } else if (macroIsNear) {
+      tone = 'risk';
+      headline = `Stand aside into ${nextMacroEvent.title ?? 'the next macro event'}.`;
+      summary = 'A high-impact macro catalyst is close enough to break otherwise clean intraday structure.';
+    } else if (context.research?.direction === 'BULLISH' && (context.research.confidence ?? 0) >= 0.55) {
+      tone = 'bullish';
+      headline = `Lean bullish with ${context.research.leadSymbol ?? 'NQ/ES'} leading.`;
+      summary = context.research.reason ?? 'Autonomous research is aligned on the long side.';
+    } else if (context.research?.direction === 'BEARISH' && (context.research.confidence ?? 0) >= 0.55) {
+      tone = 'bearish';
+      headline = `Lean bearish with ${context.research.leadSymbol ?? 'NQ/ES'} leading.`;
+      summary = context.research.reason ?? 'Autonomous research is aligned on the short side.';
+    } else if (context.lastAlert) {
+      tone = context.lastAlert.side === 'LONG' ? 'bullish' : 'bearish';
+      headline = `Focus on ${context.lastAlert.symbol} ${context.lastAlert.side} if structure still holds.`;
+      summary = `${context.lastAlert.setupType} is the most recent qualified idea on the 5m board.`;
+    }
+
+    const actions = [
+      context.ibkr.pendingReconnect
+        ? 'Run full recovery in the app and wait for IBKR connected.'
+        : context.desk.feedStatus === 'LIVE'
+          ? 'Use the 5m board first and only confirm clean setups.'
+          : 'Do not trust fresh entries until the live feed returns to LIVE.',
+      context.lastAlert
+        ? `Check ${context.lastAlert.symbol} ${context.lastAlert.side} against TradingView before acting.`
+        : 'Let the board print a fresh 5m idea before forcing a trade.',
+      macroIsNear && nextMacroEvent
+        ? `Respect the ${nextMacroEvent.title} window before pressing size.`
+        : nextMacroEvent
+          ? `Keep ${nextMacroEvent.title} on deck as the next macro catalyst.`
+          : 'No immediate macro catalyst is close enough to override structure.'
+    ].slice(0, 3);
+
+    const reasons = [
+      `Feed ${context.desk.feedStatus} • session ${context.desk.marketSessionState.toLowerCase()}.`,
+      context.research
+        ? `Research ${context.research.direction.toLowerCase()} at ${Math.round((context.research.confidence ?? 0) * 100)}% confidence.`
+        : 'Research trend is not available yet.',
+      context.learning.topSetup
+        ? `Best learned setup is ${context.learning.topSetup.setupType} at ${Math.round(context.learning.topSetup.winRate * 100)}% over ${context.learning.topSetup.sampleSize} reviews.`
+        : 'Learning does not have a clear top setup yet.'
+    ].slice(0, 3);
+
+    const watch = [
+      context.lastAlert ? `${context.lastAlert.symbol} ${context.lastAlert.side}` : null,
+      context.research?.leadSymbol ? `Research lead ${context.research.leadSymbol}` : null,
+      nextMacroEvent
+        ? `${nextMacroEvent.currency} ${nextMacroEvent.title ?? 'macro'}${typeof minutesToMacro === 'number' ? ` in ${minutesToMacro}m` : ''}`
+        : null
+    ].filter((value): value is string => Boolean(value)).slice(0, 3);
+
+    return {
+      brief: {
+        generatedAt: context.generatedAt,
+        tone,
+        headline,
+        summary,
+        actions,
+        reasons,
+        watch,
+        context
+      }
+    };
+  };
+
   const mobileRoot = path.resolve(process.cwd(), 'public', 'mobile');
 
   app.register(fastifyStatic, {
@@ -2000,6 +2092,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     return reply.status(200).send({
       context: await buildCompactAiContext()
     });
+  });
+
+  app.get('/ai/desk-brief', async (_request, reply) => {
+    return reply.status(200).send(await buildDeskBrief());
   });
 
   app.get('/calendar/events', async (request, reply) => {

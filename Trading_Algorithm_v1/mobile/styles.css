@@ -3778,6 +3778,106 @@ body.tv-viewer-open {
   gap: 8px;
 }
 
+.home-brief-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 28px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background:
+    linear-gradient(180deg, rgba(10, 16, 24, 0.96), rgba(9, 14, 20, 0.88));
+}
+
+.home-brief-card[data-tone='bullish'] {
+  border-color: rgba(106, 214, 154, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(106, 214, 154, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(11, 26, 21, 0.96), rgba(9, 14, 18, 0.88));
+}
+
+.home-brief-card[data-tone='bearish'] {
+  border-color: rgba(255, 121, 121, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(255, 121, 121, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(28, 15, 18, 0.96), rgba(12, 10, 14, 0.88));
+}
+
+.home-brief-card[data-tone='risk'] {
+  border-color: rgba(255, 196, 121, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(255, 196, 121, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(30, 20, 12, 0.96), rgba(14, 11, 9, 0.88));
+}
+
+.home-brief-headline {
+  margin: 0;
+  color: #f7fbff;
+  font-size: 1.18rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.home-brief-summary {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.home-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.home-brief-column {
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(231, 240, 250, 0.08);
+  background: rgba(8, 16, 24, 0.62);
+}
+
+.home-brief-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.home-brief-item {
+  position: relative;
+  padding-left: 14px;
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.home-brief-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.58em;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent 82%);
+}
+
+.home-brief-item.is-muted {
+  color: var(--muted);
+}
+
+.home-brief-item.is-muted::before {
+  background: var(--muted);
+  box-shadow: none;
+}
+
+.home-brief-watch {
+  display: grid;
+  gap: 8px;
+}
+
 .home-snapshot-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3903,6 +4003,7 @@ body.tv-viewer-open {
     min-width: 0;
   }
 
+  .home-brief-grid,
   .home-direction-grid,
   .home-snapshot-grid {
     grid-template-columns: 1fr;
