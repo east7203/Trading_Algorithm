@@ -36,6 +36,7 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Continuous Training');
     expect(mobile.body).toContain('Analysis Frames');
     expect(mobile.body).toContain('Market Watchlist');
+    expect(mobile.body).toContain('Research Lab');
     expect(mobile.body).toContain('symbolDetailViewer');
 
     const opener = await ctx.app.inject({ method: 'GET', path: '/mobile/open-app.html' });
@@ -89,5 +90,6 @@ describe('mobile app endpoints', () => {
     expect(payload.deck.watchlist.length).toBeLessThanOrEqual(2);
     expect(typeof payload.deck.headline).toBe('string');
     expect(payload.deck.watchlist.every((item: { symbol: string }) => typeof item.symbol === 'string')).toBe(true);
+    expect(payload.deck.researchLab).toBeTruthy();
   });
 });

@@ -173,6 +173,7 @@ interface MarketResearchConfigInput {
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
   flipNotificationMinConfidence: number;
+  experimentNotificationMinConfidence: number;
   evaluationMinutes: number;
   proactiveMinConfidence: number;
   experimentCooldownMinutes: number;
@@ -715,6 +716,7 @@ const resolveMarketResearchConfig = (
     maxBarsPerSymbol: parseIntEnv('MARKET_RESEARCH_MAX_BARS_PER_SYMBOL', 6_000, 500),
     focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
     flipNotificationMinConfidence: parseFloatEnv('MARKET_RESEARCH_FLIP_NOTIFY_CONFIDENCE', 0.55, 0, 1),
+    experimentNotificationMinConfidence: parseFloatEnv('MARKET_RESEARCH_EXPERIMENT_NOTIFY_CONFIDENCE', 0.68, 0, 1),
     evaluationMinutes: parseIntEnv('MARKET_RESEARCH_EVALUATION_MINUTES', 60, 15, 240),
     proactiveMinConfidence: parseFloatEnv('MARKET_RESEARCH_PROACTIVE_MIN_CONFIDENCE', 0.64, 0, 1),
     experimentCooldownMinutes: parseIntEnv('MARKET_RESEARCH_EXPERIMENT_COOLDOWN_MINUTES', 45, 5, 720),
@@ -1167,6 +1169,35 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                     `Lead: ${leadSymbol}`,
                     `Confidence: ${confidenceLabel}`,
                     `Why: ${event.nextTrend.reason}`
+                  ]
+                }
+              );
+            },
+            onExperimentOpened: async (event) => {
+              if (event.experiment.source !== 'PROACTIVE') {
+                return;
+              }
+              const confidenceLabel = `${Math.round(event.experiment.confidence * 100)}%`;
+              const directionLabel = event.experiment.direction === 'BULLISH' ? 'bullish' : 'bearish';
+              const leadSymbol = event.experiment.leadSymbol ?? event.experiment.symbol ?? event.overallTrend.leadSymbol ?? 'NQ/ES';
+              const evidence = event.experiment.evidence.slice(0, 2);
+
+              await notifyTradeAssistChannels(
+                {
+                  title: `Research experiment opened ${directionLabel}`,
+                  body: `${event.experiment.thesisSummary} • ${leadSymbol} leading • ${confidenceLabel}`,
+                  url: '/mobile/?tab=home&focus=research-lab',
+                  tag: 'research-experiment-opened'
+                },
+                {
+                  title: `Research experiment opened ${directionLabel}`,
+                  lines: [
+                    `Thesis: ${event.experiment.thesisSummary}`,
+                    `Lead: ${leadSymbol}`,
+                    `Confidence: ${confidenceLabel}`,
+                    `Horizon: ${event.experiment.horizonMinutes}m`,
+                    `Opened: ${event.changedAt}`,
+                    evidence.length > 0 ? `Evidence: ${evidence.join(' • ')}` : 'Evidence is still building.'
                   ]
                 }
               );
@@ -1671,6 +1702,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             adaptiveHitRate: Number((research.performance.adaptiveHitRate ?? research.performance.hitRate).toFixed(3)),
             evaluatedPredictions: research.performance.evaluatedPredictions,
             openPredictions: research.performance.openPredictions,
+            activeHypotheses: research.knowledgeBase.activeHypotheses.length,
             bestThesis: research.knowledgeBase.bestThesis
               ? {
                   label: research.knowledgeBase.bestThesis.label,
@@ -1916,6 +1948,37 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               openTrades: paper.openTrades,
               closedTrades: paper.closedTrades,
               hitRate: Number(paper.hitRate.toFixed(3))
+            }
+          : null,
+        researchLab: research
+          ? {
+              activeHypothesesCount: research.knowledgeBase.activeHypotheses.length,
+              bestThesis: research.knowledgeBase.bestThesis
+                ? {
+                    label: research.knowledgeBase.bestThesis.label,
+                    hitRate: Number(research.knowledgeBase.bestThesis.hitRate.toFixed(3)),
+                    evaluated: research.knowledgeBase.bestThesis.evaluated,
+                    total: research.knowledgeBase.bestThesis.total,
+                    lastOutcome: research.knowledgeBase.bestThesis.lastOutcome ?? null
+                  }
+                : null,
+              activeHypotheses: research.knowledgeBase.activeHypotheses.slice(0, 3).map((experiment) => ({
+                thesis: experiment.thesis,
+                thesisLabel: experiment.thesisSummary,
+                direction: experiment.direction,
+                confidence: Number(experiment.confidence.toFixed(2)),
+                leadSymbol: experiment.leadSymbol ?? experiment.symbol ?? null,
+                openedAt: experiment.openedAt,
+                horizonMinutes: experiment.horizonMinutes,
+                evidence: experiment.evidence.slice(0, 2)
+              })),
+              latestInsight: research.knowledgeBase.recentInsights[0]
+                ? {
+                    headline: compactText(research.knowledgeBase.recentInsights[0].headline, 96),
+                    detail: compactText(research.knowledgeBase.recentInsights[0].detail, 140),
+                    at: research.knowledgeBase.recentInsights[0].at
+                  }
+                : null
             }
           : null,
         lastRetrainedAt:

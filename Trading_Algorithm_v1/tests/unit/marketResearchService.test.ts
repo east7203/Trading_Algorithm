@@ -159,6 +159,34 @@ describe('market research service', () => {
     expect(status.knowledgeBase.recentInsights.length).toBeGreaterThan(0);
   });
 
+  it('notifies when a new high-confidence experiment opens after the initial pass', async () => {
+    const openedExperiments: string[] = [];
+    const service = new MarketResearchService({
+      enabled: true,
+      bootstrapRecursive: true,
+      maxBarsPerSymbol: 1000,
+      focusSymbols: ['NQ', 'ES'],
+      proactiveMinConfidence: 0.4,
+      experimentNotificationMinConfidence: 0.4,
+      onExperimentOpened: async (event) => {
+        openedExperiments.push(`${event.experiment.thesis}:${event.experiment.direction}`);
+      }
+    });
+
+    await service.start();
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'up', '2026-03-25T13:30:00.000Z', 20100),
+      ...buildTrendBars('ES', 'up', '2026-03-25T13:30:00.000Z', 5800)
+    ]);
+
+    await service.ingestBars([
+      ...buildTrendBars('NQ', 'down', '2026-03-25T17:31:00.000Z', 20800, 1.2),
+      ...buildTrendBars('ES', 'down', '2026-03-25T17:31:00.000Z', 5980, 0.8)
+    ]);
+
+    expect(openedExperiments.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('persists the research book so autonomous learning survives restarts', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'market-research-service-'));
     const statePath = path.join(tempDir, 'research-state.json');

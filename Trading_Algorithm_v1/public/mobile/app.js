@@ -57,6 +57,11 @@ const homeDeskBriefSummaryEl = document.getElementById('homeDeskBriefSummary');
 const homeDeskBriefActionsEl = document.getElementById('homeDeskBriefActions');
 const homeDeskBriefReasonsEl = document.getElementById('homeDeskBriefReasons');
 const homeDeskBriefWatchEl = document.getElementById('homeDeskBriefWatch');
+const homeResearchLabStampEl = document.getElementById('homeResearchLabStamp');
+const homeResearchLabHeadlineEl = document.getElementById('homeResearchLabHeadline');
+const homeResearchBestThesisEl = document.getElementById('homeResearchBestThesis');
+const homeResearchLatestInsightEl = document.getElementById('homeResearchLatestInsight');
+const homeResearchHypothesesEl = document.getElementById('homeResearchHypotheses');
 const homeDeckStampEl = document.getElementById('homeDeckStamp');
 const homeWatchlistListEl = document.getElementById('homeWatchlistList');
 const homeDeskStateEl = document.getElementById('homeDeskState');
@@ -147,6 +152,9 @@ const diagResearchComputedEl = document.getElementById('diagResearchComputed');
 const diagResearchHitRateEl = document.getElementById('diagResearchHitRate');
 const diagResearchPredictionsEl = document.getElementById('diagResearchPredictions');
 const diagResearchWhyEl = document.getElementById('diagResearchWhy');
+const diagResearchBestThesisEl = document.getElementById('diagResearchBestThesis');
+const diagResearchHypothesesEl = document.getElementById('diagResearchHypotheses');
+const diagResearchInsightEl = document.getElementById('diagResearchInsight');
 const calendarEventsListEl = document.getElementById('calendarEventsList');
 const diagTrainingCadenceEl = document.getElementById('diagTrainingCadence');
 const diagTrainingLastRunEl = document.getElementById('diagTrainingLastRun');
@@ -857,6 +865,76 @@ const renderHomeDeck = () => {
   });
 };
 
+const renderResearchHypothesisChips = (container, hypotheses, emptyText) => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  if (!Array.isArray(hypotheses) || hypotheses.length === 0) {
+    const chip = document.createElement('span');
+    chip.className = 'chip chip-neutral';
+    chip.textContent = emptyText;
+    container.appendChild(chip);
+    return;
+  }
+
+  hypotheses.forEach((item) => {
+    const chip = document.createElement('article');
+    chip.className = 'research-hypothesis-chip';
+    const confidence = Number(item.confidence);
+    const confidenceLabel = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '--';
+    const directionTone =
+      item.direction === 'BULLISH'
+        ? 'chip-online'
+        : item.direction === 'BEARISH'
+          ? 'chip-offline'
+          : 'chip-neutral';
+    const evidence = Array.isArray(item.evidence) && item.evidence.length > 0 ? item.evidence.join(' • ') : 'Evidence is still building.';
+    chip.innerHTML = `
+      <div class="research-hypothesis-head">
+        <span class="chip ${directionTone}">${researchDirectionLabel(item.direction ?? 'BALANCED')}</span>
+        <span class="chip chip-neutral">${confidenceLabel}</span>
+      </div>
+      <p class="research-hypothesis-title">${item.thesisLabel ?? item.label ?? 'Research hypothesis'}</p>
+      <p class="research-hypothesis-meta">${item.leadSymbol ? `${item.leadSymbol} leading • ` : ''}${item.openedAt ? `${fmtRelativeMinutes(item.openedAt)} • ` : ''}${item.horizonMinutes ? `${item.horizonMinutes}m horizon` : 'Monitoring'}</p>
+      <p class="research-hypothesis-copy">${evidence}</p>
+    `;
+    container.appendChild(chip);
+  });
+};
+
+const renderHomeResearchLab = () => {
+  const lab = latestHomeDeck?.deck?.researchLab ?? null;
+  if (homeResearchLabStampEl) {
+    homeResearchLabStampEl.textContent = latestHomeDeck?.deck?.generatedAt
+      ? `Updated ${fmtRelativeMinutes(latestHomeDeck.deck.generatedAt)}`
+      : 'Updating';
+  }
+  if (homeResearchLabHeadlineEl) {
+    homeResearchLabHeadlineEl.textContent = lab?.bestThesis
+      ? `${lab.bestThesis.label} leads the research book right now.`
+      : lab?.activeHypothesesCount
+        ? `${lab.activeHypothesesCount} live research hypotheses are open.`
+        : 'Watching for the next autonomous thesis.';
+  }
+  if (homeResearchBestThesisEl) {
+    homeResearchBestThesisEl.textContent = lab?.bestThesis
+      ? `${lab.bestThesis.label} • ${Math.round(Number(lab.bestThesis.hitRate ?? 0) * 100)}% hit rate • ${lab.bestThesis.evaluated ?? 0}/${lab.bestThesis.total ?? 0} evaluated`
+      : 'The research engine has not scored a thesis yet.';
+  }
+  if (homeResearchLatestInsightEl) {
+    homeResearchLatestInsightEl.textContent = lab?.latestInsight
+      ? `${lab.latestInsight.headline} • ${fmtRelativeMinutes(lab.latestInsight.at)}`
+      : 'No recent research note yet.';
+  }
+  renderResearchHypothesisChips(
+    homeResearchHypothesesEl,
+    lab?.activeHypotheses ?? [],
+    'No active hypotheses'
+  );
+};
+
 const buildSymbolDetailStats = (item, deck) => {
   const researchPct = Number.isFinite(Number(item.researchConfidence))
     ? `${Math.round(Number(item.researchConfidence) * 100)}%`
@@ -1254,6 +1332,7 @@ const renderHomeDashboard = () => {
     : 'No near-term macro catalyst in the current Forex Factory window.';
   renderDeskBrief();
   renderHomeDeck();
+  renderHomeResearchLab();
   renderHomeMacroList(upcomingEvents);
 };
 
@@ -4039,6 +4118,30 @@ const renderCalendarEvents = (calendar) => {
   });
 };
 
+const renderResearchDiagnostics = (research) => {
+  if (diagResearchHypothesesEl) {
+    renderResearchHypothesisChips(
+      diagResearchHypothesesEl,
+      research?.knowledgeBase?.activeHypotheses ?? [],
+      'No active hypotheses'
+    );
+  }
+
+  if (diagResearchBestThesisEl) {
+    const bestThesis = research?.knowledgeBase?.bestThesis ?? null;
+    diagResearchBestThesisEl.textContent = bestThesis
+      ? `${bestThesis.label} • ${fmtNum((Number(bestThesis.hitRate) || 0) * 100, 0)}% hit rate • ${bestThesis.evaluated ?? 0}/${bestThesis.total ?? 0} evaluated`
+      : 'The research engine has not scored a thesis yet.';
+  }
+
+  if (diagResearchInsightEl) {
+    const latestInsight = research?.knowledgeBase?.recentInsights?.[0] ?? null;
+    diagResearchInsightEl.textContent = latestInsight
+      ? `${latestInsight.headline} • ${fmtRelativeMinutes(latestInsight.at)}`
+      : 'No recent research insight yet.';
+  }
+};
+
 const renderReviewInsights = () => {
   const summary = reviewPerformanceSummary(latestReviews);
   reviewSetupEdgeEl.textContent = summary.bySetup;
@@ -4075,6 +4178,15 @@ const renderDiagnostics = () => {
     diagResearchHitRateEl.textContent = '--';
     diagResearchPredictionsEl.textContent = '--';
     diagResearchWhyEl.textContent = '--';
+    if (diagResearchBestThesisEl) {
+      diagResearchBestThesisEl.textContent = '--';
+    }
+    if (diagResearchInsightEl) {
+      diagResearchInsightEl.textContent = '--';
+    }
+    if (diagResearchHypothesesEl) {
+      renderEmpty(diagResearchHypothesesEl, 'Research diagnostics unavailable.');
+    }
     renderCalendarEvents(null);
     diagTrainingCadenceEl.textContent = '--';
     diagTrainingLastRunEl.textContent = '--';
@@ -4145,6 +4257,7 @@ const renderDiagnostics = () => {
     ? `${research.performance.totalPredictions ?? 0} total • ${research.performance.openPredictions ?? 0} open`
     : '--';
   diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
+  renderResearchDiagnostics(research);
   renderCalendarEvents(calendar);
   diagTrainingCadenceEl.textContent = training?.enabled
     ? `${cadence?.retrainIntervalMinutes ?? '--'}m cadence • ${cadence?.minNewBarsForRetrain ?? '--'} bars`

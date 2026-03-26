@@ -2364,6 +2364,41 @@ h1 {
   background: rgba(8, 18, 29, 0.72);
 }
 
+.home-research-hypothesis-list,
+.training-panel-list {
+  display: grid;
+  gap: 10px;
+}
+
+.research-hypothesis-chip {
+  padding: 12px 13px;
+  border: 1px solid rgba(152, 189, 225, 0.12);
+  border-radius: 16px;
+  background: rgba(8, 18, 29, 0.72);
+}
+
+.research-hypothesis-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.research-hypothesis-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.research-hypothesis-meta,
+.research-hypothesis-copy {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--text) 74%, var(--muted) 26%);
+}
+
 .signal-guidance-block .card-section-label {
   margin-top: 0;
 }

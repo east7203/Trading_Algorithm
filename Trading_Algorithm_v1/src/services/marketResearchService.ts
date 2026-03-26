@@ -151,6 +151,13 @@ export interface MarketResearchTrendFlipEvent {
   symbolStatuses: MarketResearchSymbolStatus[];
 }
 
+export interface MarketResearchExperimentOpenedEvent {
+  experiment: MarketResearchExperiment;
+  overallTrend: MarketResearchOverallTrend;
+  changedAt: string;
+  symbolStatuses: MarketResearchSymbolStatus[];
+}
+
 export interface MarketResearchConfig {
   enabled: boolean;
   archivePath?: string;
@@ -160,12 +167,14 @@ export interface MarketResearchConfig {
   maxBarsPerSymbol: number;
   focusSymbols: SymbolCode[];
   flipNotificationMinConfidence?: number;
+  experimentNotificationMinConfidence?: number;
   evaluationMinutes?: number;
   proactiveMinConfidence?: number;
   experimentCooldownMinutes?: number;
   maxExperiments?: number;
   maxInsights?: number;
   onTrendFlip?: (event: MarketResearchTrendFlipEvent) => Promise<void> | void;
+  onExperimentOpened?: (event: MarketResearchExperimentOpenedEvent) => Promise<void> | void;
 }
 
 const ANALYSIS_TIMEFRAMES: Array<Extract<Timeframe, '5m' | '15m' | '1H'>> = ['5m', '15m', '1H'];
@@ -664,6 +673,10 @@ export class MarketResearchService {
     return this.config.proactiveMinConfidence ?? 0.64;
   }
 
+  private get experimentNotificationMinConfidence(): number {
+    return this.config.experimentNotificationMinConfidence ?? Math.max(this.proactiveMinConfidence, 0.68);
+  }
+
   private get experimentCooldownMinutes(): number {
     return this.config.experimentCooldownMinutes ?? 45;
   }
@@ -842,7 +855,10 @@ export class MarketResearchService {
     });
   }
 
-  private openExperiment(candidate: Omit<MarketResearchExperiment, 'id'>): boolean {
+  private openExperiment(
+    candidate: Omit<MarketResearchExperiment, 'id'>,
+    openedExperiments?: MarketResearchExperiment[]
+  ): boolean {
     if (!this.canOpenExperiment(candidate.thesis, candidate.direction, candidate.symbol, candidate.openedAt)) {
       return false;
     }
@@ -852,6 +868,11 @@ export class MarketResearchService {
       id: `${candidate.openedAt}|${candidate.thesis}|${candidate.symbol ?? candidate.leadSymbol ?? 'market'}`
     };
     this.experiments.push(experiment);
+    openedExperiments?.push({
+      ...experiment,
+      evidence: [...experiment.evidence],
+      moveBySymbol: { ...experiment.moveBySymbol }
+    });
     this.trimExperimentHistory();
     this.appendInsight({
       kind: 'EXPERIMENT_OPENED',
@@ -869,7 +890,8 @@ export class MarketResearchService {
     previousTrend: MarketResearchOverallTrend,
     nextTrend: MarketResearchOverallTrend,
     symbolStatuses: MarketResearchSymbolStatus[],
-    changedAt: string
+    changedAt: string,
+    openedExperiments: MarketResearchExperiment[]
   ): boolean {
     if (!isDirectionalResearchTrend(nextTrend.direction)) {
       return false;
@@ -891,13 +913,14 @@ export class MarketResearchService {
       horizonMinutes: thesisHorizonMinutes('TREND_FLIP_DIRECTIONAL', this.evaluationMinutes),
       evidence: takeLast(nextTrend.reasons, 3),
       evaluationMode: 'ALL_SYMBOLS'
-    });
+    }, openedExperiments);
   }
 
   private maybeOpenProactiveExperiments(
     nextTrend: MarketResearchOverallTrend,
     symbolStatuses: MarketResearchSymbolStatus[],
-    changedAt: string
+    changedAt: string,
+    openedExperiments: MarketResearchExperiment[]
   ): boolean {
     let opened = false;
     const leadStatus = nextTrend.leadSymbol
@@ -921,7 +944,7 @@ export class MarketResearchService {
             ...symbolStatuses.flatMap((status) => takeLast(status.reasons, 1))
           ].slice(0, 4),
           evaluationMode: 'ALL_SYMBOLS'
-        }) || opened;
+        }, openedExperiments) || opened;
     }
 
     if (
@@ -946,7 +969,7 @@ export class MarketResearchService {
           horizonMinutes: thesisHorizonMinutes('LEADERSHIP_BREAKOUT', this.evaluationMinutes),
           evidence: [leadStatus.reason, ...takeLast(leadStatus.reasons, 2)],
           evaluationMode: 'PRIMARY_SYMBOL'
-        }) || opened;
+        }, openedExperiments) || opened;
     }
 
     if (nextTrend.direction === 'STAND_ASIDE' && symbolStatuses.length >= 2) {
@@ -974,7 +997,7 @@ export class MarketResearchService {
             horizonMinutes: thesisHorizonMinutes('DIVERGENCE_RESOLUTION', this.evaluationMinutes),
             evidence: [nextTrend.reason, lead.reason, lag.reason],
             evaluationMode: 'PRIMARY_SYMBOL'
-          }) || opened;
+          }, openedExperiments) || opened;
       }
     }
 
@@ -1082,9 +1105,11 @@ export class MarketResearchService {
         .sort()
         .at(-1) ?? new Date().toISOString();
     const shouldNotifyTrendFlip = this.shouldNotifyTrendFlip(previousTrend, nextTrend);
+    const shouldNotifyExperiments = this.initialComputeComplete && Boolean(this.config.onExperimentOpened);
+    const openedExperiments: MarketResearchExperiment[] = [];
 
-    const openedTrendFlipExperiment = this.maybeOpenPrediction(previousTrend, nextTrend, symbols, changedAt);
-    const openedProactiveExperiments = this.maybeOpenProactiveExperiments(nextTrend, symbols, changedAt);
+    const openedTrendFlipExperiment = this.maybeOpenPrediction(previousTrend, nextTrend, symbols, changedAt, openedExperiments);
+    const openedProactiveExperiments = this.maybeOpenProactiveExperiments(nextTrend, symbols, changedAt, openedExperiments);
     const evaluatedExperiments = this.evaluateExperiments(changedAt, symbols);
     const researchBookChanged = openedTrendFlipExperiment || openedProactiveExperiments || evaluatedExperiments;
 
@@ -1095,6 +1120,19 @@ export class MarketResearchService {
 
     if (researchBookChanged) {
       await this.persistState();
+    }
+
+    if (shouldNotifyExperiments && openedExperiments.length > 0) {
+      const minConfidence = this.experimentNotificationMinConfidence;
+      const experimentsToNotify = openedExperiments.filter((experiment) => experiment.confidence >= minConfidence);
+      for (const experiment of experimentsToNotify) {
+        await this.config.onExperimentOpened?.({
+          experiment,
+          overallTrend: nextTrend,
+          changedAt,
+          symbolStatuses: symbols
+        });
+      }
     }
 
     if (shouldNotifyTrendFlip) {
