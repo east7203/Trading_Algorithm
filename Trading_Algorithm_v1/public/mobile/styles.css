@@ -5030,3 +5030,230 @@ body.symbol-viewer-open {
     padding: 14px;
   }
 }
+
+/* Final palette authority */
+:root {
+  --surface-0: #060b11;
+  --surface-1: #0c121b;
+  --surface-2: #111923;
+  --surface-3: #162130;
+  --surface-4: #1b293a;
+  --line-strong: rgba(163, 179, 201, 0.16);
+  --text-strong: #f3f7fb;
+  --text-muted: #9aa9bb;
+  --text-soft: #738396;
+}
+
+html,
+body {
+  color-scheme: dark;
+}
+
+.top-card,
+.view,
+.stat-card,
+.hero-panel,
+.desk-card,
+.insight-card,
+.item-card,
+.home-direction-card,
+.home-market-panel,
+.home-fold,
+.home-snapshot-card,
+.home-why-card,
+.home-brief-column,
+.home-macro-card,
+.symbol-viewer-sheet,
+.tv-viewer-sheet,
+.chart-lightbox-sheet {
+  border-color: var(--line-strong);
+  background: linear-gradient(180deg, rgba(15, 21, 30, 0.98), rgba(10, 15, 22, 0.99));
+  box-shadow: 0 18px 38px rgba(1, 6, 12, 0.5);
+}
+
+.top-card {
+  background:
+    radial-gradient(circle at top right, rgba(21, 196, 107, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(18, 27, 39, 0.98), rgba(10, 15, 22, 0.99));
+}
+
+.hero-panel-primary,
+.desk-card-spotlight,
+.home-snapshot-card-strong {
+  background:
+    radial-gradient(circle at top right, rgba(21, 196, 107, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(20, 31, 45, 0.98), rgba(12, 18, 27, 0.99));
+}
+
+.eyebrow,
+.panel-label,
+.stat-label,
+.group-label,
+.review-section-label,
+.card-section-label,
+.home-fold-label,
+.symbol-viewer-stat-label {
+  color: var(--text-soft);
+}
+
+h1,
+.hero-title,
+.panel-value,
+.desk-value,
+.stat-value,
+.home-direction-label,
+.home-snapshot-value,
+.home-macro-title,
+.home-brief-headline,
+.home-watchlist-symbol,
+.home-watchlist-price,
+.symbol-viewer-title,
+.symbol-viewer-price,
+.symbol-viewer-stat-value,
+.symbol-viewer-setup-title,
+.home-fold-title {
+  color: var(--text-strong);
+}
+
+.subtitle,
+.panel-note,
+.desk-note,
+.section-kicker,
+.hint,
+.status,
+.insight-text,
+.setupType,
+.item-meta,
+.home-direction-detail,
+.home-why-copy,
+.home-snapshot-note,
+.home-macro-summary,
+.home-macro-note,
+.home-macro-meta,
+.home-brief-summary,
+.home-watchlist-setup,
+.home-watchlist-note,
+.home-watchlist-meta,
+.signalResearchNote,
+.reviewResearchNote,
+.review-chart-legend,
+.symbol-viewer-meta,
+.symbol-viewer-direction,
+.symbol-viewer-freshness,
+.symbol-viewer-stat-note,
+.symbol-viewer-setup-subtitle,
+.symbol-viewer-reason-copy,
+.symbol-viewer-empty-note,
+.symbol-viewer-empty-title {
+  color: var(--text-muted);
+}
+
+.chip,
+.chip-btn,
+.micro-pill,
+.toggle-chip,
+.level-chip,
+.evidence-chip,
+.signalChartLegendChip,
+.signalChartLegendChip.is-muted,
+.quick-action,
+.segment-btn,
+.tab-btn,
+input,
+textarea,
+select {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: #dde6f0;
+}
+
+.chip-online {
+  color: #b8ffd6;
+  background: rgba(21, 196, 107, 0.16);
+}
+
+.chip-neutral {
+  color: #ffe2a8;
+  background: rgba(194, 137, 30, 0.18);
+}
+
+.chip-offline {
+  color: #ffc7c7;
+  background: rgba(176, 51, 51, 0.18);
+}
+
+.micro-pill-strong,
+.primary-btn,
+.tab-btn.is-active,
+.segment-btn.is-active,
+.quick-action.is-active {
+  background: linear-gradient(135deg, rgba(21, 196, 107, 0.92), rgba(10, 155, 80, 0.92));
+  border-color: rgba(21, 196, 107, 0.4);
+  color: #06140d;
+  box-shadow: 0 10px 24px rgba(21, 196, 107, 0.18);
+}
+
+.tabbar {
+  background: rgba(8, 13, 20, 0.98);
+  border-color: var(--line-strong);
+}
+
+.tabbar-top .tab-btn,
+.tab-btn {
+  color: var(--text-muted);
+}
+
+.tab-btn.is-active .tab-label,
+.tab-btn.is-active .tab-icon {
+  color: #f4fbf6;
+}
+
+.signalChart {
+  background: linear-gradient(180deg, #09111a 0%, #0d1720 100%);
+  border-color: rgba(163, 179, 201, 0.12);
+}
+
+.signalChartLegend {
+  border-top-color: rgba(163, 179, 201, 0.12);
+  background: linear-gradient(180deg, rgba(10, 15, 22, 0.96), rgba(10, 15, 22, 0));
+}
+
+.signalChartLegendText,
+.signalChartLegendPrice,
+.signalChart.is-expandable::after {
+  color: #d8e1ec;
+}
+
+.signalChart.is-expandable::after {
+  background: rgba(8, 13, 20, 0.92);
+  border-color: rgba(163, 179, 201, 0.14);
+}
+
+.home-watchlist-card,
+.signal-card,
+.review-card,
+.review-case-card,
+.review-reading-card,
+.projection-card,
+.signal-guidance-block,
+.symbol-viewer-stat-card,
+.symbol-viewer-setup-card,
+.symbol-viewer-reason-item,
+.symbol-viewer-empty {
+  border-color: rgba(163, 179, 201, 0.12);
+  background: linear-gradient(180deg, rgba(18, 27, 39, 0.94), rgba(12, 18, 27, 0.98));
+  box-shadow: 0 12px 24px rgba(1, 6, 12, 0.3);
+}
+
+.home-watchlist-meta-secondary {
+  border-top-color: rgba(163, 179, 201, 0.12);
+}
+
+.ops-dot {
+  background: rgba(163, 179, 201, 0.18);
+}
+
+.symbol-viewer-frame {
+  border-color: rgba(163, 179, 201, 0.12);
+  background: #0a1118;
+}
