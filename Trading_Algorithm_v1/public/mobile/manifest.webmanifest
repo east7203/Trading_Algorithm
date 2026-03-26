@@ -1,12 +1,12 @@
 {
-  "name": "East Futures Desk",
-  "short_name": "EastDesk",
-  "description": "Personal morning futures desk for NQ and ES decision flow.",
+  "name": "Evan TradeAssist",
+  "short_name": "EvanDesk",
+  "description": "Evan's live futures desk for NQ and ES decision flow.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#120d0c",
-  "theme_color": "#120d0c",
+  "background_color": "#07111b",
+  "theme_color": "#07111b",
   "icons": [
     {
       "src": "icon.svg",

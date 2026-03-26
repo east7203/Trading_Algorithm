@@ -2765,7 +2765,7 @@ h1 {
   }
 }
 
-/* East Futures Desk makeover */
+/* Evan TradeAssist makeover */
 :root {
   --display-font: 'Baskerville', 'Iowan Old Style', 'Palatino Linotype', serif;
   --body-font: 'Avenir Next', 'Segoe UI', sans-serif;
@@ -4674,5 +4674,359 @@ body.symbol-viewer-open {
   .symbol-viewer-stats,
   .symbol-viewer-setup-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Evan TradeAssist dark shell */
+:root {
+  color-scheme: dark;
+  --display-font: 'Avenir Next', 'SF Pro Display', 'Segoe UI', sans-serif;
+  --body-font: 'Avenir Next', 'SF Pro Text', 'Segoe UI', sans-serif;
+  --bg: #060b11;
+  --bg2: #0d1722;
+  --card: rgba(15, 22, 32, 0.92);
+  --card-strong: rgba(18, 27, 39, 0.98);
+  --line: rgba(164, 179, 199, 0.12);
+  --text: #edf2f8;
+  --muted: #95a3b5;
+  --accent: #15c46b;
+  --accent-ink: #071c12;
+  --shadow-lg: 0 18px 38px rgba(1, 6, 12, 0.55);
+}
+
+html,
+body {
+  min-height: 100dvh;
+  background: radial-gradient(140% 110% at 50% -10%, #132131 0%, #09111a 48%, #05090e 100%);
+}
+
+body {
+  overflow: hidden;
+}
+
+.ambient {
+  opacity: 0.18;
+}
+
+.phone-shell {
+  width: min(620px, 100%);
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+}
+
+.top-card,
+.view,
+.stat-card,
+.tabbar,
+.item-card,
+.insight-card,
+.home-direction-card,
+.home-market-panel,
+.home-brief-card,
+.home-macro-panel,
+.home-snapshot-card,
+.home-why-card,
+.home-brief-column,
+.home-macro-card,
+.symbol-viewer-sheet,
+.tv-viewer-sheet,
+.chart-lightbox-sheet {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(164, 179, 199, 0.12);
+  background: linear-gradient(180deg, rgba(13, 21, 31, 0.96), rgba(10, 17, 26, 0.98));
+  box-shadow: var(--shadow-lg);
+}
+
+.top-card {
+  padding: 16px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top right, rgba(21, 196, 107, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(15, 23, 35, 0.98), rgba(10, 16, 24, 0.99));
+}
+
+.eyebrow,
+.panel-label,
+.stat-label,
+.group-label,
+.review-section-label,
+.card-section-label,
+.symbol-viewer-stat-label,
+.home-fold-label {
+  color: #7f90a5;
+}
+
+.subtitle,
+.panel-note,
+.hint,
+.home-snapshot-note,
+.home-watchlist-note,
+.home-watchlist-meta,
+.home-watchlist-setup,
+.home-macro-summary,
+.home-direction-detail,
+.home-brief-summary,
+.review-chart-legend,
+.symbol-viewer-meta,
+.symbol-viewer-direction,
+.symbol-viewer-freshness,
+.symbol-viewer-stat-note,
+.symbol-viewer-setup-subtitle,
+.symbol-viewer-reason-copy,
+.symbol-viewer-empty-note {
+  color: #97a6b8;
+}
+
+.hero-title,
+.panel-value,
+.desk-value,
+.stat-value,
+.home-direction-label,
+.home-snapshot-value,
+.home-watchlist-price,
+.home-watchlist-symbol,
+.home-brief-headline,
+.home-macro-title,
+.symbol-viewer-title,
+.symbol-viewer-price,
+.symbol-viewer-stat-value,
+.symbol-viewer-setup-title {
+  color: #f3f7fb;
+}
+
+.micro-pill {
+  background: rgba(255, 255, 255, 0.06);
+  color: #dfe7f2;
+}
+
+.micro-pill-strong,
+.chip-online,
+.primary-btn,
+.home-watchlist-meter-fill,
+.symbol-viewer-meter-fill {
+  background: linear-gradient(135deg, #17c86d, #0a9b50);
+  color: #06130d;
+}
+
+.chip,
+.chip-btn.secondary-btn,
+.signalChartLegendChip,
+.signalChartLegendChip.is-muted {
+  border-color: rgba(164, 179, 199, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #d5dde8;
+}
+
+.tabbar {
+  padding: 8px;
+  border-radius: 22px;
+  background: rgba(8, 13, 20, 0.96);
+}
+
+.tabbar-top {
+  overflow-x: auto;
+}
+
+.tabbar-top .tab-btn {
+  min-height: 44px;
+  border-radius: 14px;
+  color: #8e9dad;
+}
+
+.tab-btn.is-active {
+  background: linear-gradient(135deg, rgba(21, 196, 107, 0.24), rgba(18, 93, 54, 0.78));
+}
+
+.tab-btn.is-active .tab-label,
+.tab-btn.is-active .tab-icon {
+  color: #eefaf2;
+}
+
+.stats-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(132px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.stats-grid::-webkit-scrollbar,
+.tabbar-top::-webkit-scrollbar,
+.views::-webkit-scrollbar,
+.view::-webkit-scrollbar {
+  display: none;
+}
+
+.stat-card {
+  min-height: 88px;
+  border-radius: 20px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(14, 21, 31, 0.98), rgba(9, 15, 22, 0.98));
+}
+
+.views {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 18px 14px calc(32px + env(safe-area-inset-bottom));
+  border-radius: 28px 28px 22px 22px;
+}
+
+.view-hidden-ops {
+  display: none !important;
+}
+
+.view-home {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.home-snapshot-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.home-snapshot-card {
+  min-height: 96px;
+  border-radius: 22px;
+  padding: 14px;
+}
+
+.home-direction-card,
+.home-market-panel,
+.home-fold {
+  border-radius: 28px;
+}
+
+.home-market-panel {
+  padding: 14px;
+}
+
+.home-fold {
+  overflow: hidden;
+}
+
+.home-fold-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.home-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-fold-title {
+  margin: 2px 0 0;
+  color: #eef4fa;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.home-fold-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.home-brief-grid {
+  grid-template-columns: 1fr;
+}
+
+.home-watchlist-card,
+.signal-card,
+.review-card,
+.review-case-card,
+.review-reading-card,
+.projection-card,
+.symbol-viewer-stat-card,
+.symbol-viewer-setup-card,
+.symbol-viewer-reason-item {
+  background: linear-gradient(180deg, rgba(16, 25, 37, 0.96), rgba(12, 18, 28, 0.98));
+  border-color: rgba(164, 179, 199, 0.1);
+  box-shadow: 0 12px 24px rgba(1, 6, 12, 0.28);
+}
+
+.signalChart {
+  background: linear-gradient(180deg, #081018 0%, #0c151e 100%);
+  border-color: rgba(164, 179, 199, 0.08);
+}
+
+.signalChartLegend {
+  background: linear-gradient(180deg, rgba(12, 18, 28, 0.94), rgba(12, 18, 28, 0));
+  border-top-color: rgba(164, 179, 199, 0.1);
+}
+
+.signalChartLegendText,
+.signalChartLegendPrice {
+  color: #d5dde8;
+}
+
+.signal-card .setupType,
+.review-card .setupType,
+.signalResearchNote,
+.reviewResearchNote {
+  color: #9cadbf;
+}
+
+.level-chip,
+.evidence-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(164, 179, 199, 0.1);
+}
+
+.home-watchlist-meta-secondary {
+  border-top-color: rgba(164, 179, 199, 0.08);
+}
+
+.symbol-viewer-sheet,
+.tv-viewer-sheet,
+.chart-lightbox-sheet {
+  background: linear-gradient(180deg, rgba(10, 16, 24, 0.995), rgba(7, 12, 18, 0.995));
+}
+
+.symbol-viewer-empty {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(164, 179, 199, 0.14);
+}
+
+body.chart-lightbox-open,
+body.tv-viewer-open,
+body.symbol-viewer-open {
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .phone-shell {
+    gap: 10px;
+    padding-inline: 10px;
+  }
+
+  .home-snapshot-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-grid,
+  .home-direction-grid {
+    gap: 10px;
+  }
+
+  .top-card {
+    padding: 14px;
   }
 }

@@ -61,7 +61,6 @@ const homeDeckStampEl = document.getElementById('homeDeckStamp');
 const homeWatchlistListEl = document.getElementById('homeWatchlistList');
 const homeDeskStateEl = document.getElementById('homeDeskState');
 const homeTopIdeaEl = document.getElementById('homeTopIdea');
-const homeActionStateEl = document.getElementById('homeActionState');
 const homeReplayStateEl = document.getElementById('homeReplayState');
 const homeModelStateEl = document.getElementById('homeModelState');
 const homeResearchStateEl = document.getElementById('homeResearchState');
@@ -1237,7 +1236,6 @@ const renderHomeDashboard = () => {
   homeTopIdeaEl.textContent = topAlert
     ? `${topAlert.symbol} ${topAlert.side} • ${setupLabel(topAlert.setupType)}`
     : 'No live lead idea';
-  homeActionStateEl.textContent = `${latestPending.length} pending • ${fmtNum(openRisk, 2)}% queued risk`;
   homeReplayStateEl.textContent = `${reviewSummary.pending} pending • ${reviewSummary.completed} done`;
   homeModelStateEl.textContent = diagnostics?.rankingModel?.modelId
     ? `${diagnostics.rankingModel.modelId} • ${lastRetrainAt ? fmtRelativeMinutes(lastRetrainAt) : 'fresh run unknown'}`
@@ -5199,6 +5197,7 @@ const bindStatusRecoveryControls = () => {
 const bootstrap = async () => {
   const prefs = getUiPrefs();
   const routeState = parseRouteState();
+  const initialTab = routeState.tab === 'pending' ? 'home' : routeState.tab;
   activeRouteAlertId = routeState.alertId;
   focusedAlertId = routeState.alertId;
   applyUiPrefs(prefs);
@@ -5228,8 +5227,8 @@ const bootstrap = async () => {
   quickActionButtons.forEach((button) => {
     button.addEventListener('click', () => setActiveTab(button.dataset.targetTab));
   });
-  setActiveTab(routeState.tab ?? tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.tab ?? 'home');
-  if (routeState.tab === 'status' && routeState.focus === 'ibkr-connection') {
+  setActiveTab(initialTab ?? tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.tab ?? 'home');
+  if (initialTab === 'status' && routeState.focus === 'ibkr-connection') {
     setTimeout(() => {
       ibkrRecoveryPanelEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 250);
@@ -5254,8 +5253,9 @@ const bootstrap = async () => {
     const nextRoute = parseRouteState();
     activeRouteAlertId = nextRoute.alertId;
     focusedAlertId = nextRoute.alertId;
-    if (nextRoute.tab) {
-      setActiveTab(nextRoute.tab);
+    const nextTab = nextRoute.tab === 'pending' ? 'home' : nextRoute.tab;
+    if (nextTab) {
+      setActiveTab(nextTab);
     }
     void refreshAll();
   });

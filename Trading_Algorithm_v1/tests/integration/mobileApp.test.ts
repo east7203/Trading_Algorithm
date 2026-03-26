@@ -29,7 +29,7 @@ describe('mobile app endpoints', () => {
     const mobile = await ctx.app.inject({ method: 'GET', path: '/mobile/' });
     expect(mobile.statusCode).toBe(200);
     expect(mobile.headers['content-type']).toContain('text/html');
-    expect(mobile.body).toContain('Trading Assist');
+    expect(mobile.body).toContain('Evan TradeAssist');
     expect(mobile.body).toContain('Review Loop');
     expect(mobile.body).toContain('Diagnostics');
     expect(mobile.body).toContain('Pull to refresh');

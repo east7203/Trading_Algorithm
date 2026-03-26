@@ -6,15 +6,15 @@
       name="viewport"
       content="width=device-width, initial-scale=1, minimum-scale=0.75, maximum-scale=5, user-scalable=yes, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#f4f7f2" />
-    <title>East Futures Desk</title>
+    <meta name="theme-color" content="#07111b" />
+    <title>Evan TradeAssist</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <span hidden>Trading Assist</span>
+    <span hidden>Evan TradeAssist</span>
     <div class="ambient ambient-a"></div>
     <div class="ambient ambient-b"></div>
 
@@ -32,8 +32,8 @@
           <div class="brand-cluster">
             <span class="brand-mark" aria-hidden="true"></span>
             <div>
-              <p class="eyebrow">EAST FUTURES DESK</p>
-              <h1>TradeAssist Morning Market</h1>
+              <p class="eyebrow">EVAN TRADEASSIST</p>
+              <h1>Evan Morning Market</h1>
             </div>
           </div>
           <div class="masthead-tags">
@@ -41,7 +41,7 @@
             <span class="micro-pill">NQ + ES</span>
           </div>
         </div>
-        <p class="subtitle">Robinhood-style morning shell for your live desk: read the market, confirm the 5m board, then execute manually in Tradovate.</p>
+        <p class="subtitle">Dark-mode futures desk for Evan: read the market, confirm the 5m board, and stay inside a tighter app-style shell instead of a long scrolling page.</p>
         <div class="chip-row">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
@@ -86,8 +86,8 @@
         <div class="quick-actions" aria-label="Section shortcuts">
           <button class="quick-action is-active" type="button" data-target-tab="home">Home</button>
           <button class="quick-action" type="button" data-target-tab="signals">Board</button>
-          <button class="quick-action" type="button" data-target-tab="pending">Action</button>
           <button class="quick-action" type="button" data-target-tab="reviews">Replay</button>
+          <button class="quick-action" type="button" data-target-tab="trades">Tape</button>
           <button class="quick-action" type="button" data-target-tab="status">Engine</button>
         </div>
       </header>
@@ -103,12 +103,6 @@
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true">D</span>
             <span class="tab-label">Board</span>
-          </span>
-        </button>
-        <button class="tab-btn" type="button" data-tab="pending">
-          <span class="tab-btn-content">
-            <span class="tab-icon" aria-hidden="true">A</span>
-            <span class="tab-label">Action</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="trades">
@@ -169,7 +163,7 @@
           <div class="section-head">
             <div>
               <h2>Home</h2>
-              <p class="section-kicker">One-screen morning read: direction, board pressure, queue state, macro risk, and what deserves your attention right now.</p>
+              <p class="section-kicker">One-screen morning read: direction, 5m board pressure, macro risk, and what deserves your attention right now.</p>
             </div>
             <span id="homeSessionChip" class="chip chip-neutral">Desk --</span>
           </div>
@@ -199,32 +193,6 @@
             <div id="homeDirectionTags" class="home-direction-tags"></div>
           </section>
 
-          <section id="homeDeskBriefCard" class="home-brief-card" data-tone="neutral">
-            <div class="section-subhead">
-              <div>
-                <h3>Desk Brief</h3>
-                <p class="section-kicker">Compact operating read built from the bounded desk context only.</p>
-              </div>
-              <span id="homeDeskBriefStamp" class="chip chip-neutral">Updating</span>
-            </div>
-            <p id="homeDeskBriefHeadline" class="home-brief-headline">Waiting for the desk brief.</p>
-            <p id="homeDeskBriefSummary" class="home-brief-summary">The app is loading the compact market summary.</p>
-            <div class="home-brief-grid">
-              <article class="home-brief-column">
-                <p class="card-section-label">Next Actions</p>
-                <ul id="homeDeskBriefActions" class="home-brief-list"></ul>
-              </article>
-              <article class="home-brief-column">
-                <p class="card-section-label">Why</p>
-                <ul id="homeDeskBriefReasons" class="home-brief-list"></ul>
-              </article>
-            </div>
-            <div class="home-brief-watch">
-              <p class="card-section-label">Watch</p>
-              <div id="homeDeskBriefWatch" class="home-direction-tags"></div>
-            </div>
-          </section>
-
           <section class="home-market-panel">
             <div class="section-subhead">
               <div>
@@ -248,11 +216,6 @@
               <p class="home-snapshot-note">Lead 5m setup on the board.</p>
             </article>
             <article class="home-snapshot-card">
-              <p class="stat-label">Action Queue</p>
-              <p id="homeActionState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Approvals and open planned risk.</p>
-            </article>
-            <article class="home-snapshot-card">
               <p class="stat-label">Replay Loop</p>
               <p id="homeReplayState" class="home-snapshot-value">--</p>
               <p class="home-snapshot-note">What still needs your review.</p>
@@ -274,16 +237,44 @@
             </article>
           </section>
 
-          <section class="home-macro-panel">
-            <div class="section-subhead">
+          <details id="homeDeskBriefCard" class="home-fold home-brief-card" data-tone="neutral">
+            <summary class="home-fold-summary">
               <div>
-                <h3>Forex Factory Outlook</h3>
-                <p class="section-kicker">Interpretation for NQ/ES, not just a raw event list. When the desk cannot defend a directional call, it says that clearly.</p>
+                <p class="home-fold-label">Desk Brief</p>
+                <p id="homeDeskBriefHeadline" class="home-fold-title">Waiting for the desk brief.</p>
+              </div>
+              <span id="homeDeskBriefStamp" class="chip chip-neutral">Updating</span>
+            </summary>
+            <div class="home-fold-body">
+              <p id="homeDeskBriefSummary" class="home-brief-summary">The app is loading the compact market summary.</p>
+              <div class="home-brief-grid">
+                <article class="home-brief-column">
+                  <p class="card-section-label">Next Actions</p>
+                  <ul id="homeDeskBriefActions" class="home-brief-list"></ul>
+                </article>
+                <article class="home-brief-column">
+                  <p class="card-section-label">Why</p>
+                  <ul id="homeDeskBriefReasons" class="home-brief-list"></ul>
+                </article>
+              </div>
+              <div class="home-brief-watch">
+                <p class="card-section-label">Watch</p>
+                <div id="homeDeskBriefWatch" class="home-direction-tags"></div>
               </div>
             </div>
-            <p id="homeMacroSummary" class="home-macro-summary">Scanning the next macro events.</p>
-            <div id="homeMacroList" class="home-macro-list"></div>
-          </section>
+          </details>
+
+          <details class="home-fold home-macro-panel">
+            <summary class="home-fold-summary">
+              <div>
+                <p class="home-fold-label">Forex Factory Outlook</p>
+                <p id="homeMacroSummary" class="home-fold-title">Scanning the next macro events.</p>
+              </div>
+            </summary>
+            <div class="home-fold-body">
+              <div id="homeMacroList" class="home-macro-list"></div>
+            </div>
+          </details>
         </section>
 
         <section id="view-signals" class="view view-signals">
@@ -341,7 +332,7 @@
           <div id="alertsList" class="stack"></div>
         </section>
 
-        <section id="view-pending" class="view view-pending">
+        <section id="view-pending" class="view view-pending view-hidden-ops" hidden>
           <div class="section-head">
             <h2>Action Queue</h2>
           </div>
