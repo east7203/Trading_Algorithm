@@ -3750,8 +3750,9 @@ const syncSeenAlerts = async (alerts) => {
 };
 
 const setActiveTab = (tabName) => {
+  const normalizedTab = tabName === 'pending' ? 'home' : tabName;
   tabButtons.forEach((button) => {
-    const isActive = button.dataset.tab === tabName;
+    const isActive = button.dataset.tab === normalizedTab;
     button.classList.toggle('is-active', isActive);
     if (isActive) {
       button.setAttribute('aria-current', 'page');
@@ -3761,16 +3762,16 @@ const setActiveTab = (tabName) => {
   });
 
   quickActionButtons.forEach((button) => {
-    button.classList.toggle('is-active', button.dataset.targetTab === tabName);
+    button.classList.toggle('is-active', button.dataset.targetTab === normalizedTab);
   });
 
   Object.entries(views).forEach(([name, view]) => {
-    view.classList.toggle('is-active', name === tabName);
+    view.classList.toggle('is-active', name === normalizedTab);
   });
 
   updateRouteState({
-    tab: tabName,
-    alertId: tabName === 'signals' ? activeRouteAlertId : null
+    tab: normalizedTab,
+    alertId: normalizedTab === 'signals' ? activeRouteAlertId : null
   });
 
   try {
