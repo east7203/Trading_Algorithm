@@ -87,7 +87,7 @@
           <button class="quick-action is-active" type="button" data-target-tab="home">Home</button>
           <button class="quick-action" type="button" data-target-tab="signals">Board</button>
           <button class="quick-action" type="button" data-target-tab="reviews">Replay</button>
-          <button class="quick-action" type="button" data-target-tab="trades">Tape</button>
+          <button class="quick-action" type="button" data-target-tab="trades">Paper</button>
           <button class="quick-action" type="button" data-target-tab="status">Engine</button>
         </div>
       </header>
@@ -107,8 +107,8 @@
         </button>
         <button class="tab-btn" type="button" data-tab="trades">
           <span class="tab-btn-content">
-            <span class="tab-icon" aria-hidden="true">T</span>
-            <span class="tab-label">Tape</span>
+            <span class="tab-icon" aria-hidden="true">P</span>
+            <span class="tab-label">Paper</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="reviews">
@@ -236,6 +236,20 @@
               <p class="home-snapshot-note">Phone, Telegram, and recovery path.</p>
             </article>
           </section>
+
+          <button id="homePaperAccountCard" class="home-paper-card" type="button">
+            <div class="home-paper-head">
+              <div>
+                <p class="panel-label">Paper Account</p>
+                <p id="homePaperBalance" class="home-paper-balance">--</p>
+              </div>
+              <span id="homePaperChip" class="chip chip-neutral">Paper --</span>
+            </div>
+            <div class="home-paper-body">
+              <p id="homePaperPnl" class="home-paper-pnl">--</p>
+              <p id="homePaperMeta" class="home-paper-meta">Live paper account is loading.</p>
+            </div>
+          </button>
 
           <details id="homeDeskBriefCard" class="home-fold home-brief-card" data-tone="neutral">
             <summary class="home-fold-summary">
@@ -376,8 +390,77 @@
 
         <section id="view-trades" class="view view-trades">
           <div class="section-head">
-            <h2>Trade Tape</h2>
+            <div>
+              <h2>Paper Account</h2>
+              <p class="section-kicker">A live $100,000 simulated account driven by the desk’s real NQ and ES signals, shown like an app account screen instead of buried journal data.</p>
+            </div>
+            <span id="paperAccountChip" class="chip chip-neutral">Paper --</span>
           </div>
+          <section class="paper-hero-card">
+            <div class="paper-hero-head">
+              <div>
+                <p class="panel-label">Portfolio Value</p>
+                <p id="paperHeroEquity" class="paper-hero-equity">--</p>
+                <p id="paperHeroPnl" class="paper-hero-pnl">--</p>
+              </div>
+              <div class="paper-hero-badges">
+                <span id="paperHeroUpdated" class="chip chip-neutral">Updated --</span>
+                <span id="paperHeroWindow" class="chip chip-neutral">Paper Live</span>
+              </div>
+            </div>
+            <div id="paperHeroSparkline" class="paper-hero-sparkline" aria-label="Paper account equity trend"></div>
+            <div class="paper-hero-grid">
+              <article class="paper-metric-card">
+                <p class="stat-label">Cash Balance</p>
+                <p id="paperBalance" class="paper-metric-value">--</p>
+              </article>
+              <article class="paper-metric-card">
+                <p class="stat-label">Unrealized</p>
+                <p id="paperUnrealized" class="paper-metric-value">--</p>
+              </article>
+              <article class="paper-metric-card">
+                <p class="stat-label">Realized</p>
+                <p id="paperRealized" class="paper-metric-value">--</p>
+              </article>
+              <article class="paper-metric-card">
+                <p class="stat-label">Hit Rate</p>
+                <p id="paperHitRate" class="paper-metric-value">--</p>
+              </article>
+              <article class="paper-metric-card">
+                <p class="stat-label">Open</p>
+                <p id="paperOpenCount" class="paper-metric-value">--</p>
+              </article>
+              <article class="paper-metric-card">
+                <p class="stat-label">Closed</p>
+                <p id="paperClosedCount" class="paper-metric-value">--</p>
+              </article>
+            </div>
+            <p id="paperHeroMeta" class="paper-hero-meta">Paper account details are loading.</p>
+          </section>
+
+          <section class="paper-section">
+            <div class="section-subhead">
+              <h3>Open Positions</h3>
+              <span id="paperOpenChip" class="chip chip-neutral">0 open</span>
+            </div>
+            <div id="paperOpenPositionsList" class="stack"></div>
+          </section>
+
+          <section class="paper-section">
+            <div class="section-subhead">
+              <h3>Recent Closes</h3>
+              <span id="paperClosedChip" class="chip chip-neutral">0 closed</span>
+            </div>
+            <div id="paperClosedTradesList" class="stack"></div>
+          </section>
+
+          <section class="paper-section paper-section-muted">
+            <div class="section-subhead">
+              <div>
+                <h3>Execution Journal</h3>
+                <p class="section-kicker">Manual approvals and journal events still live here, but the paper account is now the lead view.</p>
+              </div>
+            </div>
           <section class="insights-grid">
             <article class="insight-card">
               <p class="stat-label">Setup Mix</p>
@@ -393,6 +476,7 @@
             </article>
           </section>
           <div id="tradesList" class="stack"></div>
+          </section>
         </section>
 
         <section id="view-reviews" class="view view-reviews">

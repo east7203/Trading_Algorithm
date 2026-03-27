@@ -1941,13 +1941,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         modelId: context.desk.rankingModelId,
         paperAccount: paper
           ? {
+              initialBalance: Number(paper.initialBalance.toFixed(2)),
               balance: Number(paper.balance.toFixed(2)),
               equity: Number(paper.equity.toFixed(2)),
               realizedPnl: Number(paper.realizedPnl.toFixed(2)),
               unrealizedPnl: Number(paper.unrealizedPnl.toFixed(2)),
               openTrades: paper.openTrades,
+              pendingEntries: paper.pendingEntries,
               closedTrades: paper.closedTrades,
-              hitRate: Number(paper.hitRate.toFixed(3))
+              hitRate: Number(paper.hitRate.toFixed(3)),
+              totalReturnPct: Number((((paper.equity - paper.initialBalance) / Math.max(paper.initialBalance, 1)) * 100).toFixed(2)),
+              lastUpdatedAt: paper.lastUpdatedAt ?? null
             }
           : null,
         researchLab: research

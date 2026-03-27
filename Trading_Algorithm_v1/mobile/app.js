@@ -70,6 +70,11 @@ const homeReplayStateEl = document.getElementById('homeReplayState');
 const homeModelStateEl = document.getElementById('homeModelState');
 const homeResearchStateEl = document.getElementById('homeResearchState');
 const homeAlertStateEl = document.getElementById('homeAlertState');
+const homePaperAccountCardEl = document.getElementById('homePaperAccountCard');
+const homePaperBalanceEl = document.getElementById('homePaperBalance');
+const homePaperPnlEl = document.getElementById('homePaperPnl');
+const homePaperMetaEl = document.getElementById('homePaperMeta');
+const homePaperChipEl = document.getElementById('homePaperChip');
 const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
 const homeMacroListEl = document.getElementById('homeMacroList');
 const approvedByInput = document.getElementById('approvedBy');
@@ -112,6 +117,23 @@ const reviewBlockedVsReadyEl = document.getElementById('reviewBlockedVsReady');
 const setupMixEl = document.getElementById('setupMix');
 const guardrailSummaryEl = document.getElementById('guardrailSummary');
 const journalSummaryEl = document.getElementById('journalSummary');
+const paperAccountChipEl = document.getElementById('paperAccountChip');
+const paperHeroEquityEl = document.getElementById('paperHeroEquity');
+const paperHeroPnlEl = document.getElementById('paperHeroPnl');
+const paperHeroUpdatedEl = document.getElementById('paperHeroUpdated');
+const paperHeroWindowEl = document.getElementById('paperHeroWindow');
+const paperHeroSparklineEl = document.getElementById('paperHeroSparkline');
+const paperBalanceEl = document.getElementById('paperBalance');
+const paperUnrealizedEl = document.getElementById('paperUnrealized');
+const paperRealizedEl = document.getElementById('paperRealized');
+const paperHitRateEl = document.getElementById('paperHitRate');
+const paperOpenCountEl = document.getElementById('paperOpenCount');
+const paperClosedCountEl = document.getElementById('paperClosedCount');
+const paperHeroMetaEl = document.getElementById('paperHeroMeta');
+const paperOpenChipEl = document.getElementById('paperOpenChip');
+const paperClosedChipEl = document.getElementById('paperClosedChip');
+const paperOpenPositionsListEl = document.getElementById('paperOpenPositionsList');
+const paperClosedTradesListEl = document.getElementById('paperClosedTradesList');
 
 const themePresetEl = document.getElementById('themePreset');
 const densityPresetEl = document.getElementById('densityPreset');
@@ -935,6 +957,281 @@ const renderHomeResearchLab = () => {
   );
 };
 
+const getPaperAccountStatus = () => latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
+
+const getPaperLatestPrice = (symbol) => {
+  const deckMatch = latestHomeDeck?.deck?.watchlist?.find((item) => item.symbol === symbol);
+  if (typeof deckMatch?.latestPrice === 'number') {
+    return deckMatch.latestPrice;
+  }
+  const researchMatch = latestDiagnostics?.diagnostics?.research?.symbols?.find((item) => item.symbol === symbol);
+  return typeof researchMatch?.latestPrice === 'number' ? researchMatch.latestPrice : null;
+};
+
+const buildPaperEquitySeries = (paper) => {
+  if (!paper || typeof paper.initialBalance !== 'number') {
+    return [];
+  }
+
+  let running = Number(paper.initialBalance) || 100000;
+  const points = [running];
+  const ordered = Array.isArray(paper.recentClosedTrades)
+    ? [...paper.recentClosedTrades].sort(
+        (a, b) => new Date(a.closedAt ?? a.submittedAt ?? 0).getTime() - new Date(b.closedAt ?? b.submittedAt ?? 0).getTime()
+      )
+    : [];
+
+  ordered.forEach((trade) => {
+    if (typeof trade.realizedPnl === 'number') {
+      running += trade.realizedPnl;
+      points.push(Number(running.toFixed(2)));
+    }
+  });
+
+  if (typeof paper.equity === 'number') {
+    points.push(Number(paper.equity.toFixed(2)));
+  }
+
+  return points.slice(-24);
+};
+
+const renderPaperSparkline = (container, points) => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  if (!Array.isArray(points) || points.length < 2) {
+    const empty = document.createElement('div');
+    empty.className = 'paper-sparkline-empty';
+    empty.textContent = 'The equity curve will appear as the paper account logs more trades.';
+    container.appendChild(empty);
+    return;
+  }
+
+  const width = 320;
+  const height = 96;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = Math.max(max - min, 1);
+  const polyline = points
+    .map((value, index) => {
+      const x = (index / Math.max(points.length - 1, 1)) * width;
+      const y = height - ((value - min) / range) * (height - 8) - 4;
+      return `${x},${y}`;
+    })
+    .join(' ');
+  const positive = points.at(-1) >= points[0];
+
+  container.innerHTML = `
+    <svg class="paper-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Paper account equity trend">
+      <defs>
+        <linearGradient id="paperSparklineFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="${positive ? '#00c087' : '#ff7f7f'}" stop-opacity="0.32"></stop>
+          <stop offset="100%" stop-color="${positive ? '#00c087' : '#ff7f7f'}" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <polyline class="paper-sparkline-fill" points="${polyline} ${width},${height} 0,${height}"></polyline>
+      <polyline class="paper-sparkline-line ${positive ? 'is-positive' : 'is-negative'}" points="${polyline}"></polyline>
+    </svg>
+  `;
+};
+
+const renderPaperTradeCards = (container, trades, emptyText, mode = 'open') => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  if (!Array.isArray(trades) || trades.length === 0) {
+    renderEmpty(container, emptyText);
+    return;
+  }
+
+  trades.forEach((trade) => {
+    const markPrice = getPaperLatestPrice(trade.symbol);
+    const hasMark = typeof markPrice === 'number';
+    const hasFill = typeof trade.filledPrice === 'number';
+    const openPnl =
+      mode === 'open' && hasMark && hasFill
+        ? ((markPrice - trade.filledPrice) * (trade.side === 'LONG' ? 1 : -1)) * (trade.quantity ?? 1)
+        : null;
+    const realizedPnl = typeof trade.realizedPnl === 'number' ? trade.realizedPnl : null;
+    const pnlValue = mode === 'open' ? openPnl : realizedPnl;
+    const pnlClass =
+      typeof pnlValue === 'number' ? (pnlValue > 0 ? 'is-positive' : pnlValue < 0 ? 'is-negative' : 'is-flat') : 'is-flat';
+    const node = document.createElement('article');
+    node.className = 'paper-position-card';
+    node.innerHTML = `
+      <div class="paper-position-head">
+        <div>
+          <p class="paper-position-symbol">${trade.symbol} ${trade.side}</p>
+          <p class="paper-position-setup">${setupLabel(trade.setupType)} • ${trade.status.replaceAll('_', ' ')}</p>
+        </div>
+        <div class="paper-position-pnl ${pnlClass}">
+          <p>${typeof pnlValue === 'number' ? fmtSignedUsd(pnlValue) : '--'}</p>
+          <span>${mode === 'open' ? 'live' : trade.exitReason?.replaceAll('_', ' ') ?? 'closed'}</span>
+        </div>
+      </div>
+      <div class="paper-position-grid">
+        <div>
+          <span class="paper-position-label">Entry</span>
+          <p>${fmtNum(hasFill ? trade.filledPrice : trade.entry, 2)}</p>
+        </div>
+        <div>
+          <span class="paper-position-label">${mode === 'open' ? 'Mark' : 'Exit'}</span>
+          <p>${fmtNum(mode === 'open' ? markPrice : trade.exitPrice, 2)}</p>
+        </div>
+        <div>
+          <span class="paper-position-label">Stop</span>
+          <p>${fmtNum(trade.stopLoss, 2)}</p>
+        </div>
+        <div>
+          <span class="paper-position-label">TP1</span>
+          <p>${fmtNum(trade.takeProfit, 2)}</p>
+        </div>
+      </div>
+      <div class="paper-position-meta">
+        <span>Qty ${fmtNum(trade.quantity, 2)}</span>
+        <span>Risk ${fmtNum(trade.riskPct, 2)}%</span>
+        <span>${mode === 'open' ? `Seen ${fmtRelativeMinutes(trade.submittedAt)}` : `Closed ${fmtRelativeMinutes(trade.closedAt ?? trade.submittedAt)}`}</span>
+      </div>
+    `;
+    container.appendChild(node);
+  });
+};
+
+const renderPaperAccount = () => {
+  const paper = latestDiagnostics?.diagnostics?.paperAccount ?? null;
+  const homePaper = latestHomeDeck?.deck?.paperAccount ?? null;
+  const paperEnabled = Boolean(paper?.enabled || homePaper);
+
+  const summary = {
+    initialBalance:
+      typeof paper?.initialBalance === 'number'
+        ? paper.initialBalance
+        : typeof homePaper?.initialBalance === 'number'
+          ? homePaper.initialBalance
+          : 100000,
+    balance: typeof paper?.balance === 'number' ? paper.balance : homePaper?.balance,
+    equity: typeof paper?.equity === 'number' ? paper.equity : homePaper?.equity,
+    realizedPnl: typeof paper?.realizedPnl === 'number' ? paper.realizedPnl : homePaper?.realizedPnl,
+    unrealizedPnl: typeof paper?.unrealizedPnl === 'number' ? paper.unrealizedPnl : homePaper?.unrealizedPnl,
+    openTrades: typeof paper?.openTrades === 'number' ? paper.openTrades : homePaper?.openTrades,
+    pendingEntries: typeof paper?.pendingEntries === 'number' ? paper.pendingEntries : homePaper?.pendingEntries,
+    closedTrades: typeof paper?.closedTrades === 'number' ? paper.closedTrades : homePaper?.closedTrades,
+    hitRate: typeof paper?.hitRate === 'number' ? paper.hitRate : homePaper?.hitRate,
+    totalReturnPct:
+      typeof homePaper?.totalReturnPct === 'number'
+        ? homePaper.totalReturnPct
+        : typeof paper?.equity === 'number' && typeof paper?.initialBalance === 'number'
+          ? ((paper.equity - paper.initialBalance) / Math.max(paper.initialBalance, 1)) * 100
+          : null,
+    lastUpdatedAt: paper?.lastUpdatedAt ?? homePaper?.lastUpdatedAt ?? null
+  };
+
+  if (homePaperAccountCardEl) {
+    homePaperAccountCardEl.dataset.tone =
+      typeof summary.totalReturnPct === 'number'
+        ? summary.totalReturnPct > 0
+          ? 'bullish'
+          : summary.totalReturnPct < 0
+            ? 'bearish'
+            : 'neutral'
+        : 'neutral';
+  }
+
+  if (homePaperBalanceEl) {
+    homePaperBalanceEl.textContent = paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '--';
+  }
+  if (homePaperPnlEl) {
+    const totalDollar =
+      typeof summary.equity === 'number' && typeof summary.initialBalance === 'number'
+        ? summary.equity - summary.initialBalance
+        : null;
+    homePaperPnlEl.textContent =
+      paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
+        ? `${fmtSignedUsd(totalDollar)} • ${fmtSignedPct(summary.totalReturnPct)}`
+        : 'Paper account standing by';
+  }
+  if (homePaperMetaEl) {
+    homePaperMetaEl.textContent = paperEnabled
+      ? `${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • ${typeof summary.hitRate === 'number' ? `${Math.round(summary.hitRate * 100)}% hit rate` : 'No hit rate yet'}`
+      : 'The paper account is not enabled on this desk yet.';
+  }
+  if (homePaperChipEl) {
+    homePaperChipEl.textContent = paperEnabled ? (paper?.started ? 'Paper live' : 'Paper loading') : 'Paper off';
+    homePaperChipEl.className = `chip ${paperEnabled ? 'chip-online' : 'chip-neutral'}`;
+  }
+
+  if (paperAccountChipEl) {
+    paperAccountChipEl.textContent = paperEnabled ? (paper?.started ? 'Live paper' : 'Paper loading') : 'Paper off';
+    paperAccountChipEl.className = `chip ${paperEnabled ? 'chip-online' : 'chip-neutral'}`;
+  }
+  if (paperHeroEquityEl) {
+    paperHeroEquityEl.textContent = paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '--';
+  }
+  if (paperHeroPnlEl) {
+    const totalDollar =
+      typeof summary.equity === 'number' && typeof summary.initialBalance === 'number'
+        ? summary.equity - summary.initialBalance
+        : null;
+    paperHeroPnlEl.textContent =
+      paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
+        ? `${fmtSignedUsd(totalDollar)} (${fmtSignedPct(summary.totalReturnPct)}) all-time`
+        : 'Waiting for paper account activity';
+  }
+  if (paperHeroUpdatedEl) {
+    paperHeroUpdatedEl.textContent = summary.lastUpdatedAt ? `Updated ${fmtRelativeMinutes(summary.lastUpdatedAt)}` : 'Updated --';
+  }
+  if (paperHeroWindowEl) {
+    paperHeroWindowEl.textContent = `${summary.openTrades ?? 0} open • ${summary.pendingEntries ?? 0} pending`;
+  }
+  if (paperBalanceEl) {
+    paperBalanceEl.textContent = paperEnabled && typeof summary.balance === 'number' ? fmtUsd(summary.balance) : '--';
+  }
+  if (paperUnrealizedEl) {
+    paperUnrealizedEl.textContent = paperEnabled && typeof summary.unrealizedPnl === 'number' ? fmtSignedUsd(summary.unrealizedPnl) : '--';
+  }
+  if (paperRealizedEl) {
+    paperRealizedEl.textContent = paperEnabled && typeof summary.realizedPnl === 'number' ? fmtSignedUsd(summary.realizedPnl) : '--';
+  }
+  if (paperHitRateEl) {
+    paperHitRateEl.textContent = paperEnabled && typeof summary.hitRate === 'number' ? `${Math.round(summary.hitRate * 100)}%` : '--';
+  }
+  if (paperOpenCountEl) {
+    paperOpenCountEl.textContent = paperEnabled ? String(summary.openTrades ?? 0) : '--';
+  }
+  if (paperClosedCountEl) {
+    paperClosedCountEl.textContent = paperEnabled ? String(summary.closedTrades ?? 0) : '--';
+  }
+  if (paperHeroMetaEl) {
+    paperHeroMetaEl.textContent = paperEnabled
+      ? `Started with ${fmtUsd(summary.initialBalance)} • ${summary.pendingEntries ?? 0} pending entries • ${summary.closedTrades ?? 0} resolved paper trades`
+      : 'Paper account diagnostics are not available.';
+  }
+  if (paperOpenChipEl) {
+    paperOpenChipEl.textContent = `${summary.openTrades ?? 0} open`;
+  }
+  if (paperClosedChipEl) {
+    paperClosedChipEl.textContent = `${summary.closedTrades ?? 0} closed`;
+  }
+
+  renderPaperSparkline(paperHeroSparklineEl, buildPaperEquitySeries(paper));
+  renderPaperTradeCards(
+    paperOpenPositionsListEl,
+    paper?.recentOpenTrades ?? [],
+    'No open paper positions right now.',
+    'open'
+  );
+  renderPaperTradeCards(
+    paperClosedTradesListEl,
+    paper?.recentClosedTrades?.slice(0, 8) ?? [],
+    'No closed paper trades yet.',
+    'closed'
+  );
+};
+
 const buildSymbolDetailStats = (item, deck) => {
   const researchPct = Number.isFinite(Number(item.researchConfidence))
     ? `${Math.round(Number(item.researchConfidence) * 100)}%`
@@ -1334,6 +1631,7 @@ const renderHomeDashboard = () => {
   renderHomeDeck();
   renderHomeResearchLab();
   renderHomeMacroList(upcomingEvents);
+  renderPaperAccount();
 };
 
 const summarizeSignalSetup = (alert) => {
@@ -2219,6 +2517,34 @@ const fmtNum = (value, decimals = 2) => {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   });
+};
+
+const fmtUsd = (value, decimals = 2) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '--';
+  }
+  return value.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};
+
+const fmtSignedUsd = (value, decimals = 2) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '--';
+  }
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${fmtUsd(Math.abs(value), decimals)}`;
+};
+
+const fmtSignedPct = (value, decimals = 2) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '--';
+  }
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${Math.abs(value).toFixed(decimals)}%`;
 };
 
 const formatSetupMix = (trades) => {
@@ -4411,12 +4737,14 @@ const loadDiagnostics = async () => {
     renderDiagnostics();
     renderStatusRail();
     renderHomeDashboard();
+    renderPaperAccount();
   } catch {
     latestDiagnostics = null;
     nativePushServerReady = false;
     renderDiagnostics();
     renderStatusRail();
     renderHomeDashboard();
+    renderPaperAccount();
   }
 };
 
@@ -4438,6 +4766,7 @@ const loadHomeDeck = async () => {
   }
   renderHomeDeck();
   renderHomeDashboard();
+  renderPaperAccount();
 };
 
 const loadRiskConfig = async () => {
@@ -5341,6 +5670,7 @@ const bootstrap = async () => {
   quickActionButtons.forEach((button) => {
     button.addEventListener('click', () => setActiveTab(button.dataset.targetTab));
   });
+  homePaperAccountCardEl?.addEventListener('click', () => setActiveTab('trades'));
   setActiveTab(initialTab ?? tabButtons.find((button) => button.classList.contains('is-active'))?.dataset.tab ?? 'home');
   if (initialTab === 'status' && routeState.focus === 'ibkr-connection') {
     setTimeout(() => {
