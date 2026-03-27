@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trading-assist-mobile-v21';
+const CACHE_NAME = 'trading-assist-mobile-v22';
 const ASSETS = [
   './',
   'index.html',
@@ -123,7 +123,18 @@ self.addEventListener('push', (event) => {
       });
       const hasVisibleClient = clientList.some((client) => client.visibilityState === 'visible');
 
-      if (hasVisibleClient) {
+      await Promise.allSettled(
+        clientList.map((client) =>
+          client.postMessage({
+            type: 'PUSH_RECEIVED',
+            payload
+          })
+        )
+      );
+
+      const shouldShowWhenVisible = payload.type === 'operational-reminder' || payload.forceVisibleNotification === true;
+
+      if (hasVisibleClient && !shouldShowWhenVisible) {
         return;
       }
 

@@ -269,6 +269,7 @@ let latestRiskConfig = null;
 let latestHealth = null;
 let lastSyncAt = null;
 let serviceWorkerRegistrationPromise = null;
+let serviceWorkerMessageListenerBound = false;
 let nativePushListenersBound = false;
 let nativePushServerReady = false;
 let reviewSummary = {
@@ -4250,6 +4251,25 @@ const apiFetch = async (path, options = {}) => {
 const supportsRemoteWebPush = () =>
   window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window;
 
+const bindServiceWorkerMessages = () => {
+  if (!('serviceWorker' in navigator) || serviceWorkerMessageListenerBound) {
+    return;
+  }
+
+  serviceWorkerMessageListenerBound = true;
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event?.data?.type !== 'PUSH_RECEIVED') {
+      return;
+    }
+
+    const payload = event.data.payload || {};
+    const title = payload.title || 'TradeAssist update';
+    const body = payload.body || 'A new update is ready.';
+    setStatus(`Status: ${title} • ${body}`);
+    void refreshAll();
+  });
+};
+
 const registerServiceWorker = async () => {
   if (!('serviceWorker' in navigator)) {
     return null;
@@ -4259,6 +4279,7 @@ const registerServiceWorker = async () => {
     serviceWorkerRegistrationPromise = navigator.serviceWorker
       .register('sw.js')
       .then((registration) => {
+        bindServiceWorkerMessages();
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           if (serviceWorkerReloading) {
             return;
