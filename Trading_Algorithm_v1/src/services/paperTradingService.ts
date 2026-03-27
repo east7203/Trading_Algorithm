@@ -6,6 +6,7 @@ import type { OneMinuteBar } from '../training/historicalTrainer.js';
 
 type PaperTradeStatus = 'PENDING_ENTRY' | 'OPEN' | 'CLOSED' | 'CANCELED';
 type PaperTradeExitReason = 'TAKE_PROFIT' | 'STOP_LOSS' | 'TIME_EXIT' | 'ENTRY_EXPIRED';
+export type PaperTradeEventKind = 'TRADE_OPENED' | 'TRADE_CLOSED';
 
 export interface PaperTrade {
   paperTradeId: string;
@@ -42,6 +43,23 @@ export interface PaperTradingConfig {
   sessionStartHour: number;
   sessionStartMinute: number;
   maxClosedTrades: number;
+  maxEquityHistory: number;
+  onTradeEvent?: (event: PaperTradeEvent) => void | Promise<void>;
+}
+
+export interface PaperTradeEquityPoint {
+  at: string;
+  equity: number;
+  balance: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+}
+
+export interface PaperTradeEvent {
+  kind: PaperTradeEventKind;
+  at: string;
+  trade: PaperTrade;
+  equityPoint: PaperTradeEquityPoint;
 }
 
 export interface PaperTradingStatus {
@@ -62,6 +80,7 @@ export interface PaperTradingStatus {
   hitRate: number;
   lastUpdatedAt?: string;
   accountSnapshot: AccountSnapshot;
+  equityHistory: PaperTradeEquityPoint[];
   recentOpenTrades: PaperTrade[];
   recentClosedTrades: PaperTrade[];
 }
@@ -70,9 +89,35 @@ interface PersistedPaperTradingState {
   balance: number;
   lastUpdatedAt?: string;
   trades: PaperTrade[];
+  equityHistory?: PaperTradeEquityPoint[];
 }
 
 const MAX_RECENT_TRADES = 8;
+
+const normalizeEquityPoint = (value: unknown): PaperTradeEquityPoint | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<PaperTradeEquityPoint>;
+  if (
+    typeof candidate.at !== 'string'
+    || typeof candidate.equity !== 'number'
+    || typeof candidate.balance !== 'number'
+    || typeof candidate.realizedPnl !== 'number'
+    || typeof candidate.unrealizedPnl !== 'number'
+  ) {
+    return null;
+  }
+
+  return {
+    at: candidate.at,
+    equity: round(candidate.equity, 2),
+    balance: round(candidate.balance, 2),
+    realizedPnl: round(candidate.realizedPnl, 2),
+    unrealizedPnl: round(candidate.unrealizedPnl, 2)
+  };
+};
 
 const round = (value: number, digits = 2): number => Number(value.toFixed(digits));
 
@@ -178,6 +223,7 @@ export class PaperTradingService {
   private writeChain: Promise<void> = Promise.resolve();
   private trades = new Map<string, PaperTrade>();
   private latestPriceBySymbol = new Map<SymbolCode, number>();
+  private equityHistory: PaperTradeEquityPoint[] = [];
   private balance: number;
   private lastUpdatedAt: string | undefined;
 
@@ -195,6 +241,10 @@ export class PaperTradingService {
     }
 
     await this.startPromise;
+    if (this.equityHistory.length === 0) {
+      this.pushEquityPoint(this.lastUpdatedAt ?? new Date().toISOString());
+      await this.persist();
+    }
     this.started = true;
   }
 
@@ -228,12 +278,17 @@ export class PaperTradingService {
           .filter((trade): trade is PaperTrade => trade !== null)
           .map((trade) => [trade.alertId, trade])
       );
+      this.equityHistory = (Array.isArray(parsed.equityHistory) ? parsed.equityHistory : [])
+        .map((point) => normalizeEquityPoint(point))
+        .filter((point): point is PaperTradeEquityPoint => point !== null)
+        .slice(-this.config.maxEquityHistory);
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (error instanceof SyntaxError || err.code === 'ENOENT') {
         this.balance = this.config.initialBalance;
         this.lastUpdatedAt = undefined;
         this.trades.clear();
+        this.equityHistory = [];
         return;
       }
       if (err.code !== 'ENOENT') {
@@ -250,7 +305,8 @@ export class PaperTradingService {
     const snapshot: PersistedPaperTradingState = {
       balance: round(this.balance, 2),
       lastUpdatedAt: this.lastUpdatedAt,
-      trades: this.listTrades()
+      trades: this.listTrades(),
+      equityHistory: this.equityHistory
     };
 
     this.writeChain = this.writeChain.then(async () => {
@@ -280,6 +336,45 @@ export class PaperTradingService {
 
   private isEntryTouched(trade: PaperTrade, bar: OneMinuteBar): boolean {
     return bar.low <= trade.entry && bar.high >= trade.entry;
+  }
+
+  private computeEquityBreakdown(): { equity: number; balance: number; realizedPnl: number; unrealizedPnl: number } {
+    const openTrades = [...this.trades.values()].filter((trade) => trade.status === 'OPEN');
+    const unrealizedPnl = round(openTrades.reduce((sum, trade) => sum + this.getTradeUnrealizedPnl(trade), 0), 2);
+    const realizedPnl = round(this.balance - this.config.initialBalance, 2);
+    return {
+      equity: round(this.balance + unrealizedPnl, 2),
+      balance: round(this.balance, 2),
+      realizedPnl,
+      unrealizedPnl
+    };
+  }
+
+  private captureEquityPoint(at: string): PaperTradeEquityPoint {
+    const breakdown = this.computeEquityBreakdown();
+    return {
+      at,
+      ...breakdown
+    };
+  }
+
+  private pushEquityPoint(at: string): PaperTradeEquityPoint {
+    const point = this.captureEquityPoint(at);
+    const last = this.equityHistory.at(-1);
+    if (
+      last
+      && last.at === point.at
+      && last.equity === point.equity
+      && last.balance === point.balance
+      && last.realizedPnl === point.realizedPnl
+      && last.unrealizedPnl === point.unrealizedPnl
+    ) {
+      return last;
+    }
+
+    this.equityHistory.push(point);
+    this.equityHistory = this.equityHistory.slice(-this.config.maxEquityHistory);
+    return point;
   }
 
   private closeTrade(trade: PaperTrade, closedAt: string, exitPrice: number, exitReason: PaperTradeExitReason): PaperTrade {
@@ -405,6 +500,7 @@ export class PaperTradingService {
 
     this.trades.set(alert.alertId, trade);
     this.lastUpdatedAt = alert.detectedAt;
+    this.pushEquityPoint(alert.detectedAt);
     await this.persist();
     return trade;
   }
@@ -416,6 +512,7 @@ export class PaperTradingService {
     await this.start();
 
     let settled = 0;
+    const pendingEvents: PaperTradeEvent[] = [];
     const bars = [...rawBars].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     for (const bar of bars) {
       if (bar.symbol !== 'NQ' && bar.symbol !== 'ES') {
@@ -433,8 +530,24 @@ export class PaperTradingService {
         if (updated !== trade) {
           this.trades.set(trade.alertId, updated);
           this.lastUpdatedAt = bar.timestamp;
+          if (trade.status === 'PENDING_ENTRY' && updated.status === 'OPEN') {
+            pendingEvents.push({
+              kind: 'TRADE_OPENED',
+              at: bar.timestamp,
+              trade: updated,
+              equityPoint: this.pushEquityPoint(bar.timestamp)
+            });
+          }
           if (updated.status === 'CLOSED' || updated.status === 'CANCELED') {
             settled += 1;
+            if (updated.status === 'CLOSED') {
+              pendingEvents.push({
+                kind: 'TRADE_CLOSED',
+                at: bar.timestamp,
+                trade: updated,
+                equityPoint: this.pushEquityPoint(bar.timestamp)
+              });
+            }
           }
         }
       }
@@ -442,6 +555,10 @@ export class PaperTradingService {
 
     if (settled > 0 || bars.length > 0) {
       await this.persist();
+    }
+
+    for (const event of pendingEvents) {
+      await this.config.onTradeEvent?.(event);
     }
 
     return { accepted: bars.length, settled };
@@ -492,8 +609,7 @@ export class PaperTradingService {
     const pendingEntries = trades.filter((trade) => trade.status === 'PENDING_ENTRY');
     const closedTrades = trades.filter((trade) => trade.status === 'CLOSED');
     const canceledTrades = trades.filter((trade) => trade.status === 'CANCELED');
-    const realizedPnl = round(this.balance - this.config.initialBalance, 2);
-    const unrealizedPnl = round(openTrades.reduce((sum, trade) => sum + this.getTradeUnrealizedPnl(trade), 0), 2);
+    const { realizedPnl, unrealizedPnl, equity } = this.computeEquityBreakdown();
     const wins = closedTrades.filter((trade) => (trade.realizedPnl ?? 0) > 0).length;
     const losses = closedTrades.filter((trade) => (trade.realizedPnl ?? 0) < 0).length;
 
@@ -503,7 +619,7 @@ export class PaperTradingService {
       statePath: this.config.statePath,
       initialBalance: round(this.config.initialBalance, 2),
       balance: round(this.balance, 2),
-      equity: round(this.balance + unrealizedPnl, 2),
+      equity,
       realizedPnl,
       unrealizedPnl,
       openTrades: openTrades.length,
@@ -515,6 +631,7 @@ export class PaperTradingService {
       hitRate: closedTrades.length > 0 ? round(wins / closedTrades.length, 2) : 0,
       lastUpdatedAt: this.lastUpdatedAt,
       accountSnapshot: this.buildAccountSnapshot(now),
+      equityHistory: this.equityHistory.slice(-this.config.maxEquityHistory),
       recentOpenTrades: [...pendingEntries, ...openTrades]
         .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
         .slice(0, MAX_RECENT_TRADES),
@@ -533,7 +650,9 @@ export class PaperTradingService {
     this.balance = round(this.config.initialBalance, 2);
     this.trades.clear();
     this.latestPriceBySymbol.clear();
+    this.equityHistory = [];
     this.lastUpdatedAt = now;
+    this.pushEquityPoint(now);
     await this.persist();
     return this.status(now);
   }

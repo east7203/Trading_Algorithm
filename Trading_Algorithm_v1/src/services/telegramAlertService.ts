@@ -17,7 +17,7 @@ export interface TelegramAlertStatus {
   lastError?: string;
 }
 
-const TELEGRAM_SEND_TIMEOUT_MS = 5_000;
+const TELEGRAM_SEND_TIMEOUT_MS = 10_000;
 
 export class TelegramAlertService {
   private lastError: string | undefined;

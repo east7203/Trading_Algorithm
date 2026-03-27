@@ -92,4 +92,27 @@ describe('mobile app endpoints', () => {
     expect(payload.deck.watchlist.every((item: { symbol: string }) => typeof item.symbol === 'string')).toBe(true);
     expect(payload.deck.researchLab).toBeTruthy();
   });
+
+  it('sends a controlled paper-trade notification test payload', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/paper-trade',
+      payload: {
+        symbol: 'ES',
+        side: 'BUY',
+        stage: 'CLOSED',
+        pnl: 250,
+        equity: 100250
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.test.symbol).toBe('ES');
+    expect(payload.test.stage).toBe('CLOSED');
+    expect(payload.deliveries).toBeTruthy();
+  });
 });

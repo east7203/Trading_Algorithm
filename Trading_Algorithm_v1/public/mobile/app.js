@@ -973,6 +973,13 @@ const buildPaperEquitySeries = (paper) => {
     return [];
   }
 
+  if (Array.isArray(paper.equityHistory) && paper.equityHistory.length > 1) {
+    return paper.equityHistory
+      .slice(-32)
+      .map((point) => Number(point?.equity))
+      .filter((value) => Number.isFinite(value));
+  }
+
   let running = Number(paper.initialBalance) || 100000;
   const points = [running];
   const ordered = Array.isArray(paper.recentClosedTrades)

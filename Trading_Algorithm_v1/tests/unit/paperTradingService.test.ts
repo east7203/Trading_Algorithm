@@ -72,7 +72,8 @@ describe('paper trading service', () => {
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
-      maxClosedTrades: 20
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
     });
 
     await service.start();
@@ -109,7 +110,8 @@ describe('paper trading service', () => {
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
-      maxClosedTrades: 20
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
     });
 
     await service.start();
@@ -141,7 +143,8 @@ describe('paper trading service', () => {
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
-      maxClosedTrades: 20
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
     });
 
     await service.start();
@@ -149,5 +152,50 @@ describe('paper trading service', () => {
     expect(trade).toBeNull();
     expect(service.status().openTrades).toBe(0);
     expect(service.status().pendingEntries).toBe(0);
+  });
+
+  it('emits open and close events and records equity history as trades progress', async () => {
+    const events: Array<{ kind: string; at: string }> = [];
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24,
+      onTradeEvent: (event) => {
+        events.push({ kind: event.kind, at: event.at });
+      }
+    });
+
+    await service.start();
+    await service.recordAlert(buildAlert('2026-03-25T13:30:00.000Z'), 'signal-monitor');
+    await service.ingestBars([
+      {
+        symbol: 'NQ',
+        timestamp: '2026-03-25T13:31:00.000Z',
+        open: 100.1,
+        high: 100.4,
+        low: 99.9,
+        close: 100.2,
+        volume: 100
+      },
+      {
+        symbol: 'NQ',
+        timestamp: '2026-03-25T13:32:00.000Z',
+        open: 100.2,
+        high: 108.5,
+        low: 100.1,
+        close: 108.2,
+        volume: 120
+      }
+    ]);
+
+    const status = service.status('2026-03-25T13:32:00.000Z');
+    expect(events.map((event) => event.kind)).toEqual(['TRADE_OPENED', 'TRADE_CLOSED']);
+    expect(status.equityHistory.length).toBeGreaterThanOrEqual(3);
+    expect(status.recentClosedTrades[0].status).toBe('CLOSED');
   });
 });

@@ -19,7 +19,12 @@ import { defaultRankingModel, loadRankingModelFromPath, type RankingModel } from
 import { RankingModelStore } from './services/rankingModelStore.js';
 import { SignalMonitorService, type SignalMonitorStatus } from './services/signalMonitorService.js';
 import { MarketResearchService, type MarketResearchConfig, type MarketResearchStatus } from './services/marketResearchService.js';
-import { PaperTradingService, type PaperTradingConfig, type PaperTradingStatus } from './services/paperTradingService.js';
+import {
+  PaperTradingService,
+  type PaperTradingConfig,
+  type PaperTradingStatus,
+  type PaperTradeEvent
+} from './services/paperTradingService.js';
 import {
   NativePushNotificationService,
   type NativePushNotificationConfig,
@@ -190,6 +195,7 @@ interface PaperTradingConfigInput {
   sessionStartHour: number;
   sessionStartMinute: number;
   maxClosedTrades: number;
+  maxEquityHistory: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -761,7 +767,8 @@ const resolvePaperTradingConfig = (
       0,
       59
     ),
-    maxClosedTrades: parseIntEnv('PAPER_TRADING_MAX_CLOSED_TRADES', 20, 5, 200)
+    maxClosedTrades: parseIntEnv('PAPER_TRADING_MAX_CLOSED_TRADES', 20, 5, 200),
+    maxEquityHistory: parseIntEnv('PAPER_TRADING_MAX_EQUITY_HISTORY', 120, 12, 500)
   };
 
   return {
@@ -932,13 +939,28 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     appMessage: AppNotificationMessage,
     telegramMessage?: { title: string; lines?: string[]; buttons?: Array<{ text: string; url: string }> }
   ) => {
-    const appDelivery = await tradeAssistAppNotifier?.notifyGeneric(appMessage);
-    const telegramDelivery = telegramMessage ? await telegramAlertService?.notifyGeneric(telegramMessage) : undefined;
+    const [appResult, telegramResult] = await Promise.allSettled([
+      tradeAssistAppNotifier?.notifyGeneric(appMessage),
+      telegramMessage ? telegramAlertService?.notifyGeneric(telegramMessage) : undefined
+    ]);
+
+    const appDelivery = appResult.status === 'fulfilled' ? appResult.value : undefined;
+    const telegramDelivery = telegramResult.status === 'fulfilled' ? telegramResult.value : undefined;
     return {
       appDelivery,
-      telegramDelivery
+      telegramDelivery,
+      appError: appResult.status === 'rejected' ? (appResult.reason as Error).message : undefined,
+      telegramError: telegramResult.status === 'rejected' ? (telegramResult.reason as Error).message : undefined
     };
   };
+  const formatUsd = (value: number): string =>
+    value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  const formatSignedUsd = (value: number): string => `${value >= 0 ? '+' : '-'}${formatUsd(Math.abs(value))}`;
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
@@ -1461,7 +1483,57 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       ? paperTradingEnabled
         ? new PaperTradingService({
             ...resolvedPaperTradingConfig,
-            enabled: true
+            enabled: true,
+            onTradeEvent: async (event: PaperTradeEvent) => {
+              if (event.kind === 'TRADE_OPENED') {
+                await notifyTradeAssistChannels(
+                  {
+                    title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
+                    body: `${event.trade.setupType} • Entry ${event.trade.entry.toFixed(2)} • Risk ${event.trade.riskPct.toFixed(2)}%`,
+                    url: '/mobile/?tab=trades',
+                    tag: `paper-open-${event.trade.paperTradeId}`
+                  },
+                  {
+                    title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
+                    lines: [
+                      `Setup: ${event.trade.setupType}`,
+                      `Entry: ${event.trade.entry.toFixed(2)}`,
+                      `Stop: ${event.trade.stopLoss.toFixed(2)}`,
+                      `TP1: ${event.trade.takeProfit.toFixed(2)}`,
+                      `Risk: ${event.trade.riskPct.toFixed(2)}%`
+                    ],
+                    buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=trades` }]
+                  }
+                );
+                return;
+              }
+
+              const realizedPnl = event.trade.realizedPnl ?? 0;
+              const outcomeLabel =
+                realizedPnl > 0
+                  ? 'winner'
+                  : realizedPnl < 0
+                    ? 'loser'
+                    : 'flat';
+              await notifyTradeAssistChannels(
+                {
+                  title: `Paper trade closed ${event.trade.symbol} ${outcomeLabel}`,
+                  body: `${formatSignedUsd(realizedPnl)} • ${event.trade.exitReason ?? 'closed'} • Equity ${formatUsd(event.equityPoint.equity)}`,
+                  url: '/mobile/?tab=trades',
+                  tag: `paper-close-${event.trade.paperTradeId}`
+                },
+                {
+                  title: `Paper trade closed ${event.trade.symbol} ${outcomeLabel}`,
+                  lines: [
+                    `P&L: ${formatSignedUsd(realizedPnl)}`,
+                    `Exit: ${event.trade.exitReason ?? 'closed'}`,
+                    `Equity: ${formatUsd(event.equityPoint.equity)}`,
+                    `Closed: ${event.at}`
+                  ],
+                  buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=trades` }]
+                }
+              );
+            }
           })
         : null
       : options.paperTradingService;
@@ -1951,7 +2023,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               closedTrades: paper.closedTrades,
               hitRate: Number(paper.hitRate.toFixed(3)),
               totalReturnPct: Number((((paper.equity - paper.initialBalance) / Math.max(paper.initialBalance, 1)) * 100).toFixed(2)),
-              lastUpdatedAt: paper.lastUpdatedAt ?? null
+              lastUpdatedAt: paper.lastUpdatedAt ?? null,
+              equityHistory: paper.equityHistory.slice(-32)
             }
           : null,
         researchLab: research
@@ -2560,6 +2633,98 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         confidence,
         thesis,
         horizonMinutes
+      },
+      deliveries
+    });
+  });
+
+  app.post('/notifications/test/paper-trade', async (request, reply) => {
+    const body = (request.body as {
+      symbol?: string;
+      side?: string;
+      stage?: string;
+      entry?: number;
+      stop?: number;
+      takeProfit?: number;
+      pnl?: number;
+      equity?: number;
+    } | undefined) ?? {};
+
+    const symbol = body.symbol?.toUpperCase() === 'ES' ? 'ES' : 'NQ';
+    const side = body.side?.toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+    const stage = body.stage?.toUpperCase() === 'CLOSED' ? 'CLOSED' : 'OPENED';
+    const entry = typeof body.entry === 'number' && Number.isFinite(body.entry)
+      ? body.entry
+      : symbol === 'ES'
+        ? 6542.25
+        : 23864.5;
+    const stop = typeof body.stop === 'number' && Number.isFinite(body.stop)
+      ? body.stop
+      : side === 'BUY'
+        ? entry - (symbol === 'ES' ? 6 : 28)
+        : entry + (symbol === 'ES' ? 6 : 28);
+    const takeProfit = typeof body.takeProfit === 'number' && Number.isFinite(body.takeProfit)
+      ? body.takeProfit
+      : side === 'BUY'
+        ? entry + (symbol === 'ES' ? 12 : 56)
+        : entry - (symbol === 'ES' ? 12 : 56);
+    const pnl = typeof body.pnl === 'number' && Number.isFinite(body.pnl)
+      ? body.pnl
+      : stage === 'CLOSED'
+        ? (side === 'BUY' ? 375 : -225)
+        : 0;
+    const equity = typeof body.equity === 'number' && Number.isFinite(body.equity)
+      ? body.equity
+      : 100000 + pnl;
+    const rrBase = Math.max(Math.abs(entry - stop), 0.01);
+    const reward = Math.abs(takeProfit - entry);
+    const riskReward = (reward / rrBase).toFixed(2);
+    const directionLabel = side === 'BUY' ? 'long' : 'short';
+
+    const deliveries = await notifyTradeAssistChannels(
+      {
+        title: stage === 'OPENED' ? 'Paper trade opened' : 'Paper trade closed',
+        body:
+          stage === 'OPENED'
+            ? `${symbol} ${directionLabel} • entry ${entry.toFixed(2)} • RR ${riskReward}`
+            : `${symbol} ${directionLabel} • ${formatSignedUsd(pnl)} • equity ${formatUsd(equity)}`,
+        url: '/mobile/?tab=paper',
+        tag: `paper-trade-test-${stage.toLowerCase()}`
+      },
+      {
+        title: stage === 'OPENED' ? 'Paper trade opened' : 'Paper trade closed',
+        lines:
+          stage === 'OPENED'
+            ? [
+                `Symbol: ${symbol}`,
+                `Side: ${directionLabel}`,
+                `Entry: ${entry.toFixed(2)}`,
+                `Stop: ${stop.toFixed(2)}`,
+                `Take Profit: ${takeProfit.toFixed(2)}`,
+                `Risk / Reward: ${riskReward}R`,
+                'Source: Controlled paper-trade notification test'
+              ]
+            : [
+                `Symbol: ${symbol}`,
+                `Side: ${directionLabel}`,
+                `Realized PnL: ${formatSignedUsd(pnl)}`,
+                `Equity: ${formatUsd(equity)}`,
+                'Source: Controlled paper-trade notification test'
+              ]
+      }
+    );
+
+    return reply.status(200).send({
+      ok: true,
+      test: {
+        symbol,
+        side,
+        stage,
+        entry,
+        stop,
+        takeProfit,
+        pnl,
+        equity
       },
       deliveries
     });

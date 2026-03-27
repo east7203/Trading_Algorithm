@@ -42,7 +42,7 @@ interface VapidKeysFile {
   privateKey: string;
 }
 
-const WEB_PUSH_DELIVERY_TIMEOUT_MS = 5_000;
+const WEB_PUSH_DELIVERY_TIMEOUT_MS = 10_000;
 
 const fileExists = async (targetPath: string): Promise<boolean> =>
   fs
