@@ -2505,6 +2505,62 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.post('/notifications/test/research-experiment', async (request, reply) => {
+    const body = (request.body as {
+      symbol?: string;
+      direction?: string;
+      confidence?: number;
+      thesis?: string;
+      horizonMinutes?: number;
+    } | undefined) ?? {};
+
+    const symbol = body.symbol?.toUpperCase() === 'ES' ? 'ES' : 'NQ';
+    const direction = body.direction?.toUpperCase() === 'BEARISH' ? 'BEARISH' : 'BULLISH';
+    const confidence = typeof body.confidence === 'number' && Number.isFinite(body.confidence)
+      ? Math.max(0, Math.min(1, body.confidence))
+      : 0.74;
+    const thesis = typeof body.thesis === 'string' && body.thesis.trim().length > 0
+      ? body.thesis.trim()
+      : `${symbol} aligned continuation`;
+    const horizonMinutes =
+      typeof body.horizonMinutes === 'number' && Number.isFinite(body.horizonMinutes)
+        ? Math.max(5, Math.round(body.horizonMinutes))
+        : 60;
+    const confidenceLabel = `${Math.round(confidence * 100)}%`;
+    const directionLabel = direction === 'BULLISH' ? 'bullish' : 'bearish';
+
+    const deliveries = await notifyTradeAssistChannels(
+      {
+        title: `Research experiment opened ${directionLabel}`,
+        body: `${thesis} • ${symbol} leading • ${confidenceLabel}`,
+        url: '/mobile/?tab=home&focus=research-lab',
+        tag: 'research-experiment-opened-test'
+      },
+      {
+        title: `Research experiment opened ${directionLabel}`,
+        lines: [
+          `Thesis: ${thesis}`,
+          `Lead: ${symbol}`,
+          `Confidence: ${confidenceLabel}`,
+          `Horizon: ${horizonMinutes}m`,
+          'Evidence: Controlled test notification from the research engine path.'
+        ]
+      }
+    );
+
+    return reply.status(200).send({
+      ok: true,
+      test: {
+        symbol,
+        direction,
+        confidence,
+        thesis,
+        horizonMinutes
+      },
+      deliveries
+    });
+  });
+
   app.post('/notifications/ibkr/connected', async (request, reply) => {
     const body = (request.body as { symbols?: string[]; source?: string; connectedAt?: string } | undefined) ?? {};
     const symbols = Array.isArray(body.symbols)

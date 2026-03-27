@@ -17,6 +17,8 @@ export interface TelegramAlertStatus {
   lastError?: string;
 }
 
+const TELEGRAM_SEND_TIMEOUT_MS = 5_000;
+
 export class TelegramAlertService {
   private lastError: string | undefined;
 
@@ -102,6 +104,7 @@ export class TelegramAlertService {
   ): Promise<{ sent: boolean }> {
     const response = await fetch(`${this.config.apiBaseUrl}/bot${this.config.botToken}/sendMessage`, {
       method: 'POST',
+      signal: AbortSignal.timeout(TELEGRAM_SEND_TIMEOUT_MS),
       headers: {
         'Content-Type': 'application/json'
       },

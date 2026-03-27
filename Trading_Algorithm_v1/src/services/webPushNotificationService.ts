@@ -42,6 +42,8 @@ interface VapidKeysFile {
   privateKey: string;
 }
 
+const WEB_PUSH_DELIVERY_TIMEOUT_MS = 5_000;
+
 const fileExists = async (targetPath: string): Promise<boolean> =>
   fs
     .stat(targetPath)
@@ -274,21 +276,34 @@ export class WebPushNotificationService {
     let delivered = 0;
     let removed = 0;
 
-    for (const record of subscriptions) {
-      try {
-        await webpush.sendNotification(record.subscription as webpush.PushSubscription, payload, {
-          TTL: 300,
-          urgency: 'high'
-        });
-        delivered += 1;
-      } catch (error) {
-        const statusCode = (error as { statusCode?: number }).statusCode;
-        this.lastError = (error as Error).message;
-        if (statusCode === 404 || statusCode === 410) {
-          await this.store.remove(record.endpoint);
-          removed += 1;
+    const results = await Promise.all(
+      subscriptions.map(async (record) => {
+        try {
+          await Promise.race([
+            webpush.sendNotification(record.subscription as webpush.PushSubscription, payload, {
+              TTL: 300,
+              urgency: 'high'
+            }),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error(`Web push timed out after ${WEB_PUSH_DELIVERY_TIMEOUT_MS}ms`)), WEB_PUSH_DELIVERY_TIMEOUT_MS);
+            })
+          ]);
+          return { delivered: 1, removed: 0 };
+        } catch (error) {
+          const statusCode = (error as { statusCode?: number }).statusCode;
+          this.lastError = (error as Error).message;
+          if (statusCode === 404 || statusCode === 410) {
+            await this.store.remove(record.endpoint);
+            return { delivered: 0, removed: 1 };
+          }
+          return { delivered: 0, removed: 0 };
         }
-      }
+      })
+    );
+
+    for (const result of results) {
+      delivered += result.delivered;
+      removed += result.removed;
     }
 
     return {
