@@ -31,12 +31,14 @@ describe('mobile app endpoints', () => {
     expect(mobile.headers['content-type']).toContain('text/html');
     expect(mobile.body).toContain('Evan TradeAssist');
     expect(mobile.body).toContain('Review Loop');
-    expect(mobile.body).toContain('Diagnostics');
+    expect(mobile.body).toContain('Engine Room');
     expect(mobile.body).toContain('Pull to refresh');
     expect(mobile.body).toContain('Continuous Training');
     expect(mobile.body).toContain('Analysis Frames');
     expect(mobile.body).toContain('Market Watchlist');
     expect(mobile.body).toContain('Research Lab');
+    expect(mobile.body).toContain('Board Signal');
+    expect(mobile.body).toContain('Macro Read');
     expect(mobile.body).toContain('symbolDetailViewer');
 
     const opener = await ctx.app.inject({ method: 'GET', path: '/mobile/open-app.html' });

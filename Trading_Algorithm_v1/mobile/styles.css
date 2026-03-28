@@ -5596,3 +5596,10 @@ select {
     flex-wrap: wrap;
   }
 }
+
+/* Claude UI merge: icon tabs */
+.tab-icon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
