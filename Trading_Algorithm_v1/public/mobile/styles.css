@@ -5908,8 +5908,11 @@ h2, h3 {
 }
 
 /* ---- Tab bar: Robinhood bottom nav ---- */
-.tabbar {
-  position: fixed;
+/* Override all .tabbar-top rules that set position:sticky + top */
+.tabbar,
+.tabbar-top {
+  position: fixed !important;
+  top: auto !important;
   bottom: 0;
   left: 0;
   right: 0;
@@ -5923,14 +5926,22 @@ h2, h3 {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   z-index: 40;
+  /* Restore grid layout for tab buttons */
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  overflow: visible;
 }
 
-.tab-btn {
+.tab-btn,
+.tabbar-top .tab-btn {
   color: var(--rh-muted);
   background: transparent;
   border: none;
   padding: 6px 4px 4px;
   min-height: 52px;
+  border-radius: 0;
+  flex: unset;
 }
 
 .tab-btn-content {
@@ -6433,6 +6444,8 @@ select {
   padding-inline: 0;
   width: 100%;
   max-width: 760px;
+  /* Reserve space for fixed bottom tab bar (~60px + safe-area) */
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
 }
 
 /* ---- Pull-to-refresh ---- */
