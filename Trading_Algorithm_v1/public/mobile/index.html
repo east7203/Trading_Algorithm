@@ -53,33 +53,14 @@
           <button id="refreshAll" class="chip-btn" type="button">Sync</button>
         </div>
 
-        <section class="hero-grid">
-          <article class="hero-panel hero-panel-primary">
-            <p class="panel-label">Kill-Zone Focus</p>
-            <div class="hero-primary">
-              <div>
-                <p id="heroFocus" class="hero-title">Waiting for structure</p>
-                <p id="heroSubline" class="panel-note">The system is watching for qualified morning setups.</p>
-              </div>
-              <div class="hero-stack">
-                <span id="heroFeedBadge" class="micro-pill">Feed --</span>
-                <span id="heroPushBadge" class="micro-pill">Alerts --</span>
-              </div>
-            </div>
-          </article>
-          <div class="hero-side-stack">
-            <article class="hero-panel hero-panel-compact">
-              <p class="panel-label">Attack Window</p>
-              <p id="heroWindow" class="panel-value">08:30-10:30 ET</p>
-              <p class="panel-note">Manual execution only</p>
-            </article>
-            <article class="hero-panel hero-panel-compact hero-panel-muted">
-              <p class="panel-label">Broadcast Stack</p>
-              <p id="heroStack" class="panel-value">Web Push • Mac • Telegram</p>
-              <p id="heroLastAlert" class="panel-note">No alert yet</p>
-            </article>
-          </div>
-        </section>
+        <!-- Hero panels hidden from header; JS still populates them for use in home view -->
+        <span hidden id="heroFocus"></span>
+        <span hidden id="heroSubline"></span>
+        <span hidden id="heroFeedBadge"></span>
+        <span hidden id="heroPushBadge"></span>
+        <span hidden id="heroWindow"></span>
+        <span hidden id="heroStack"></span>
+        <span hidden id="heroLastAlert"></span>
       </header>
 
       <nav class="tabbar tabbar-top" aria-label="Primary tabs">
@@ -121,33 +102,6 @@
         </button>
       </nav>
 
-      <section class="stats-grid">
-        <article class="stat-card">
-          <p class="stat-label">Pending</p>
-          <p id="pendingCount" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Approved Today</p>
-          <p id="sentCount" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Open Risk</p>
-          <p id="openRiskCount" class="stat-value">0.00%</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Signals</p>
-          <p id="signalCount" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Top Setup</p>
-          <p id="topSetupStat" class="stat-value stat-value-sm">--</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Reviews Due</p>
-          <p id="reviewPendingStat" class="stat-value">0</p>
-        </article>
-      </section>
-
       <section class="views">
         <section id="view-home" class="view view-home is-active">
           <div class="section-head">
@@ -156,6 +110,33 @@
             </div>
             <span id="homeSessionChip" class="chip chip-neutral">Desk --</span>
           </div>
+
+          <section class="stats-grid">
+            <article class="stat-card">
+              <p class="stat-label">Pending</p>
+              <p id="pendingCount" class="stat-value">0</p>
+            </article>
+            <article class="stat-card">
+              <p class="stat-label">Approved Today</p>
+              <p id="sentCount" class="stat-value">0</p>
+            </article>
+            <article class="stat-card">
+              <p class="stat-label">Open Risk</p>
+              <p id="openRiskCount" class="stat-value">0.00%</p>
+            </article>
+            <article class="stat-card">
+              <p class="stat-label">Signals</p>
+              <p id="signalCount" class="stat-value">0</p>
+            </article>
+            <article class="stat-card">
+              <p class="stat-label">Top Setup</p>
+              <p id="topSetupStat" class="stat-value stat-value-sm">--</p>
+            </article>
+            <article class="stat-card">
+              <p class="stat-label">Reviews Due</p>
+              <p id="reviewPendingStat" class="stat-value">0</p>
+            </article>
+          </section>
 
           <section id="homeDirectionCard" class="home-direction-card" data-tone="neutral">
             <div class="home-direction-head">
