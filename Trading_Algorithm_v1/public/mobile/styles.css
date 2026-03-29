@@ -5658,23 +5658,34 @@ body::after {
   display: none;
 }
 
-/* ---- Top card: Robinhood portfolio header ---- */
-.top-card {
-  border-radius: 0;
-  padding: 0;
+/* ---- Slim top bar (brand + status, all tabs) ---- */
+.top-card,
+.rh-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
   border: none;
   border-bottom: 1px solid var(--rh-border);
   background: #000000;
   box-shadow: none;
+  border-radius: 0;
 }
 
 .top-card::before {
   display: none;
 }
 
-/* Portfolio hero section inside top-card */
+.rh-topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Portfolio hero — inside view-home, scrolls with content */
 .rh-portfolio-hero {
-  padding: 20px 20px 16px;
+  padding: 20px 0 16px;
 }
 
 .rh-portfolio-label {
@@ -5743,11 +5754,11 @@ h1 {
   background: var(--rh-green-dim);
 }
 
-/* Chip row */
+/* Chip row (not used in top bar anymore — keep rule harmless) */
 .chip-row {
-  padding: 10px 20px 14px;
+  padding: 0;
   margin-top: 0;
-  border-top: 1px solid var(--rh-border);
+  border: none;
 }
 
 .chip,

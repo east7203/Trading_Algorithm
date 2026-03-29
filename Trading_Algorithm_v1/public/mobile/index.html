@@ -27,33 +27,18 @@
         </div>
       </div>
 
-      <header class="top-card">
-        <!-- Robinhood-style portfolio header -->
-        <div class="rh-portfolio-hero">
-          <div class="masthead-row">
-            <div class="brand-cluster">
-              <span class="brand-mark" aria-hidden="true"></span>
-              <div>
-                <p class="eyebrow">EVAN TRADEASSIST</p>
-              </div>
-            </div>
-            <div class="masthead-tags">
-              <span class="micro-pill micro-pill-strong">5m Desk</span>
-              <span class="micro-pill">NQ + ES</span>
-            </div>
-          </div>
-          <p class="rh-portfolio-label">Paper Portfolio</p>
-          <p id="rhPortfolioValue" class="rh-portfolio-value">--</p>
-          <p id="rhPortfolioPnl" class="rh-portfolio-pnl">Today: --</p>
+      <!-- Slim status bar — visible on all tabs -->
+      <header class="top-card rh-top-bar">
+        <div class="brand-cluster">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <p class="eyebrow">EVAN TRADEASSIST</p>
         </div>
-
-        <div class="chip-row">
+        <div class="rh-topbar-status">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
-          <button id="refreshAll" class="chip-btn" type="button">Sync</button>
+          <button id="refreshAll" class="chip-btn" type="button">↺</button>
         </div>
-
-        <!-- Hero panels hidden from header; JS still populates them for use in home view -->
+        <!-- Hidden JS target elements (hero data still populated by app.js) -->
         <span hidden id="heroFocus"></span>
         <span hidden id="heroSubline"></span>
         <span hidden id="heroFeedBadge"></span>
@@ -104,6 +89,17 @@
 
       <section class="views">
         <section id="view-home" class="view view-home is-active">
+          <!-- Portfolio value — top of home view, scrolls with content -->
+          <div class="rh-portfolio-hero">
+            <p class="rh-portfolio-label">Paper Portfolio</p>
+            <p id="rhPortfolioValue" class="rh-portfolio-value">--</p>
+            <p id="rhPortfolioPnl" class="rh-portfolio-pnl">Today: --</p>
+            <div class="masthead-tags">
+              <span class="micro-pill micro-pill-strong">5m Desk</span>
+              <span class="micro-pill">NQ + ES</span>
+            </div>
+          </div>
+
           <div class="section-head">
             <div>
               <h2>Home</h2>
