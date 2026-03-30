@@ -3377,7 +3377,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
         <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
         ${gridLines}
         ${replayMode ? '' : zonesMarkup}
-        ${focusLine}
+        ${replayMode ? '' : focusLine}
         ${levelDefinitions.map(levelLine).join('')}
         ${candles}
         ${chartBadge}
