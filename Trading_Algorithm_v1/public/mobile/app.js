@@ -2967,6 +2967,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
   }
 
   const expanded = options.expanded === true;
+  const replayMode = options.replayMode === true;
   const width = expanded ? 440 : 320;
   const height = expanded ? 292 : 182;
   const padding = expanded
@@ -3030,10 +3031,18 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
       emphasized: false
     }));
   const contextLevels = baseReferenceLevels.filter((level) => level.role === 'context' || level.onChart === false);
-  const levelDefinitions = [...tradeLevels, ...structureLevels].map((level) => ({
-    ...level,
-    valueLabel: expanded || level.role === 'trade' ? fmtNum(level.price, 2) : ''
-  }));
+  const levelDefinitions = replayMode
+    ? tradeLevels
+        .filter((level) => level.key === 'stopLoss' || level.key === 'takeProfit')
+        .map((level) => ({
+          ...level,
+          label: level.key === 'stopLoss' ? 'Stop Loss' : 'Take Profit',
+          valueLabel: fmtNum(level.price, 2)
+        }))
+    : [...tradeLevels, ...structureLevels].map((level) => ({
+        ...level,
+        valueLabel: expanded || level.role === 'trade' ? fmtNum(level.price, 2) : ''
+      }));
   const zones = (snapshot.zones ?? [])
     .filter((zone) => zone.onChart !== false)
     .slice(0, 1)
@@ -3308,6 +3317,20 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
     </g>
   `;
 
+  const outcomeCx = padding.left + plotWidth / 2;
+  const outcomeCy = padding.top + plotHeight / 2;
+  const outcomeOverlay = options.outcome === 'WOULD_WIN'
+    ? `<g>
+        <rect x="${outcomeCx - 42}" y="${outcomeCy - 12}" width="84" height="24" rx="12" fill="rgba(0,200,5,0.22)" stroke="#00c805" stroke-width="1.2" />
+        <text x="${outcomeCx}" y="${outcomeCy + 5}" fill="#00c805" font-size="9.5" font-weight="800" text-anchor="middle" letter-spacing="0.06em">✓ TP HIT</text>
+      </g>`
+    : options.outcome === 'WOULD_LOSE'
+    ? `<g>
+        <rect x="${outcomeCx - 42}" y="${outcomeCy - 12}" width="84" height="24" rx="12" fill="rgba(239,68,68,0.22)" stroke="#f87171" stroke-width="1.2" />
+        <text x="${outcomeCx}" y="${outcomeCy + 5}" fill="#f87171" font-size="9.5" font-weight="800" text-anchor="middle" letter-spacing="0.06em">✗ SL HIT</text>
+      </g>`
+    : '';
+
   const legendItems = [...tradeLevels, ...structureLevels, ...zones];
   const legend = legendItems.length
     ? `
@@ -3353,17 +3376,18 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
       <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
         <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
         ${gridLines}
-        ${zonesMarkup}
+        ${replayMode ? '' : zonesMarkup}
         ${focusLine}
         ${levelDefinitions.map(levelLine).join('')}
         ${candles}
         ${chartBadge}
         ${setupBadge}
         ${levelLabels}
+        ${outcomeOverlay}
         ${timeAxis}
       </svg>
-      ${legend}
-      ${contextLegend}
+      ${replayMode ? '' : legend}
+      ${replayMode ? '' : contextLegend}
     </div>
   `;
 };
@@ -5187,7 +5211,10 @@ const renderReviewCard = (review) => {
     review.alertSnapshot ?? review
   );
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
-  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
+  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot, {
+    replayMode: true,
+    outcome: review.outcome || review.autoOutcome
+  });
   configureExpandableChart(
     reviewChartEl,
     {
@@ -5314,9 +5341,15 @@ const renderReviewCard = (review) => {
       btn.classList.add('is-active');
     }
     btn.addEventListener('click', () => {
-      node.querySelector('.reviewOutcome').value = btn.dataset.quickOutcome;
+      const outcome = btn.dataset.quickOutcome;
+      node.querySelector('.reviewOutcome').value = outcome;
       node.querySelectorAll('[data-quick-outcome]').forEach((b) => b.classList.remove('is-active'));
       btn.classList.add('is-active');
+      // Re-render chart with outcome badge immediately
+      reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot, {
+        replayMode: true,
+        outcome
+      });
       saveReview(review, saveBtn);
     });
   });
