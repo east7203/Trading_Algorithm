@@ -6582,3 +6582,106 @@ select {
     padding: 24px 24px 18px;
   }
 }
+
+/* ---- Simplified Review Card ---- */
+.review-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.review-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.review-setup-label {
+  font-size: 0.75rem;
+  color: #888;
+  font-weight: 400;
+}
+.review-card-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.review-outcome-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.07);
+  color: #888;
+}
+.review-outcome-badge:empty { display: none; }
+.review-outcome-badge[data-outcome="WOULD_WIN"] {
+  background: rgba(0,200,5,0.15);
+  color: #00c805;
+}
+.review-outcome-badge[data-outcome="WOULD_LOSE"] {
+  background: rgba(239,68,68,0.15);
+  color: #f87171;
+}
+.review-outcome-badge[data-outcome="BREAKEVEN"] {
+  background: rgba(251,191,36,0.15);
+  color: #fbbf24;
+}
+/* Level strip */
+.review-level-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  margin: 14px 0;
+}
+.review-level-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 8px;
+  background: #0d0d0d;
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+.review-level-cell:last-child { border-right: none; }
+.review-level-cell-stop { background: rgba(239,68,68,0.06); }
+.review-level-cell-tp   { background: rgba(0,200,5,0.06); }
+.review-level-name {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #555;
+}
+.review-level-val {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  font-variant-numeric: tabular-nums;
+}
+.review-level-cell-stop .review-level-val { color: #f87171; }
+.review-level-cell-tp   .review-level-val { color: #00c805; }
+/* Form */
+.review-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 500;
+}
+/* Save row */
+.review-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+.review-updated-hint {
+  font-size: 0.72rem;
+  color: #444;
+}

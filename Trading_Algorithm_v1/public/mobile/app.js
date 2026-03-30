@@ -5234,14 +5234,17 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewSeenAgo').textContent = fmtRelativeMinutes(review.detectedAt);
   node.querySelector('.reviewSnapshotSavedAt').textContent = fmtDateTimeCompact(chartSnapshot?.generatedAt);
   node.querySelector('.reviewSnapshotSavedAgo').textContent = fmtRelativeMinutes(chartSnapshot?.generatedAt);
-  node.querySelector('.reviewStateSummary').textContent =
-    review.reviewStatus === 'COMPLETED'
-      ? review.validity
-        ? `${reviewValidityLabel(review.validity)} • ${reviewOutcomeLabel(review.outcome)}`
-        : reviewOutcomeLabel(review.outcome)
-      : review.autoOutcome
-        ? `Auto ${reviewOutcomeLabel(review.autoOutcome)}`
-        : 'Pending';
+  const effectiveOutcome = review.outcome || review.autoOutcome;
+  const outcomeBadgeText =
+    effectiveOutcome === 'WOULD_WIN' ? 'TP Hit' :
+    effectiveOutcome === 'WOULD_LOSE' ? 'SL Hit' :
+    effectiveOutcome === 'BREAKEVEN' ? 'Breakeven' :
+    effectiveOutcome === 'MISSED' ? 'Missed' :
+    effectiveOutcome === 'SKIPPED' ? 'Skipped' :
+    '';
+  const outcomeBadgeEl = node.querySelector('.reviewStateSummary');
+  outcomeBadgeEl.textContent = outcomeBadgeText;
+  outcomeBadgeEl.dataset.outcome = effectiveOutcome ?? '';
   node.querySelector('.reviewStateHint').textContent = review.reviewedAt
     ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
     : review.autoLabeledAt

@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=29" />
+    <link rel="stylesheet" href="styles.css?v=30" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -1090,118 +1090,99 @@
 
     <template id="reviewItemTemplate">
       <article class="item-card review-card">
-        <div class="item-row">
-          <strong class="symbol"></strong>
-          <span class="pill reviewStatus"></span>
+
+        <!-- Header: symbol + outcome -->
+        <div class="review-card-head">
+          <div class="review-card-title">
+            <strong class="symbol"></strong>
+            <span class="setupType review-setup-label"></span>
+          </div>
+          <div class="review-card-badges">
+            <span class="pill reviewStatus"></span>
+            <span class="review-outcome-badge reviewStateSummary"></span>
+          </div>
         </div>
-        <p class="setupType"></p>
-        <div class="chip-row engineAgreementRow"></div>
-        <p class="reviewResearchNote">--</p>
-        <div class="review-casefile-grid">
-          <article class="review-case-card">
-            <p class="card-section-label">Seen</p>
-            <p class="reviewCasePrimary reviewSeenAt">--</p>
-            <p class="reviewCaseSecondary reviewSeenAgo">--</p>
-          </article>
-          <article class="review-case-card">
-            <p class="card-section-label">Snapshot</p>
-            <p class="reviewCasePrimary reviewSnapshotSavedAt">--</p>
-            <p class="reviewCaseSecondary reviewSnapshotSavedAgo">--</p>
-          </article>
-          <article class="review-case-card">
-            <p class="card-section-label">Review State</p>
-            <p class="reviewCasePrimary reviewStateSummary">--</p>
-            <p class="reviewCaseSecondary reviewStateHint">--</p>
-          </article>
-          <article class="review-case-card">
-            <p class="card-section-label">Reward / Risk</p>
-            <p class="reviewCasePrimary reviewRrValue">--</p>
-            <p class="reviewCaseSecondary reviewRiskRewardRange">--</p>
-          </article>
-        </div>
-        <p class="review-section-label">Trigger Snapshot</p>
-        <p class="review-section-copy">This is the saved chart from the moment the signal fired.</p>
+
+        <!-- Chart — full width, prominent -->
         <div class="signalChart reviewSnapshotChart"></div>
         <div class="signal-chart-tools">
           <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
         </div>
-        <div class="signal-levels reviewSnapshotLevels">
-          <span class="level-chip level-chip-entry">Entry <b class="reviewEntry"></b></span>
-          <span class="level-chip level-chip-stop">SL <b class="reviewStopLoss"></b></span>
-          <span class="level-chip level-chip-target">TP1 <b class="reviewTakeProfitOne"></b></span>
-        </div>
-        <div class="projection-grid reviewProjectionGrid">
-          <div class="projection-card projection-card-target">
-            <p class="card-section-label">Projected Take Profit</p>
-            <p class="projection-value reviewProjectedTakeProfit">--</p>
-            <p class="projection-note reviewProjectedTakeProfitNote">--</p>
+
+        <!-- Level strip: Entry | Stop | TP1 | R:R -->
+        <div class="review-level-strip">
+          <div class="review-level-cell">
+            <span class="review-level-name">Entry</span>
+            <span class="review-level-val reviewEntry">--</span>
           </div>
-          <div class="projection-card projection-card-stop">
-            <p class="card-section-label">Projected Stop Loss</p>
-            <p class="projection-value reviewProjectedStopLoss">--</p>
-            <p class="projection-note reviewProjectedStopLossNote">--</p>
+          <div class="review-level-cell review-level-cell-stop">
+            <span class="review-level-name">Stop</span>
+            <span class="review-level-val reviewStopLoss">--</span>
+          </div>
+          <div class="review-level-cell review-level-cell-tp">
+            <span class="review-level-name">TP1</span>
+            <span class="review-level-val reviewTakeProfitOne">--</span>
+          </div>
+          <div class="review-level-cell">
+            <span class="review-level-name">R:R</span>
+            <span class="review-level-val reviewRrValue">--</span>
           </div>
         </div>
-        <div class="review-reading-grid">
-          <article class="review-reading-card">
-            <p class="card-section-label">Desk Read</p>
-            <p class="review-reading-copy reviewSignalSummary">--</p>
-          </article>
-          <article class="review-reading-card">
-            <p class="card-section-label">Guardrails</p>
-            <p class="review-reading-copy reviewGuardrails">--</p>
-          </article>
-        </div>
-        <div class="signalEvidence reviewEvidence"></div>
-        <div class="item-meta">
-          <span>Timeframe <b class="reviewSnapshotTimeframe"></b></span>
-          <span class="reviewSnapshotNote"></span>
-        </div>
-        <p class="review-chart-legend">Each line is labeled on-chart. Blue dashed = session levels, amber dashed = NY range, solid lines = entry, stop, and target.</p>
-        <p class="review-section-label">Signal Read</p>
-        <div class="item-meta reviewTimelineMeta">
-          <span>Detected <b class="detectedAt"></b></span>
-          <span>Snapshot <b class="reviewTimelineSnapshotAt"></b></span>
-          <span>Updated <b class="reviewTimelineUpdatedAt"></b></span>
-        </div>
-        <div class="item-meta reviewSignalMeta">
-          <span>Score <b class="signalScore"></b></span>
-          <span>Risk <b class="signalRisk"></b></span>
-          <span>1m Confidence <b class="signalConfidence"></b></span>
-        </div>
-        <p class="review-section-label">Mark Your Review</p>
-        <p class="review-section-copy">Validity = was the setup actually clean? Outcome = what price likely did if you followed the plan.</p>
+
+        <!-- Review form -->
         <div class="review-form">
-          <label>
-            Was The Setup Valid?
-            <select class="reviewValidity">
-              <option value="">Select</option>
-              <option value="VALID">Valid</option>
-              <option value="INVALID">Invalid</option>
-              <option value="UNSURE">Unsure</option>
-            </select>
-          </label>
-          <label>
-            What Happened Next?
+          <label class="review-form-label">
+            What happened?
             <select class="reviewOutcome">
-              <option value="">Select</option>
-              <option value="WOULD_WIN">Would Win</option>
-              <option value="WOULD_LOSE">Would Lose</option>
+              <option value="">Select outcome</option>
+              <option value="WOULD_WIN">TP Hit — Would Win</option>
+              <option value="WOULD_LOSE">SL Hit — Would Lose</option>
               <option value="BREAKEVEN">Breakeven</option>
-              <option value="MISSED">Missed</option>
+              <option value="MISSED">Missed Entry</option>
               <option value="SKIPPED">Skipped</option>
             </select>
           </label>
-          <label>
-            Notes / Why?
-            <textarea class="reviewNotes" rows="3" placeholder="Why was it valid or invalid? What happened after the signal?"></textarea>
+          <label class="review-form-label">
+            Notes
+            <textarea class="reviewNotes" rows="2" placeholder="What happened after the signal?"></textarea>
           </label>
         </div>
-        <div class="item-meta">
-          <span class="reviewUpdatedAt">Not reviewed yet</span>
-          <span class="reviewedByHint"></span>
+        <div class="review-save-row">
+          <span class="reviewUpdatedAt review-updated-hint">Not reviewed yet</span>
+          <button class="saveReviewBtn primary-btn" type="button">Save Review</button>
         </div>
-        <button class="saveReviewBtn primary-btn" type="button">Save Review</button>
+
+        <!-- Hidden elements kept for JS compatibility -->
+        <span hidden class="reviewSeenAt"></span>
+        <span hidden class="reviewSeenAgo"></span>
+        <span hidden class="reviewSnapshotSavedAt"></span>
+        <span hidden class="reviewSnapshotSavedAgo"></span>
+        <span hidden class="reviewStateHint"></span>
+        <span hidden class="reviewRiskRewardRange"></span>
+        <span hidden class="reviewSnapshotTimeframe"></span>
+        <span hidden class="reviewSnapshotNote"></span>
+        <span hidden class="reviewProjectedTakeProfit"></span>
+        <span hidden class="reviewProjectedTakeProfitNote"></span>
+        <span hidden class="reviewProjectedStopLoss"></span>
+        <span hidden class="reviewProjectedStopLossNote"></span>
+        <span hidden class="reviewSignalSummary"></span>
+        <span hidden class="reviewGuardrails"></span>
+        <div hidden class="reviewEvidence"></div>
+        <span hidden class="detectedAt"></span>
+        <span hidden class="reviewTimelineSnapshotAt"></span>
+        <span hidden class="reviewTimelineUpdatedAt"></span>
+        <span hidden class="signalScore"></span>
+        <span hidden class="signalRisk"></span>
+        <span hidden class="signalConfidence"></span>
+        <span hidden class="reviewedByHint"></span>
+        <div hidden class="engineAgreementRow"></div>
+        <span hidden class="reviewResearchNote"></span>
+        <select hidden class="reviewValidity">
+          <option value="">Select</option>
+          <option value="VALID">Valid</option>
+          <option value="INVALID">Invalid</option>
+          <option value="UNSURE">Unsure</option>
+        </select>
       </article>
     </template>
 
@@ -1300,6 +1281,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=28"></script>
+    <script type="module" src="app.js?v=30"></script>
   </body>
 </html>
