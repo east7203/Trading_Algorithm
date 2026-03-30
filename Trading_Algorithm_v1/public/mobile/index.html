@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=27" />
+    <link rel="stylesheet" href="styles.css?v=28" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -148,16 +148,9 @@
 
       <section class="views">
         <section id="view-home" class="view view-home is-active">
-          <!-- Portfolio value — top of home view, scrolls with content -->
-          <div class="rh-portfolio-hero">
-            <p class="rh-portfolio-label">Paper Portfolio</p>
-            <p id="rhPortfolioValue" class="rh-portfolio-value">--</p>
-            <p id="rhPortfolioPnl" class="rh-portfolio-pnl">Today: --</p>
-            <div class="masthead-tags">
-              <span class="micro-pill micro-pill-strong">5m Desk</span>
-              <span class="micro-pill">NQ + ES</span>
-            </div>
-          </div>
+          <!-- Hidden JS targets kept for app.js compatibility -->
+          <span hidden id="rhPortfolioValue"></span>
+          <span hidden id="rhPortfolioPnl"></span>
 
           <div class="section-head">
             <div>
@@ -1307,6 +1300,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=27"></script>
+    <script type="module" src="app.js?v=28"></script>
   </body>
 </html>
