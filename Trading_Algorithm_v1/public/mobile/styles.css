@@ -5665,7 +5665,7 @@ body::after {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 20px;
+  padding: 6px 16px;
   border: none;
   border-bottom: 1px solid var(--rh-border);
   background: #000000;
