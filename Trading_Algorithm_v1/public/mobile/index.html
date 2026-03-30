@@ -11,7 +11,66 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=26" />
+    <!-- Critical layout — inline so SW cache can never serve a stale version -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+      .phone-shell {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #000;
+      }
+      .rh-top-bar {
+        flex: 0 0 auto;
+        z-index: 10;
+      }
+      /* Tabbar locked to bottom — cannot be overridden by stale CSS */
+      .tabbar, .tabbar-top {
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 100 !important;
+        height: auto !important;
+      }
+      /* Views container fills remaining space between header and tabbar */
+      .views {
+        flex: 1 1 auto;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      /* Each view fills the container and scrolls internally */
+      .view {
+        display: none !important;
+        position: absolute !important;
+        inset: 0 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch;
+        padding: 16px 16px calc(80px + env(safe-area-inset-bottom)) !important;
+        background: #000 !important;
+      }
+      /* Only the active view is visible */
+      .view.is-active {
+        display: block !important;
+      }
+      /* view-pending is always hidden (ops sheet handled separately) */
+      .view-hidden-ops {
+        display: none !important;
+      }
+    </style>
   </head>
   <body>
     <span hidden>Evan TradeAssist</span>
@@ -1248,6 +1307,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=25"></script>
+    <script type="module" src="app.js?v=26"></script>
   </body>
 </html>
