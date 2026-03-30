@@ -6685,3 +6685,101 @@ select {
   font-size: 0.72rem;
   color: #444;
 }
+
+/* ---- Replay tab ---- */
+.rp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.rp-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rp-setup {
+  font-size: 0.75rem;
+  color: #888;
+  font-weight: 400;
+}
+.rp-time {
+  font-size: 0.7rem;
+  color: #555;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+/* Level strip */
+.rp-levels {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 14px 0;
+}
+.rp-level {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 8px;
+  background: #0d0d0d;
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+.rp-level:last-child { border-right: none; }
+.rp-level-sl { background: rgba(239,68,68,0.06); }
+.rp-level-tp { background: rgba(0,200,5,0.06); }
+.rp-lname {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #555;
+}
+.rp-lval {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  font-variant-numeric: tabular-nums;
+}
+.rp-level-sl .rp-lval { color: #f87171; }
+.rp-level-tp .rp-lval { color: #00c805; }
+/* One-tap outcome buttons */
+.rp-outcome-btns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+.rp-outcome-btn {
+  padding: 14px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: #111;
+  color: #666;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.rp-outcome-btn.is-active.rp-win {
+  background: rgba(0,200,5,0.18);
+  border-color: #00c805;
+  color: #00c805;
+}
+.rp-outcome-btn.is-active.rp-lose {
+  background: rgba(239,68,68,0.18);
+  border-color: #f87171;
+  color: #f87171;
+}
+.rp-outcome-btn.is-active.rp-miss {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.3);
+  color: #ccc;
+}
+.rp-save-hint {
+  font-size: 0.7rem;
+  color: #3a3a3a;
+  text-align: center;
+  margin: 8px 0 0;
+}

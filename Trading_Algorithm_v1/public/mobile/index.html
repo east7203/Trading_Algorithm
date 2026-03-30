@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=30" />
+    <link rel="stylesheet" href="styles.css?v=31" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -493,71 +493,27 @@
 
         <section id="view-reviews" class="view view-reviews">
           <div class="section-head">
-            <h2>Review Loop</h2>
+            <h2>Replay</h2>
             <span id="reviewSummaryChip" class="chip chip-neutral">0 pending</span>
           </div>
 
-          <section class="session-summary-card">
-            <div class="section-subhead">
-              <h3>Session Summary</h3>
-              <span id="sessionSummaryChip" class="chip chip-neutral">Waiting on reviews</span>
-            </div>
-            <p id="sessionSummaryHeadline" class="session-summary-headline">--</p>
-            <p id="sessionSummaryContext" class="session-summary-copy">The app will summarize the latest trading session here once enough reviews are available.</p>
-            <div class="session-summary-grid">
-              <article class="insight-card session-summary-item">
-                <p class="stat-label">Strongest Pattern</p>
-                <p id="sessionSummaryStrongest" class="insight-text">--</p>
-              </article>
-              <article class="insight-card session-summary-item">
-                <p class="stat-label">Needs Tightening</p>
-                <p id="sessionSummaryWeakest" class="insight-text">--</p>
-              </article>
-              <article class="insight-card session-summary-item">
-                <p class="stat-label">Tomorrow Focus</p>
-                <p id="sessionSummaryTomorrow" class="insight-text">--</p>
-              </article>
-              <article class="insight-card session-summary-item">
-                <p class="stat-label">Feedback Mix</p>
-                <p id="sessionSummaryFeedback" class="insight-text">--</p>
-              </article>
-            </div>
-          </section>
+          <div id="reviewsPendingList" class="stack"></div>
+          <div id="reviewsCompletedList" class="stack"></div>
 
-          <section class="insights-grid review-insights-grid">
-            <article class="insight-card">
-              <p class="stat-label">Best Setup</p>
-              <p id="reviewSetupEdge" class="insight-text">--</p>
-            </article>
-            <article class="insight-card">
-              <p class="stat-label">Best Time</p>
-              <p id="reviewTimeEdge" class="insight-text">--</p>
-            </article>
-            <article class="insight-card">
-              <p class="stat-label">Best Score Bucket</p>
-              <p id="reviewScoreEdge" class="insight-text">--</p>
-            </article>
-            <article class="insight-card">
-              <p class="stat-label">Ready vs Blocked</p>
-              <p id="reviewBlockedVsReady" class="insight-text">--</p>
-            </article>
-          </section>
-
-          <section class="review-section">
-            <div class="section-subhead">
-              <h3>Replay Queue</h3>
-              <span id="reviewPendingQueueChip" class="chip chip-neutral">0 pending</span>
-            </div>
-            <div id="reviewsPendingList" class="stack"></div>
-          </section>
-
-          <section class="review-section">
-            <div class="section-subhead">
-              <h3>Archive</h3>
-              <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 completed</span>
-            </div>
-            <div id="reviewsCompletedList" class="stack"></div>
-          </section>
+          <!-- Hidden JS-compat targets -->
+          <span hidden id="reviewPendingQueueChip"></span>
+          <span hidden id="reviewCompletedQueueChip"></span>
+          <span hidden id="sessionSummaryChip"></span>
+          <span hidden id="sessionSummaryHeadline"></span>
+          <span hidden id="sessionSummaryContext"></span>
+          <span hidden id="sessionSummaryStrongest"></span>
+          <span hidden id="sessionSummaryWeakest"></span>
+          <span hidden id="sessionSummaryTomorrow"></span>
+          <span hidden id="sessionSummaryFeedback"></span>
+          <span hidden id="reviewSetupEdge"></span>
+          <span hidden id="reviewTimeEdge"></span>
+          <span hidden id="reviewScoreEdge"></span>
+          <span hidden id="reviewBlockedVsReady"></span>
         </section>
 
         <section id="view-settings" class="view view-settings">
@@ -1091,73 +1047,73 @@
     <template id="reviewItemTemplate">
       <article class="item-card review-card">
 
-        <!-- Header: symbol + outcome -->
-        <div class="review-card-head">
-          <div class="review-card-title">
+        <!-- Symbol + setup + time -->
+        <div class="rp-head">
+          <div class="rp-title">
             <strong class="symbol"></strong>
-            <span class="setupType review-setup-label"></span>
+            <span class="setupType rp-setup"></span>
           </div>
-          <div class="review-card-badges">
-            <span class="pill reviewStatus"></span>
-            <span class="review-outcome-badge reviewStateSummary"></span>
-          </div>
+          <span class="rp-time detectedAt"></span>
         </div>
 
-        <!-- Chart — full width, prominent -->
+        <!-- Chart snapshot -->
         <div class="signalChart reviewSnapshotChart"></div>
         <div class="signal-chart-tools">
           <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
         </div>
 
-        <!-- Level strip: Entry | Stop | TP1 | R:R -->
-        <div class="review-level-strip">
-          <div class="review-level-cell">
-            <span class="review-level-name">Entry</span>
-            <span class="review-level-val reviewEntry">--</span>
+        <!-- Entry / Stop / TP / R:R -->
+        <div class="rp-levels">
+          <div class="rp-level">
+            <span class="rp-lname">Entry</span>
+            <span class="rp-lval reviewEntry">--</span>
           </div>
-          <div class="review-level-cell review-level-cell-stop">
-            <span class="review-level-name">Stop</span>
-            <span class="review-level-val reviewStopLoss">--</span>
+          <div class="rp-level rp-level-sl">
+            <span class="rp-lname">Stop</span>
+            <span class="rp-lval reviewStopLoss">--</span>
           </div>
-          <div class="review-level-cell review-level-cell-tp">
-            <span class="review-level-name">TP1</span>
-            <span class="review-level-val reviewTakeProfitOne">--</span>
+          <div class="rp-level rp-level-tp">
+            <span class="rp-lname">TP1</span>
+            <span class="rp-lval reviewTakeProfitOne">--</span>
           </div>
-          <div class="review-level-cell">
-            <span class="review-level-name">R:R</span>
-            <span class="review-level-val reviewRrValue">--</span>
+          <div class="rp-level">
+            <span class="rp-lname">R:R</span>
+            <span class="rp-lval reviewRrValue">--</span>
           </div>
         </div>
 
-        <!-- Review form -->
-        <div class="review-form">
-          <label class="review-form-label">
-            What happened?
-            <select class="reviewOutcome">
-              <option value="">Select outcome</option>
-              <option value="WOULD_WIN">TP Hit — Would Win</option>
-              <option value="WOULD_LOSE">SL Hit — Would Lose</option>
-              <option value="BREAKEVEN">Breakeven</option>
-              <option value="MISSED">Missed Entry</option>
-              <option value="SKIPPED">Skipped</option>
-            </select>
-          </label>
-          <label class="review-form-label">
-            Notes
-            <textarea class="reviewNotes" rows="2" placeholder="What happened after the signal?"></textarea>
-          </label>
+        <!-- One-tap outcome buttons -->
+        <div class="rp-outcome-btns">
+          <button class="rp-outcome-btn rp-win" data-quick-outcome="WOULD_WIN" type="button">✓ TP Hit</button>
+          <button class="rp-outcome-btn rp-lose" data-quick-outcome="WOULD_LOSE" type="button">✗ SL Hit</button>
+          <button class="rp-outcome-btn rp-miss" data-quick-outcome="MISSED" type="button">Missed</button>
         </div>
-        <div class="review-save-row">
-          <span class="reviewUpdatedAt review-updated-hint">Not reviewed yet</span>
-          <button class="saveReviewBtn primary-btn" type="button">Save Review</button>
-        </div>
+        <p class="rp-save-hint reviewStateSummary"></p>
 
-        <!-- Hidden elements kept for JS compatibility -->
+        <!-- Hidden JS-compat elements -->
+        <select hidden class="reviewOutcome">
+          <option value="">Select</option>
+          <option value="WOULD_WIN">TP Hit</option>
+          <option value="WOULD_LOSE">SL Hit</option>
+          <option value="BREAKEVEN">Breakeven</option>
+          <option value="MISSED">Missed</option>
+          <option value="SKIPPED">Skipped</option>
+        </select>
+        <select hidden class="reviewValidity">
+          <option value="">Select</option>
+          <option value="VALID">Valid</option>
+          <option value="INVALID">Invalid</option>
+          <option value="UNSURE">Unsure</option>
+        </select>
+        <textarea hidden class="reviewNotes"></textarea>
+        <button hidden class="saveReviewBtn" type="button">Save Review</button>
+        <span hidden class="reviewStatus"></span>
         <span hidden class="reviewSeenAt"></span>
         <span hidden class="reviewSeenAgo"></span>
         <span hidden class="reviewSnapshotSavedAt"></span>
         <span hidden class="reviewSnapshotSavedAgo"></span>
         <span hidden class="reviewStateHint"></span>
+        <span hidden class="reviewUpdatedAt"></span>
         <span hidden class="reviewRiskRewardRange"></span>
         <span hidden class="reviewSnapshotTimeframe"></span>
         <span hidden class="reviewSnapshotNote"></span>
@@ -1168,7 +1124,6 @@
         <span hidden class="reviewSignalSummary"></span>
         <span hidden class="reviewGuardrails"></span>
         <div hidden class="reviewEvidence"></div>
-        <span hidden class="detectedAt"></span>
         <span hidden class="reviewTimelineSnapshotAt"></span>
         <span hidden class="reviewTimelineUpdatedAt"></span>
         <span hidden class="signalScore"></span>
@@ -1177,12 +1132,6 @@
         <span hidden class="reviewedByHint"></span>
         <div hidden class="engineAgreementRow"></div>
         <span hidden class="reviewResearchNote"></span>
-        <select hidden class="reviewValidity">
-          <option value="">Select</option>
-          <option value="VALID">Valid</option>
-          <option value="INVALID">Invalid</option>
-          <option value="UNSURE">Unsure</option>
-        </select>
       </article>
     </template>
 
@@ -1281,6 +1230,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=30"></script>
+    <script type="module" src="app.js?v=31"></script>
   </body>
 </html>

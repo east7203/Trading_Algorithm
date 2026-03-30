@@ -5235,16 +5235,10 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewSnapshotSavedAt').textContent = fmtDateTimeCompact(chartSnapshot?.generatedAt);
   node.querySelector('.reviewSnapshotSavedAgo').textContent = fmtRelativeMinutes(chartSnapshot?.generatedAt);
   const effectiveOutcome = review.outcome || review.autoOutcome;
-  const outcomeBadgeText =
-    effectiveOutcome === 'WOULD_WIN' ? 'TP Hit' :
-    effectiveOutcome === 'WOULD_LOSE' ? 'SL Hit' :
-    effectiveOutcome === 'BREAKEVEN' ? 'Breakeven' :
-    effectiveOutcome === 'MISSED' ? 'Missed' :
-    effectiveOutcome === 'SKIPPED' ? 'Skipped' :
-    '';
-  const outcomeBadgeEl = node.querySelector('.reviewStateSummary');
-  outcomeBadgeEl.textContent = outcomeBadgeText;
-  outcomeBadgeEl.dataset.outcome = effectiveOutcome ?? '';
+  const hintText = effectiveOutcome
+    ? `Marked · tap to change`
+    : 'Tap a button to mark this trade';
+  node.querySelector('.reviewStateSummary').textContent = hintText;
   node.querySelector('.reviewStateHint').textContent = review.reviewedAt
     ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
     : review.autoLabeledAt
@@ -5311,8 +5305,21 @@ const renderReviewCard = (review) => {
   statusPill.classList.add(statusLabel);
 
   const saveBtn = node.querySelector('.saveReviewBtn');
-  saveBtn.textContent = review.reviewStatus === 'COMPLETED' ? 'Update Review' : 'Save Review';
   saveBtn.addEventListener('click', () => saveReview(review, saveBtn));
+
+  // Quick-outcome one-tap buttons
+  const currentOutcome = review.outcome || review.autoOutcome;
+  node.querySelectorAll('[data-quick-outcome]').forEach((btn) => {
+    if (btn.dataset.quickOutcome === currentOutcome) {
+      btn.classList.add('is-active');
+    }
+    btn.addEventListener('click', () => {
+      node.querySelector('.reviewOutcome').value = btn.dataset.quickOutcome;
+      node.querySelectorAll('[data-quick-outcome]').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      saveReview(review, saveBtn);
+    });
+  });
 
   return node;
 };
