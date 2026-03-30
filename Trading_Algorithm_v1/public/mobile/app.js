@@ -3601,7 +3601,7 @@ const openChartLightbox = (chartEl) => {
   chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
   chartLightboxFrameEl.innerHTML = context.snapshot
     ? `
-        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true })}</div>
+        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true, replayMode: true, outcome: context.review?.outcome || context.review?.autoOutcome })}</div>
         ${renderChartLightboxDetails(context)}
       `
     : chartEl.innerHTML;
@@ -4904,7 +4904,7 @@ const loadAlerts = async () => {
       node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
       const signalChartEl = node.querySelector('.signalChart');
-      signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
+      signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot, { replayMode: true });
       configureExpandableChart(
         signalChartEl,
         {
