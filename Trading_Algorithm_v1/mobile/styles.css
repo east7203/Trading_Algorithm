@@ -4910,17 +4910,22 @@ body {
 }
 
 .view {
+  display: none;
   height: 100%;
   overflow-y: auto;
   padding: 18px 14px calc(32px + env(safe-area-inset-bottom));
   border-radius: 28px 28px 22px 22px;
 }
 
+.view.is-active {
+  display: block;
+}
+
 .view-hidden-ops {
   display: none !important;
 }
 
-.view-home {
+.view-home.is-active {
   display: grid;
   align-content: start;
   gap: 14px;
