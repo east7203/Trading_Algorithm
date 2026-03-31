@@ -5603,3 +5603,1183 @@ select {
   width: 16px;
   height: 16px;
 }
+
+/* ============================================================
+   ROBINHOOD DARK THEME — Final pass
+   Pure black bg, #00C805 green, clean sans-serif
+   ============================================================ */
+
+:root {
+  --rh-green: #00c805;
+  --rh-green-dim: rgba(0, 200, 5, 0.12);
+  --rh-red: #e0574f;
+  --rh-red-dim: rgba(224, 87, 79, 0.12);
+  --rh-surface: #1a1a1a;
+  --rh-surface-2: #141414;
+  --rh-border: rgba(255, 255, 255, 0.08);
+  --rh-muted: #888888;
+
+  /* Override global tokens */
+  --bg: #000000;
+  --bg2: #0d0d0d;
+  --card: rgba(26, 26, 26, 0.98);
+  --card-strong: rgba(20, 20, 20, 0.99);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #ffffff;
+  --muted: #888888;
+  --accent: #00c805;
+  --accent-ink: #003300;
+  --good: #00c805;
+  --good-bg: rgba(0, 200, 5, 0.10);
+  --warn: #ff9400;
+  --warn-bg: rgba(255, 148, 0, 0.12);
+  --danger: #e0574f;
+  --danger-bg: rgba(224, 87, 79, 0.12);
+  --shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.7);
+  --display-font: -apple-system, 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', sans-serif;
+  --body-font: -apple-system, 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', sans-serif;
+}
+
+/* Body: pure black */
+html, body {
+  background: #000000;
+}
+
+body::before {
+  background: none;
+  mask-image: none;
+}
+
+body::after {
+  background: none;
+}
+
+.ambient {
+  display: none;
+}
+
+/* ---- Slim top bar (brand + status, all tabs) ---- */
+.top-card,
+.rh-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px;
+  border: none;
+  border-bottom: 1px solid var(--rh-border);
+  background: #000000;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.top-card::before {
+  display: none;
+}
+
+.rh-topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Portfolio hero — inside view-home, scrolls with content */
+.rh-portfolio-hero {
+  padding: 20px 0 16px;
+}
+
+.rh-portfolio-label {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--rh-muted);
+  letter-spacing: 0.02em;
+}
+
+.rh-portfolio-value {
+  margin: 0 0 4px;
+  font-size: clamp(2rem, 7vw, 2.8rem);
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.rh-portfolio-pnl {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--rh-muted);
+}
+
+.rh-portfolio-pnl.is-positive { color: var(--rh-green); }
+.rh-portfolio-pnl.is-negative { color: var(--rh-red); }
+
+/* Masthead row inside portfolio hero */
+.masthead-row {
+  margin-bottom: 12px;
+}
+
+.brand-cluster {
+  gap: 10px;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--rh-green);
+  box-shadow: 0 0 0 4px rgba(0, 200, 5, 0.14), 0 0 12px rgba(0, 200, 5, 0.3);
+  margin-top: 0;
+}
+
+.eyebrow {
+  font-size: 0.7rem;
+  color: var(--rh-muted);
+  letter-spacing: 0.12em;
+}
+
+h1 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: var(--body-font);
+  letter-spacing: 0;
+}
+
+.micro-pill-strong {
+  border-color: rgba(0, 200, 5, 0.3);
+  color: var(--rh-green);
+  background: var(--rh-green-dim);
+}
+
+/* Chip row (not used in top bar anymore — keep rule harmless) */
+.chip-row {
+  padding: 0;
+  margin-top: 0;
+  border: none;
+}
+
+.chip,
+.chip-btn,
+.micro-pill,
+.toggle-chip,
+.level-chip,
+.evidence-chip,
+.signalChartLegendChip {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--rh-border);
+  color: #cccccc;
+}
+
+.chip-online {
+  color: var(--rh-green);
+  background: var(--rh-green-dim);
+  border-color: rgba(0, 200, 5, 0.25);
+}
+
+.chip-offline {
+  color: var(--rh-red);
+  background: var(--rh-red-dim);
+  border-color: rgba(224, 87, 79, 0.25);
+}
+
+.chip-neutral {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: rgba(255, 148, 0, 0.25);
+}
+
+.chip-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--rh-border);
+  box-shadow: none;
+}
+
+/* Hero grid (removed from header; keep rule harmless) */
+.hero-grid {
+  margin-top: 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.hero-panel,
+.stat-card,
+.desk-card,
+.insight-card,
+.item-card,
+.view,
+.home-direction-card,
+.home-brief-card,
+.home-market-panel,
+.home-macro-panel,
+.home-snapshot-card,
+.home-why-card,
+.home-brief-column,
+.home-macro-card {
+  border: 1px solid var(--rh-border);
+  background: var(--rh-surface);
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.hero-panel::before,
+.stat-card::before,
+.desk-card::before,
+.insight-card::before,
+.item-card::before,
+.view::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+}
+
+.hero-panel-primary {
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.10), transparent 32%),
+    var(--rh-surface);
+}
+
+.hero-panel-muted {
+  background: var(--rh-surface-2);
+}
+
+.panel-label,
+.stat-label,
+.group-label,
+.review-section-label,
+.card-section-label {
+  color: var(--rh-muted);
+}
+
+.hero-title,
+.panel-value,
+.desk-value,
+.stat-value,
+.home-direction-label,
+.home-snapshot-value,
+.home-macro-title,
+.home-brief-headline {
+  color: #ffffff;
+  font-family: var(--body-font);
+}
+
+h2, h3 {
+  font-family: var(--body-font);
+  color: #ffffff;
+}
+
+.subtitle,
+.panel-note,
+.desk-note,
+.section-kicker,
+.hint,
+.status,
+.insight-text,
+.setupType,
+.item-meta,
+.home-direction-detail,
+.home-why-copy,
+.home-snapshot-note,
+.home-macro-summary,
+.home-macro-note,
+.home-macro-meta,
+.home-brief-summary {
+  color: var(--rh-muted);
+}
+
+/* Stats grid — now inside view-home only */
+.stats-grid {
+  margin: 16px 0;
+  padding: 0;
+  gap: 10px;
+}
+
+.stat-card {
+  border-radius: 14px;
+  border: 1px solid var(--rh-border);
+  background: var(--rh-surface);
+  min-height: 80px;
+  padding: 14px;
+}
+
+/* Views */
+.views {
+  margin-top: 0;
+  padding: 0;
+}
+
+.view {
+  display: none;
+  border: none;
+  border-radius: 0;
+  padding: 20px 20px 24px;
+  background: #000000;
+  box-shadow: none;
+}
+
+.view.is-active {
+  display: block;
+}
+
+.view::before {
+  display: none;
+}
+
+/* Explicitly re-assert view switching — many prior passes touch .view */
+.view { display: none !important; }
+.view.is-active { display: block !important; }
+
+/* ---- Tab bar: Robinhood bottom nav ---- */
+/* Override all .tabbar-top rules that set position:sticky + top */
+.tabbar,
+.tabbar-top {
+  position: fixed !important;
+  top: auto !important;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid var(--rh-border);
+  background: rgba(0, 0, 0, 0.96);
+  box-shadow: 0 -1px 0 var(--rh-border);
+  padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 40;
+  /* Restore grid layout for tab buttons */
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  overflow: visible;
+}
+
+.tab-btn,
+.tabbar-top .tab-btn {
+  color: var(--rh-muted);
+  background: transparent;
+  border: none;
+  padding: 6px 4px 4px;
+  min-height: 52px;
+  border-radius: 0;
+  flex: unset;
+}
+
+.tab-btn-content {
+  gap: 3px;
+}
+
+.tab-icon {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  color: var(--rh-muted);
+}
+
+.tab-label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.tab-btn.is-active {
+  color: var(--rh-green);
+  background: transparent;
+}
+
+.tab-btn.is-active .tab-icon {
+  color: var(--rh-green);
+  background: transparent;
+  border: none;
+}
+
+.tab-btn.is-active .tab-label {
+  color: var(--rh-green);
+}
+
+/* ---- Buttons ---- */
+.primary-btn {
+  background: var(--rh-green);
+  color: #000000;
+  border: none;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.primary-btn:hover {
+  background: #00b004;
+}
+
+.segment-btn.is-active {
+  background: rgba(0, 200, 5, 0.14);
+  color: var(--rh-green);
+  border-color: rgba(0, 200, 5, 0.28);
+  box-shadow: none;
+}
+
+.quick-action {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.quick-action.is-active {
+  background: var(--rh-green-dim);
+  color: var(--rh-green);
+  border-color: rgba(0, 200, 5, 0.28);
+}
+
+.chip-btn,
+.secondary-btn,
+.segment-btn {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+  color: #cccccc;
+}
+
+/* ---- Direction card ---- */
+.home-direction-card {
+  border-radius: 16px;
+  background: var(--rh-surface);
+  border: 1px solid var(--rh-border);
+  box-shadow: none;
+}
+
+.home-direction-card[data-tone='bullish'] {
+  border-color: rgba(0, 200, 5, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.08), transparent 32%),
+    var(--rh-surface);
+}
+
+.home-direction-card[data-tone='bearish'] {
+  border-color: rgba(224, 87, 79, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(224, 87, 79, 0.08), transparent 32%),
+    var(--rh-surface);
+}
+
+.home-direction-card[data-tone='risk'] {
+  border-color: rgba(255, 148, 0, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(255, 148, 0, 0.08), transparent 32%),
+    var(--rh-surface);
+}
+
+.home-direction-label {
+  color: #ffffff;
+  font-family: var(--body-font);
+}
+
+.home-why-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--rh-border);
+  border-radius: 14px;
+}
+
+/* ---- Watchlist rows: Robinhood dark rows ---- */
+.home-market-panel {
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  padding: 0;
+}
+
+.home-watchlist-list {
+  gap: 1px;
+  background: var(--rh-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.home-watchlist-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 0;
+  border: none;
+  background: var(--rh-surface);
+  box-shadow: none;
+}
+
+.home-watchlist-card:first-child {
+  border-radius: 16px 16px 0 0;
+}
+
+.home-watchlist-card:last-child {
+  border-radius: 0 0 16px 16px;
+}
+
+.home-watchlist-card:only-child {
+  border-radius: 16px;
+}
+
+.home-watchlist-card[data-tone='bullish'] {
+  border-color: transparent;
+  background: linear-gradient(90deg, rgba(0, 200, 5, 0.04) 0%, var(--rh-surface) 40%);
+}
+
+.home-watchlist-card[data-tone='bearish'] {
+  border-color: transparent;
+  background: linear-gradient(90deg, rgba(224, 87, 79, 0.04) 0%, var(--rh-surface) 40%);
+}
+
+.home-watchlist-card:hover,
+.home-watchlist-card:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  transform: none;
+  box-shadow: none;
+}
+
+.home-watchlist-symbol {
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--body-font);
+}
+
+.home-watchlist-setup,
+.home-watchlist-note,
+.home-watchlist-meta {
+  color: var(--rh-muted);
+  font-size: 0.8rem;
+}
+
+.home-watchlist-price {
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: -apple-system, monospace;
+}
+
+.home-watchlist-meter {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.home-watchlist-meter-fill {
+  background: var(--rh-green);
+}
+
+.home-watchlist-meta-secondary {
+  border-top-color: var(--rh-border);
+}
+
+/* ---- Snapshot grid ---- */
+.home-snapshot-grid {
+  gap: 10px;
+}
+
+.home-snapshot-card {
+  border-radius: 14px;
+  background: var(--rh-surface);
+  border: 1px solid var(--rh-border);
+  box-shadow: none;
+}
+
+.home-snapshot-card-strong {
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.10), transparent 32%),
+    var(--rh-surface);
+  border-color: rgba(0, 200, 5, 0.2);
+}
+
+.home-snapshot-value {
+  color: #ffffff;
+  font-family: var(--body-font);
+}
+
+.home-snapshot-note {
+  color: var(--rh-muted);
+}
+
+/* ---- Paper account card ---- */
+.home-paper-card,
+.paper-hero-card,
+.paper-section {
+  background: var(--rh-surface);
+  border: 1px solid var(--rh-border);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.home-paper-card[data-tone='bullish'] {
+  border-color: rgba(0, 200, 5, 0.24);
+}
+
+.home-paper-card[data-tone='bearish'] {
+  border-color: rgba(224, 87, 79, 0.24);
+}
+
+.home-paper-card:hover,
+.home-paper-card:focus-visible {
+  border-color: rgba(0, 200, 5, 0.28);
+  box-shadow: none;
+  transform: none;
+}
+
+.home-paper-balance,
+.paper-hero-equity {
+  color: #ffffff;
+}
+
+.home-paper-pnl,
+.paper-hero-pnl {
+  color: var(--rh-green);
+}
+
+.home-paper-meta,
+.paper-hero-meta,
+.paper-position-meta,
+.paper-position-setup,
+.paper-position-label {
+  color: var(--rh-muted);
+}
+
+.paper-hero-sparkline {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--rh-border);
+}
+
+.paper-position-pnl.is-positive p { color: var(--rh-green); }
+.paper-position-pnl.is-negative p { color: var(--rh-red); }
+.paper-position-pnl span { color: var(--rh-muted); }
+.paper-position-grid p { color: #e2e8f0; }
+
+/* ---- Fold / brief cards ---- */
+.home-fold,
+.home-brief-card,
+.home-macro-panel {
+  background: var(--rh-surface);
+  border: 1px solid var(--rh-border);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.home-fold-label {
+  color: var(--rh-muted);
+}
+
+.home-fold-title,
+.home-brief-headline {
+  color: #ffffff;
+  font-family: var(--body-font);
+}
+
+.home-brief-summary { color: var(--rh-muted); }
+
+.home-brief-item::before { background: var(--rh-green); }
+.home-brief-item.is-muted::before { background: var(--rh-muted); }
+
+/* ---- Brief card tone overrides ---- */
+.home-brief-card[data-tone='bullish'] {
+  border-color: rgba(0, 200, 5, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.06), transparent 32%),
+    var(--rh-surface);
+}
+
+.home-brief-card[data-tone='bearish'] {
+  border-color: rgba(224, 87, 79, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(224, 87, 79, 0.06), transparent 32%),
+    var(--rh-surface);
+}
+
+.home-brief-card[data-tone='risk'] {
+  border-color: rgba(255, 148, 0, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(255, 148, 0, 0.06), transparent 32%),
+    var(--rh-surface);
+}
+
+/* ---- Signal & review cards ---- */
+.signal-card,
+.review-card {
+  background: var(--rh-surface);
+  border: 1px solid var(--rh-border);
+  border-radius: 16px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.signal-card .setupType,
+.review-card .setupType {
+  color: var(--rh-muted);
+}
+
+.signal-card::after {
+  background: radial-gradient(circle, rgba(0, 200, 5, 0.10), transparent 64%);
+}
+
+.signal-guidance-block,
+.review-case-card,
+.review-reading-card,
+.projection-card,
+.symbol-viewer-stat-card,
+.symbol-viewer-setup-card,
+.symbol-viewer-reason-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--rh-border);
+  color: #ffffff;
+}
+
+.signalResearchNote,
+.reviewResearchNote { color: var(--rh-muted); }
+.review-chart-legend { color: var(--rh-muted); }
+
+/* ---- Signal chart ---- */
+.signalChart {
+  border-color: var(--rh-border);
+  background: #0a0a0a;
+  box-shadow: none;
+}
+
+.signalChartLegend {
+  border-top-color: var(--rh-border);
+  background: rgba(10, 10, 10, 0.6);
+}
+
+.signalChartLegendChip,
+.signalChartLegendChip.is-muted {
+  background: rgba(255, 255, 255, 0.06);
+  color: #cccccc;
+  border-color: var(--rh-border);
+}
+
+.signalChartLegendText { color: #ffffff; }
+.signalChartLegendPrice { color: var(--rh-muted); }
+
+.signalChart.is-expandable::after {
+  background: rgba(26, 26, 26, 0.92);
+  border-color: var(--rh-border);
+  color: #cccccc;
+}
+
+/* ---- Status pills ---- */
+.tradeStatus.APPROVED {
+  color: #7dd3fc;
+  background: rgba(14, 120, 200, 0.18);
+}
+
+.tradeStatus.REJECTED {
+  color: var(--rh-red);
+  background: var(--rh-red-dim);
+}
+
+.tradeStatus.PROPOSED {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.signalState.READY {
+  color: var(--rh-green);
+  background: var(--rh-green-dim);
+}
+
+.signalState.BLOCKED {
+  color: var(--rh-red);
+  background: var(--rh-red-dim);
+}
+
+.reviewStatus.NEW {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.reviewStatus.REVIEWED,
+.reviewStatus.ACTED {
+  color: var(--rh-green);
+  background: var(--rh-green-dim);
+}
+
+.reviewStatus.INVALID,
+.reviewStatus.MISSED {
+  color: var(--rh-red);
+  background: var(--rh-red-dim);
+}
+
+/* ---- Inputs ---- */
+input,
+textarea,
+select {
+  background: var(--rh-surface);
+  color: #ffffff;
+  border-color: var(--rh-border);
+}
+
+/* ---- Symbol viewer sheet ---- */
+.symbol-viewer-sheet {
+  background: #111111;
+  box-shadow: 0 -24px 50px rgba(0, 0, 0, 0.7);
+}
+
+/* ---- Segmented control ---- */
+.segmented-control {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+}
+
+.segment-btn {
+  color: var(--rh-muted);
+}
+
+.segment-btn.is-active {
+  background: rgba(0, 200, 5, 0.14);
+  color: var(--rh-green);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* ---- Dividers ---- */
+.divider {
+  border-top-color: var(--rh-border);
+}
+
+/* ---- Section heads ---- */
+.section-head {
+  align-items: center;
+}
+
+.section-subhead {
+  align-items: center;
+}
+
+/* ---- ops ribbon ---- */
+.ops-ribbon {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--rh-border);
+  color: var(--rh-muted);
+}
+
+.ops-dot {
+  background: var(--rh-green);
+}
+
+/* ---- Phone shell ---- */
+.phone-shell {
+  padding-inline: 0;
+  width: 100%;
+  max-width: 760px;
+  /* Reserve space for fixed bottom tab bar (~60px + safe-area) */
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+}
+
+/* ---- Pull-to-refresh ---- */
+.pull-refresh {
+  background: rgba(26, 26, 26, 0.96);
+  border-color: var(--rh-border);
+}
+
+.pull-refresh.is-armed {
+  border-color: rgba(0, 200, 5, 0.4);
+}
+
+.pull-refresh-wheel {
+  border-color: rgba(255, 255, 255, 0.15);
+  border-top-color: var(--rh-green);
+  border-right-color: rgba(0, 200, 5, 0.5);
+}
+
+/* ---- Masthead tags ---- */
+.masthead-tags .micro-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--rh-border);
+  color: var(--rh-muted);
+}
+
+/* ---- Home section head spacing ---- */
+.section-head h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* ---- Training panels ---- */
+.training-panel,
+.training-panel-card {
+  background: var(--rh-surface);
+  border: 1px solid var(--rh-border);
+  color: #ffffff;
+}
+
+.training-panel::before {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+}
+
+/* ---- Insight cards ---- */
+.insight-card {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+}
+
+.insight-text {
+  color: var(--rh-muted);
+}
+
+/* ---- Desk cards ---- */
+.desk-card {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+}
+
+.desk-card-spotlight {
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.12), transparent 30%),
+    var(--rh-surface);
+}
+
+/* ---- Settings block ---- */
+.settings-block {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+}
+
+/* ---- Level/evidence chips ---- */
+.level-chip-entry { background: rgba(0, 80, 200, 0.18); }
+.level-chip-stop { background: rgba(224, 87, 79, 0.18); }
+.level-chip-target { background: rgba(0, 200, 5, 0.14); }
+
+/* ---- Item cards ---- */
+.item-card {
+  background: var(--rh-surface);
+  border-color: var(--rh-border);
+}
+
+.item-row strong { color: #ffffff; }
+
+/* ---- Research hypothesis ---- */
+.home-research-hypothesis-list .home-why-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--rh-border);
+}
+
+/* ---- Reduce motion ---- */
+:root.reduce-motion .view.is-active {
+  animation: none;
+}
+
+/* ---- Responsive: wider screens ---- */
+@media (min-width: 720px) {
+  .phone-shell {
+    width: min(760px, calc(100% - 32px));
+    padding-inline: 0;
+  }
+
+  .view {
+    padding: 20px 24px 28px;
+  }
+
+  .chip-row {
+    padding: 10px 24px 14px;
+  }
+
+  .rh-portfolio-hero {
+    padding: 24px 24px 18px;
+  }
+}
+
+/* ---- Simplified Review Card ---- */
+.review-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.review-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.review-setup-label {
+  font-size: 0.75rem;
+  color: #888;
+  font-weight: 400;
+}
+.review-card-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.review-outcome-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.07);
+  color: #888;
+}
+.review-outcome-badge:empty { display: none; }
+.review-outcome-badge[data-outcome="WOULD_WIN"] {
+  background: rgba(0,200,5,0.15);
+  color: #00c805;
+}
+.review-outcome-badge[data-outcome="WOULD_LOSE"] {
+  background: rgba(239,68,68,0.15);
+  color: #f87171;
+}
+.review-outcome-badge[data-outcome="BREAKEVEN"] {
+  background: rgba(251,191,36,0.15);
+  color: #fbbf24;
+}
+/* Level strip */
+.review-level-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  margin: 14px 0;
+}
+.review-level-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 8px;
+  background: #0d0d0d;
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+.review-level-cell:last-child { border-right: none; }
+.review-level-cell-stop { background: rgba(239,68,68,0.06); }
+.review-level-cell-tp   { background: rgba(0,200,5,0.06); }
+.review-level-name {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #555;
+}
+.review-level-val {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  font-variant-numeric: tabular-nums;
+}
+.review-level-cell-stop .review-level-val { color: #f87171; }
+.review-level-cell-tp   .review-level-val { color: #00c805; }
+/* Form */
+.review-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 500;
+}
+/* Save row */
+.review-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+.review-updated-hint {
+  font-size: 0.72rem;
+  color: #444;
+}
+
+/* ---- Replay tab ---- */
+.rp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.rp-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rp-setup {
+  font-size: 0.75rem;
+  color: #888;
+  font-weight: 400;
+}
+.rp-time {
+  font-size: 0.7rem;
+  color: #555;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+/* Level strip */
+.rp-levels {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 14px 0;
+}
+.rp-level {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 8px;
+  background: #0d0d0d;
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+.rp-level:last-child { border-right: none; }
+.rp-level-sl { background: rgba(239,68,68,0.06); }
+.rp-level-tp { background: rgba(0,200,5,0.06); }
+.rp-lname {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #555;
+}
+.rp-lval {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  font-variant-numeric: tabular-nums;
+}
+.rp-level-sl .rp-lval { color: #f87171; }
+.rp-level-tp .rp-lval { color: #00c805; }
+/* One-tap outcome buttons */
+.rp-outcome-btns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+.rp-outcome-btn {
+  padding: 14px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: #111;
+  color: #666;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.rp-outcome-btn.is-active.rp-win {
+  background: rgba(0,200,5,0.18);
+  border-color: #00c805;
+  color: #00c805;
+}
+.rp-outcome-btn.is-active.rp-lose {
+  background: rgba(239,68,68,0.18);
+  border-color: #f87171;
+  color: #f87171;
+}
+.rp-outcome-btn.is-active.rp-miss {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.3);
+  color: #ccc;
+}
+.rp-save-hint {
+  font-size: 0.7rem;
+  color: #3a3a3a;
+  text-align: center;
+  margin: 8px 0 0;
+}

@@ -73,6 +73,8 @@ const homeAlertStateEl = document.getElementById('homeAlertState');
 const homePaperAccountCardEl = document.getElementById('homePaperAccountCard');
 const homePaperBalanceEl = document.getElementById('homePaperBalance');
 const homePaperPnlEl = document.getElementById('homePaperPnl');
+const rhPortfolioValueEl = document.getElementById('rhPortfolioValue');
+const rhPortfolioPnlEl = document.getElementById('rhPortfolioPnl');
 const homePaperMetaEl = document.getElementById('homePaperMeta');
 const homePaperChipEl = document.getElementById('homePaperChip');
 const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
@@ -1161,6 +1163,26 @@ const renderPaperAccount = () => {
       paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
         ? `${fmtSignedUsd(totalDollar)} • ${fmtSignedPct(summary.totalReturnPct)}`
         : 'Paper account standing by';
+  }
+
+  // Robinhood-style header portfolio value
+  if (rhPortfolioValueEl) {
+    rhPortfolioValueEl.textContent =
+      paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '--';
+  }
+  if (rhPortfolioPnlEl) {
+    const totalDollar =
+      typeof summary.equity === 'number' && typeof summary.initialBalance === 'number'
+        ? summary.equity - summary.initialBalance
+        : null;
+    const isPositive = typeof totalDollar === 'number' && totalDollar > 0;
+    const isNegative = typeof totalDollar === 'number' && totalDollar < 0;
+    rhPortfolioPnlEl.textContent =
+      paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
+        ? `${fmtSignedUsd(totalDollar)} (${fmtSignedPct(summary.totalReturnPct)}) all-time`
+        : 'Today: --';
+    rhPortfolioPnlEl.classList.toggle('is-positive', isPositive);
+    rhPortfolioPnlEl.classList.toggle('is-negative', isNegative);
   }
   if (homePaperMetaEl) {
     homePaperMetaEl.textContent = paperEnabled
@@ -2945,6 +2967,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
   }
 
   const expanded = options.expanded === true;
+  const replayMode = options.replayMode === true;
   const width = expanded ? 440 : 320;
   const height = expanded ? 292 : 182;
   const padding = expanded
@@ -3008,10 +3031,18 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
       emphasized: false
     }));
   const contextLevels = baseReferenceLevels.filter((level) => level.role === 'context' || level.onChart === false);
-  const levelDefinitions = [...tradeLevels, ...structureLevels].map((level) => ({
-    ...level,
-    valueLabel: expanded || level.role === 'trade' ? fmtNum(level.price, 2) : ''
-  }));
+  const levelDefinitions = replayMode
+    ? tradeLevels
+        .filter((level) => level.key === 'stopLoss' || level.key === 'takeProfit')
+        .map((level) => ({
+          ...level,
+          label: level.key === 'stopLoss' ? 'Stop Loss' : 'Take Profit',
+          valueLabel: fmtNum(level.price, 2)
+        }))
+    : [...tradeLevels, ...structureLevels].map((level) => ({
+        ...level,
+        valueLabel: expanded || level.role === 'trade' ? fmtNum(level.price, 2) : ''
+      }));
   const zones = (snapshot.zones ?? [])
     .filter((zone) => zone.onChart !== false)
     .slice(0, 1)
@@ -3286,6 +3317,20 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
     </g>
   `;
 
+  const outcomeCx = padding.left + plotWidth / 2;
+  const outcomeCy = padding.top + plotHeight / 2;
+  const outcomeOverlay = options.outcome === 'WOULD_WIN'
+    ? `<g>
+        <rect x="${outcomeCx - 42}" y="${outcomeCy - 12}" width="84" height="24" rx="12" fill="rgba(0,200,5,0.22)" stroke="#00c805" stroke-width="1.2" />
+        <text x="${outcomeCx}" y="${outcomeCy + 5}" fill="#00c805" font-size="9.5" font-weight="800" text-anchor="middle" letter-spacing="0.06em">✓ TP HIT</text>
+      </g>`
+    : options.outcome === 'WOULD_LOSE'
+    ? `<g>
+        <rect x="${outcomeCx - 42}" y="${outcomeCy - 12}" width="84" height="24" rx="12" fill="rgba(239,68,68,0.22)" stroke="#f87171" stroke-width="1.2" />
+        <text x="${outcomeCx}" y="${outcomeCy + 5}" fill="#f87171" font-size="9.5" font-weight="800" text-anchor="middle" letter-spacing="0.06em">✗ SL HIT</text>
+      </g>`
+    : '';
+
   const legendItems = [...tradeLevels, ...structureLevels, ...zones];
   const legend = legendItems.length
     ? `
@@ -3331,17 +3376,18 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
       <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
         <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(5, 12, 21, 0.74)" />
         ${gridLines}
-        ${zonesMarkup}
-        ${focusLine}
+        ${replayMode ? '' : zonesMarkup}
+        ${replayMode ? '' : focusLine}
         ${levelDefinitions.map(levelLine).join('')}
         ${candles}
         ${chartBadge}
         ${setupBadge}
         ${levelLabels}
+        ${outcomeOverlay}
         ${timeAxis}
       </svg>
-      ${legend}
-      ${contextLegend}
+      ${replayMode ? '' : legend}
+      ${replayMode ? '' : contextLegend}
     </div>
   `;
 };
@@ -3555,7 +3601,7 @@ const openChartLightbox = (chartEl) => {
   chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
   chartLightboxFrameEl.innerHTML = context.snapshot
     ? `
-        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true })}</div>
+        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true, replayMode: true, outcome: context.review?.outcome || context.review?.autoOutcome })}</div>
         ${renderChartLightboxDetails(context)}
       `
     : chartEl.innerHTML;
@@ -4179,22 +4225,19 @@ const setActiveTab = (tabName) => {
   });
 
   Object.entries(views).forEach(([name, view]) => {
-    view.classList.toggle('is-active', name === normalizedTab);
+    const isActive = name === normalizedTab;
+    view.classList.toggle('is-active', isActive);
+    // Force display via inline style with !important so no stale CSS can override
+    view.style.setProperty('display', isActive ? 'block' : 'none', 'important');
+    if (isActive) {
+      view.scrollTop = 0;
+    }
   });
 
   updateRouteState({
     tab: normalizedTab,
     alertId: normalizedTab === 'signals' ? activeRouteAlertId : null
   });
-
-  try {
-    window.scrollTo({
-      top: 0,
-      behavior: document.documentElement.classList.contains('reduce-motion') ? 'auto' : 'smooth'
-    });
-  } catch {
-    // no-op in test/non-browser environments that stub scrollTo
-  }
 };
 
 const acknowledgeAlert = async (alertId, buttonEl) => {
@@ -4861,7 +4904,7 @@ const loadAlerts = async () => {
       node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
       const signalChartEl = node.querySelector('.signalChart');
-      signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
+      signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot, { replayMode: true });
       configureExpandableChart(
         signalChartEl,
         {
@@ -5168,7 +5211,10 @@ const renderReviewCard = (review) => {
     review.alertSnapshot ?? review
   );
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
-  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
+  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot, {
+    replayMode: true,
+    outcome: review.outcome || review.autoOutcome
+  });
   configureExpandableChart(
     reviewChartEl,
     {
@@ -5215,14 +5261,11 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewSeenAgo').textContent = fmtRelativeMinutes(review.detectedAt);
   node.querySelector('.reviewSnapshotSavedAt').textContent = fmtDateTimeCompact(chartSnapshot?.generatedAt);
   node.querySelector('.reviewSnapshotSavedAgo').textContent = fmtRelativeMinutes(chartSnapshot?.generatedAt);
-  node.querySelector('.reviewStateSummary').textContent =
-    review.reviewStatus === 'COMPLETED'
-      ? review.validity
-        ? `${reviewValidityLabel(review.validity)} • ${reviewOutcomeLabel(review.outcome)}`
-        : reviewOutcomeLabel(review.outcome)
-      : review.autoOutcome
-        ? `Auto ${reviewOutcomeLabel(review.autoOutcome)}`
-        : 'Pending';
+  const effectiveOutcome = review.outcome || review.autoOutcome;
+  const hintText = effectiveOutcome
+    ? `Marked · tap to change`
+    : 'Tap a button to mark this trade';
+  node.querySelector('.reviewStateSummary').textContent = hintText;
   node.querySelector('.reviewStateHint').textContent = review.reviewedAt
     ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
     : review.autoLabeledAt
@@ -5289,8 +5332,27 @@ const renderReviewCard = (review) => {
   statusPill.classList.add(statusLabel);
 
   const saveBtn = node.querySelector('.saveReviewBtn');
-  saveBtn.textContent = review.reviewStatus === 'COMPLETED' ? 'Update Review' : 'Save Review';
   saveBtn.addEventListener('click', () => saveReview(review, saveBtn));
+
+  // Quick-outcome one-tap buttons
+  const currentOutcome = review.outcome || review.autoOutcome;
+  node.querySelectorAll('[data-quick-outcome]').forEach((btn) => {
+    if (btn.dataset.quickOutcome === currentOutcome) {
+      btn.classList.add('is-active');
+    }
+    btn.addEventListener('click', () => {
+      const outcome = btn.dataset.quickOutcome;
+      node.querySelector('.reviewOutcome').value = outcome;
+      node.querySelectorAll('[data-quick-outcome]').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      // Re-render chart with outcome badge immediately
+      reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot, {
+        replayMode: true,
+        outcome
+      });
+      saveReview(review, saveBtn);
+    });
+  });
 
   return node;
 };
