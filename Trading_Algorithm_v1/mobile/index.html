@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=26" />
   </head>
   <body>
     <span hidden>Evan TradeAssist</span>
@@ -33,7 +33,6 @@
             <span class="brand-mark" aria-hidden="true"></span>
             <div>
               <p class="eyebrow">EVAN TRADEASSIST</p>
-              <h1>Evan Morning Market</h1>
             </div>
           </div>
           <div class="masthead-tags">
@@ -41,42 +40,19 @@
             <span class="micro-pill">NQ + ES</span>
           </div>
         </div>
+        <div class="paper-portfolio-hero">
+          <p class="panel-label">Paper Portfolio</p>
+          <p id="heroBalance" class="paper-portfolio-balance">$100,000.00</p>
+          <p id="heroPnl" class="paper-portfolio-pnl">$0.00 (0.00%) all-time</p>
+        </div>
         <div class="chip-row">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
           <button id="refreshAll" class="chip-btn" type="button">Sync</button>
         </div>
-
-        <section class="hero-grid">
-          <article class="hero-panel hero-panel-primary">
-            <p class="panel-label">Kill-Zone Focus</p>
-            <div class="hero-primary">
-              <div>
-                <p id="heroFocus" class="hero-title">Waiting for structure</p>
-                <p id="heroSubline" class="panel-note">The system is watching for qualified morning setups.</p>
-              </div>
-              <div class="hero-stack">
-                <span id="heroFeedBadge" class="micro-pill">Feed --</span>
-                <span id="heroPushBadge" class="micro-pill">Alerts --</span>
-              </div>
-            </div>
-          </article>
-          <div class="hero-side-stack">
-            <article class="hero-panel hero-panel-compact">
-              <p class="panel-label">Attack Window</p>
-              <p id="heroWindow" class="panel-value">08:30-10:30 ET</p>
-              <p class="panel-note">Manual execution only</p>
-            </article>
-            <article class="hero-panel hero-panel-compact hero-panel-muted">
-              <p class="panel-label">Broadcast Stack</p>
-              <p id="heroStack" class="panel-value">Web Push • Mac • Telegram</p>
-              <p id="heroLastAlert" class="panel-note">No alert yet</p>
-            </article>
-          </div>
-        </section>
       </header>
 
-      <nav class="tabbar tabbar-top" aria-label="Primary tabs">
+      <nav class="tabbar" aria-label="Primary tabs">
         <button class="tab-btn is-active" type="button" data-tab="home" aria-current="page">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><polyline points="9 21 9 14 15 14 15 21"/></svg></span>
@@ -115,15 +91,7 @@
         </button>
       </nav>
 
-      <section class="stats-grid">
-        <article class="stat-card">
-          <p class="stat-label">Pending</p>
-          <p id="pendingCount" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Approved Today</p>
-          <p id="sentCount" class="stat-value">0</p>
-        </article>
+      <section class="stats-grid stats-grid-3">
         <article class="stat-card">
           <p class="stat-label">Open Risk</p>
           <p id="openRiskCount" class="stat-value">0.00%</p>
@@ -135,10 +103,6 @@
         <article class="stat-card">
           <p class="stat-label">Top Setup</p>
           <p id="topSetupStat" class="stat-value stat-value-sm">--</p>
-        </article>
-        <article class="stat-card">
-          <p class="stat-label">Reviews Due</p>
-          <p id="reviewPendingStat" class="stat-value">0</p>
         </article>
       </section>
 
@@ -1265,6 +1229,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=25"></script>
+    <script type="module" src="app.js?v=26"></script>
   </body>
 </html>
