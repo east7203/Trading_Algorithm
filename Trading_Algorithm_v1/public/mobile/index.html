@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=24" />
   </head>
   <body>
     <span hidden>Evan TradeAssist</span>
@@ -28,25 +28,19 @@
       </div>
 
       <header class="top-card">
-        <!-- Robinhood-style portfolio header -->
-        <div class="rh-portfolio-hero">
-          <div class="masthead-row">
-            <div class="brand-cluster">
-              <span class="brand-mark" aria-hidden="true"></span>
-              <div>
-                <p class="eyebrow">EVAN TRADEASSIST</p>
-              </div>
-            </div>
-            <div class="masthead-tags">
-              <span class="micro-pill micro-pill-strong">5m Desk</span>
-              <span class="micro-pill">NQ + ES</span>
+        <div class="masthead-row">
+          <div class="brand-cluster">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <div>
+              <p class="eyebrow">EVAN TRADEASSIST</p>
+              <h1>Evan Morning Market</h1>
             </div>
           </div>
-          <p class="rh-portfolio-label">Paper Portfolio</p>
-          <p id="rhPortfolioValue" class="rh-portfolio-value">--</p>
-          <p id="rhPortfolioPnl" class="rh-portfolio-pnl">Today: --</p>
+          <div class="masthead-tags">
+            <span class="micro-pill micro-pill-strong">5m Desk</span>
+            <span class="micro-pill">NQ + ES</span>
+          </div>
         </div>
-
         <div class="chip-row">
           <span id="liveBadge" class="chip chip-offline">Offline</span>
           <span id="lastSyncChip" class="chip chip-neutral">Sync: --</span>
@@ -1060,78 +1054,68 @@
     </template>
 
     <template id="reviewItemTemplate">
-      <article class="item-card review-card">
+      <article class="item-card review-card replay-card">
         <div class="item-row">
-          <strong class="symbol"></strong>
+          <div>
+            <strong class="symbol"></strong>
+            <p class="setupType"></p>
+          </div>
           <span class="pill reviewStatus"></span>
         </div>
-        <p class="setupType"></p>
         <div class="chip-row engineAgreementRow"></div>
         <p class="reviewResearchNote">--</p>
-        <div class="review-casefile-grid">
-          <article class="review-case-card">
-            <p class="card-section-label">Seen</p>
-            <p class="reviewCasePrimary reviewSeenAt">--</p>
-            <p class="reviewCaseSecondary reviewSeenAgo">--</p>
+        <section class="replay-status-block">
+          <div>
+            <p class="card-section-label">Replay Status</p>
+            <p class="replayStatusHeadline">--</p>
+            <p class="replayStatusDetail">--</p>
+          </div>
+          <div class="signal-levels replaySnapshotLevels">
+            <span class="level-chip level-chip-entry">Entry <b class="reviewEntry"></b></span>
+            <span class="level-chip level-chip-stop">SL <b class="reviewStopLoss"></b></span>
+            <span class="level-chip level-chip-target">TP <b class="reviewTakeProfitOne"></b></span>
+          </div>
+        </section>
+        <div class="signalChart reviewSnapshotChart"></div>
+        <div class="signal-chart-tools">
+          <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
+          <span class="chip chip-neutral reviewSnapshotTimeframe">5m replay</span>
+        </div>
+        <div class="replay-step-grid">
+          <article class="review-case-card replay-step-card">
+            <p class="card-section-label">Signal Seen</p>
+            <p class="reviewCasePrimary replayDetectedStepTime">--</p>
+            <p class="reviewCaseSecondary replayDetectedStepMeta">--</p>
           </article>
-          <article class="review-case-card">
-            <p class="card-section-label">Snapshot</p>
-            <p class="reviewCasePrimary reviewSnapshotSavedAt">--</p>
-            <p class="reviewCaseSecondary reviewSnapshotSavedAgo">--</p>
+          <article class="review-case-card replay-step-card">
+            <p class="card-section-label">Entry Triggered</p>
+            <p class="reviewCasePrimary replayEntryStepTime">--</p>
+            <p class="reviewCaseSecondary replayEntryStepMeta">--</p>
           </article>
-          <article class="review-case-card">
-            <p class="card-section-label">Review State</p>
-            <p class="reviewCasePrimary reviewStateSummary">--</p>
-            <p class="reviewCaseSecondary reviewStateHint">--</p>
+          <article class="review-case-card replay-step-card">
+            <p class="card-section-label">Trade Result</p>
+            <p class="reviewCasePrimary replayExitStepTime">--</p>
+            <p class="reviewCaseSecondary replayExitStepMeta">--</p>
           </article>
-          <article class="review-case-card">
+          <article class="review-case-card replay-step-card">
             <p class="card-section-label">Reward / Risk</p>
             <p class="reviewCasePrimary reviewRrValue">--</p>
             <p class="reviewCaseSecondary reviewRiskRewardRange">--</p>
           </article>
         </div>
-        <p class="review-section-label">Trigger Snapshot</p>
-        <p class="review-section-copy">This is the saved chart from the moment the signal fired.</p>
-        <div class="signalChart reviewSnapshotChart"></div>
-        <div class="signal-chart-tools">
-          <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
-        </div>
-        <div class="signal-levels reviewSnapshotLevels">
-          <span class="level-chip level-chip-entry">Entry <b class="reviewEntry"></b></span>
-          <span class="level-chip level-chip-stop">SL <b class="reviewStopLoss"></b></span>
-          <span class="level-chip level-chip-target">TP1 <b class="reviewTakeProfitOne"></b></span>
-        </div>
-        <div class="projection-grid reviewProjectionGrid">
-          <div class="projection-card projection-card-target">
-            <p class="card-section-label">Projected Take Profit</p>
-            <p class="projection-value reviewProjectedTakeProfit">--</p>
-            <p class="projection-note reviewProjectedTakeProfitNote">--</p>
-          </div>
-          <div class="projection-card projection-card-stop">
-            <p class="card-section-label">Projected Stop Loss</p>
-            <p class="projection-value reviewProjectedStopLoss">--</p>
-            <p class="projection-note reviewProjectedStopLossNote">--</p>
-          </div>
-        </div>
         <div class="review-reading-grid">
           <article class="review-reading-card">
-            <p class="card-section-label">Desk Read</p>
+            <p class="card-section-label">Why It Qualified</p>
             <p class="review-reading-copy reviewSignalSummary">--</p>
           </article>
           <article class="review-reading-card">
-            <p class="card-section-label">Guardrails</p>
+            <p class="card-section-label">Risk Context</p>
             <p class="review-reading-copy reviewGuardrails">--</p>
           </article>
         </div>
         <div class="signalEvidence reviewEvidence"></div>
         <div class="item-meta">
-          <span>Timeframe <b class="reviewSnapshotTimeframe"></b></span>
-          <span class="reviewSnapshotNote"></span>
-        </div>
-        <p class="review-chart-legend">Each line is labeled on-chart. Blue dashed = session levels, amber dashed = NY range, solid lines = entry, stop, and target.</p>
-        <p class="review-section-label">Signal Read</p>
-        <div class="item-meta reviewTimelineMeta">
-          <span>Detected <b class="detectedAt"></b></span>
+          <span>Seen <b class="detectedAt"></b></span>
           <span>Snapshot <b class="reviewTimelineSnapshotAt"></b></span>
           <span>Updated <b class="reviewTimelineUpdatedAt"></b></span>
         </div>
@@ -1271,6 +1255,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=24"></script>
   </body>
 </html>

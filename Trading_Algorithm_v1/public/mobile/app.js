@@ -73,8 +73,6 @@ const homeAlertStateEl = document.getElementById('homeAlertState');
 const homePaperAccountCardEl = document.getElementById('homePaperAccountCard');
 const homePaperBalanceEl = document.getElementById('homePaperBalance');
 const homePaperPnlEl = document.getElementById('homePaperPnl');
-const rhPortfolioValueEl = document.getElementById('rhPortfolioValue');
-const rhPortfolioPnlEl = document.getElementById('rhPortfolioPnl');
 const homePaperMetaEl = document.getElementById('homePaperMeta');
 const homePaperChipEl = document.getElementById('homePaperChip');
 const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
@@ -1163,26 +1161,6 @@ const renderPaperAccount = () => {
       paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
         ? `${fmtSignedUsd(totalDollar)} • ${fmtSignedPct(summary.totalReturnPct)}`
         : 'Paper account standing by';
-  }
-
-  // Robinhood-style header portfolio value
-  if (rhPortfolioValueEl) {
-    rhPortfolioValueEl.textContent =
-      paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '--';
-  }
-  if (rhPortfolioPnlEl) {
-    const totalDollar =
-      typeof summary.equity === 'number' && typeof summary.initialBalance === 'number'
-        ? summary.equity - summary.initialBalance
-        : null;
-    const isPositive = typeof totalDollar === 'number' && totalDollar > 0;
-    const isNegative = typeof totalDollar === 'number' && totalDollar < 0;
-    rhPortfolioPnlEl.textContent =
-      paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
-        ? `${fmtSignedUsd(totalDollar)} (${fmtSignedPct(summary.totalReturnPct)}) all-time`
-        : 'Today: --';
-    rhPortfolioPnlEl.classList.toggle('is-positive', isPositive);
-    rhPortfolioPnlEl.classList.toggle('is-negative', isNegative);
   }
   if (homePaperMetaEl) {
     homePaperMetaEl.textContent = paperEnabled
@@ -3368,6 +3346,201 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
   `;
 };
 
+const findReplayEventIndex = (bars, at) => {
+  if (!Array.isArray(bars) || !bars.length || !at) {
+    return -1;
+  }
+  const targetTime = Date.parse(at);
+  if (!Number.isFinite(targetTime)) {
+    return -1;
+  }
+  const index = bars.findIndex((bar) => Date.parse(bar.timestamp) >= targetTime);
+  return index >= 0 ? index : bars.length - 1;
+};
+
+const describeReplayStatus = (trace) => {
+  switch (trace?.status) {
+    case 'TAKE_PROFIT':
+      return {
+        label: 'Take profit hit',
+        detail: `Price entered the trade and reached TP first${trace.exitAt ? ` at ${fmtTime(trace.exitAt)}` : ''}.`,
+        pill: 'TAKE_PROFIT',
+        badge: 'TP'
+      };
+    case 'STOP_LOSS':
+      return {
+        label: 'Stop loss hit',
+        detail: `Price entered the trade and hit the stop first${trace.exitAt ? ` at ${fmtTime(trace.exitAt)}` : ''}.`,
+        pill: 'STOP_LOSS',
+        badge: 'SL'
+      };
+    case 'TIME_EXIT':
+      return {
+        label: 'Timed out',
+        detail: `The trade opened but never hit TP or SL before the replay window expired${trace.exitAt ? ` at ${fmtTime(trace.exitAt)}` : ''}.`,
+        pill: 'TIME_EXIT',
+        badge: 'TIME'
+      };
+    case 'ENTRY_MISSED':
+      return {
+        label: 'Entry never touched',
+        detail: `Price never came back to the entry before the replay window expired${trace.exitAt ? ` at ${fmtTime(trace.exitAt)}` : ''}.`,
+        pill: 'ENTRY_MISSED',
+        badge: 'MISS'
+      };
+    case 'ENTERED':
+      return {
+        label: 'Trade opened',
+        detail: `Price touched entry${trace.entryTouchedAt ? ` at ${fmtTime(trace.entryTouchedAt)}` : ''} and is still inside the replay window.`,
+        pill: 'ENTERED',
+        badge: 'OPEN'
+      };
+    default:
+      return {
+        label: 'Waiting for entry',
+        detail: 'The setup has been seen, but the replay window has not shown an entry touch yet.',
+        pill: 'WAITING_ENTRY',
+        badge: 'WAIT'
+      };
+  }
+};
+
+const renderReplayChartMarkup = (review, options = {}) => {
+  const expanded = options.expanded === true;
+  const trace = review?.replayTrace;
+  const snapshot = review?.alertSnapshot?.chartSnapshot;
+  const bars = trace?.bars?.length ? trace.bars : snapshot?.bars ?? [];
+  if (!bars.length) {
+    return '<div class="signalChartPlaceholder">Replay path pending</div>';
+  }
+
+  const width = expanded ? 440 : 320;
+  const height = expanded ? 276 : 192;
+  const padding = expanded
+    ? { top: 20, right: 16, bottom: 28, left: 16 }
+    : { top: 16, right: 12, bottom: 24, left: 12 };
+  const entry = trace?.entryPrice ?? review?.alertSnapshot?.candidate?.entry;
+  const stopLoss = trace?.stopLoss ?? review?.alertSnapshot?.candidate?.stopLoss;
+  const takeProfit = trace?.takeProfit ?? review?.alertSnapshot?.candidate?.takeProfit?.[0];
+  const side = review?.side ?? review?.alertSnapshot?.side;
+  const allPrices = bars.flatMap((bar) => [bar.high, bar.low]);
+  if (typeof entry === 'number') {
+    allPrices.push(entry);
+  }
+  if (typeof stopLoss === 'number') {
+    allPrices.push(stopLoss);
+  }
+  if (typeof takeProfit === 'number') {
+    allPrices.push(takeProfit);
+  }
+
+  const maxPrice = Math.max(...allPrices);
+  const minPrice = Math.min(...allPrices);
+  const range = Math.max(maxPrice - minPrice, 1e-6);
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const slotWidth = bars.length > 1 ? plotWidth / (bars.length - 1) : plotWidth;
+  const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
+  const xAt = (index) => padding.left + slotWidth * index;
+  const closePath = bars
+    .map((bar, index) => `${index === 0 ? 'M' : 'L'} ${xAt(index)} ${priceToY(bar.close)}`)
+    .join(' ');
+
+  const detectedIndex = Math.max(0, findReplayEventIndex(bars, trace?.detectedAt ?? snapshot?.detectedAt));
+  const entryIndex = trace?.entryTouchedAt ? findReplayEventIndex(bars, trace.entryTouchedAt) : -1;
+  const exitIndex = trace?.exitAt ? findReplayEventIndex(bars, trace.exitAt) : -1;
+  const tradeStartIndex = entryIndex >= 0 ? entryIndex : detectedIndex;
+  const tradeEndIndex = exitIndex >= 0 ? exitIndex : bars.length - 1;
+  const tradeStartX = xAt(tradeStartIndex);
+  const tradeWidth = Math.max(6, xAt(tradeEndIndex) - tradeStartX);
+  const entryY = typeof entry === 'number' ? priceToY(entry) : priceToY(bars[detectedIndex]?.close ?? bars[0].close);
+  const stopY = typeof stopLoss === 'number' ? priceToY(stopLoss) : entryY;
+  const targetY = typeof takeProfit === 'number' ? priceToY(takeProfit) : entryY;
+  const rewardTop = side === 'LONG' ? targetY : entryY;
+  const rewardBottom = side === 'LONG' ? entryY : targetY;
+  const riskTop = side === 'LONG' ? entryY : stopY;
+  const riskBottom = side === 'LONG' ? stopY : entryY;
+  const detectedX = xAt(detectedIndex);
+  const rewardHeight = Math.max(2, rewardBottom - rewardTop);
+  const riskHeight = Math.max(2, riskBottom - riskTop);
+
+  const eventBadge = (label, index, price, color, anchor = 'start') => {
+    if (index < 0 || typeof price !== 'number') {
+      return '';
+    }
+    const boxWidth = expanded ? 64 : 52;
+    const boxHeight = expanded ? 18 : 16;
+    const x = Math.min(
+      width - padding.right - boxWidth,
+      Math.max(padding.left, xAt(index) - (anchor === 'end' ? boxWidth : 0))
+    );
+    const y = Math.max(padding.top, priceToY(price) - 28);
+    return `
+      <g>
+        <line x1="${xAt(index)}" y1="${priceToY(price)}" x2="${x + (anchor === 'end' ? boxWidth - 8 : 8)}" y2="${y + boxHeight}" stroke="${color}" stroke-width="1" opacity="0.8" />
+        <rect x="${x}" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="8" fill="${color}" />
+        <text x="${x + boxWidth / 2}" y="${y + boxHeight / 2 + 3}" fill="#041018" font-size="${expanded ? '8.2' : '7.6'}" font-weight="800" text-anchor="middle">${label}</text>
+      </g>
+    `;
+  };
+
+  const gridLines = Array.from({ length: 4 }, (_, index) => minPrice + (range * (index + 1)) / 5)
+    .map(
+      (price) => `
+        <line
+          x1="${padding.left}"
+          y1="${priceToY(price)}"
+          x2="${width - padding.right}"
+          y2="${priceToY(price)}"
+          stroke="rgba(214, 226, 241, 0.08)"
+          stroke-width="1"
+        />
+      `
+    )
+    .join('');
+
+  const outcome = describeReplayStatus(trace);
+
+  return `
+    <div class="signalChartStack replayChartStack${expanded ? ' is-expanded' : ''}">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
+        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(8, 12, 18, 0.92)" />
+        ${gridLines}
+        <line x1="${padding.left}" y1="${entryY}" x2="${width - padding.right}" y2="${entryY}" stroke="rgba(224, 241, 255, 0.82)" stroke-width="1.35" />
+        <line x1="${padding.left}" y1="${stopY}" x2="${width - padding.right}" y2="${stopY}" stroke="rgba(255, 111, 145, 0.58)" stroke-width="1.1" stroke-dasharray="4 4" />
+        <line x1="${padding.left}" y1="${targetY}" x2="${width - padding.right}" y2="${targetY}" stroke="rgba(178, 111, 255, 0.62)" stroke-width="1.1" stroke-dasharray="4 4" />
+        <rect x="${tradeStartX}" y="${rewardTop}" width="${tradeWidth}" height="${rewardHeight}" fill="rgba(32, 209, 151, 0.12)" stroke="rgba(32, 209, 151, 0.3)" />
+        <rect x="${tradeStartX}" y="${riskTop}" width="${tradeWidth}" height="${riskHeight}" fill="rgba(255, 75, 125, 0.12)" stroke="rgba(255, 75, 125, 0.3)" />
+        <line x1="${detectedX}" y1="${padding.top}" x2="${detectedX}" y2="${height - padding.bottom}" stroke="rgba(114, 236, 175, 0.45)" stroke-width="1" stroke-dasharray="3 5" />
+        <path d="${closePath}" fill="none" stroke="rgba(96, 171, 255, 0.95)" stroke-width="${expanded ? '2.25' : '1.9'}" stroke-linejoin="round" stroke-linecap="round" />
+        ${eventBadge('SEEN', detectedIndex, bars[detectedIndex]?.close ?? entry, '#2cd67d')}
+        ${eventBadge('IN', entryIndex, entry, '#2cd67d')}
+        ${trace?.exitReason === 'TAKE_PROFIT' ? eventBadge('TP', exitIndex, takeProfit, '#c56dff', 'end') : ''}
+        ${trace?.exitReason === 'STOP_LOSS' ? eventBadge('SL', exitIndex, stopLoss, '#ff6f91', 'end') : ''}
+        ${trace?.exitReason === 'TIME_EXIT' ? eventBadge('OUT', exitIndex, trace.exitPrice ?? bars[Math.max(0, exitIndex)]?.close, '#f7c66a', 'end') : ''}
+      </svg>
+      <div class="replayChartCaption">
+        <span class="signalChartLegendChip">
+          <span class="signalChartLegendText">Replay</span>
+          <span class="signalChartLegendPrice">${outcome.label}</span>
+        </span>
+        <span class="signalChartLegendChip">
+          <span class="signalChartLegendText">Entry</span>
+          <span class="signalChartLegendPrice">${fmtNum(entry, 2)}</span>
+        </span>
+        <span class="signalChartLegendChip">
+          <span class="signalChartLegendText">SL</span>
+          <span class="signalChartLegendPrice">${fmtNum(stopLoss, 2)}</span>
+        </span>
+        <span class="signalChartLegendChip">
+          <span class="signalChartLegendText">TP</span>
+          <span class="signalChartLegendPrice">${fmtNum(takeProfit, 2)}</span>
+        </span>
+      </div>
+    </div>
+  `;
+};
+
 const renderChartLightboxDetails = (context) => {
   const candidate = context?.candidate;
   const snapshot = context?.snapshot;
@@ -3377,6 +3550,8 @@ const renderChartLightboxDetails = (context) => {
 
   const review = context?.review ?? null;
   const alert = context?.alert ?? null;
+  const replayTrace = context?.replayTrace ?? review?.replayTrace ?? null;
+  const replayStatus = replayTrace ? describeReplayStatus(replayTrace) : null;
   const alertLike = buildAlertLikeContext(review ?? alert ?? null);
 
   const entry = candidate?.entry ?? snapshot?.levels?.entry;
@@ -3455,6 +3630,21 @@ const renderChartLightboxDetails = (context) => {
           <p class="chart-lightbox-context-value">${reviewStateSummary}</p>
           <p class="chart-lightbox-detail-note">${reviewedAt ? `Updated ${fmtDateTimeCompact(reviewedAt)}` : 'No manual review saved yet'}</p>
         </article>
+        ${
+          replayTrace
+            ? `<article class="chart-lightbox-context-card">
+                <p class="chart-lightbox-detail-label">Replay Result</p>
+                <p class="chart-lightbox-context-value">${replayStatus.label}</p>
+                <p class="chart-lightbox-detail-note">${
+                  replayTrace.exitAt
+                    ? `${fmtTime(replayTrace.exitAt)} • ${typeof replayTrace.exitPrice === 'number' ? fmtNum(replayTrace.exitPrice, 2) : '--'}`
+                    : replayTrace.entryTouchedAt
+                      ? `Entry ${fmtTime(replayTrace.entryTouchedAt)}`
+                      : 'Entry not touched yet'
+                }</p>
+              </article>`
+            : ''
+        }
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Execution Read</p>
           <p class="chart-lightbox-context-value">${alertLike?.riskDecision?.allowed ? 'Desk-ready' : 'Guardrail blocked'}</p>
@@ -3469,6 +3659,14 @@ const renderChartLightboxDetails = (context) => {
         <p class="chart-lightbox-detail-label">Guardrails</p>
         <p class="chart-lightbox-story-copy">${guardrailSummary}</p>
       </article>
+      ${
+        replayTrace
+          ? `<article class="chart-lightbox-story-card">
+              <p class="chart-lightbox-detail-label">Replay Story</p>
+              <p class="chart-lightbox-story-copy">${replayStatus.detail}</p>
+            </article>`
+          : ''
+      }
       ${
         researchAgreement
           ? `<article class="chart-lightbox-story-card">
@@ -3577,7 +3775,11 @@ const openChartLightbox = (chartEl) => {
   chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
   chartLightboxFrameEl.innerHTML = context.snapshot
     ? `
-        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true })}</div>
+        <div class="chart-lightbox-chart">${
+          context.review
+            ? renderReplayChartMarkup(context.review, { expanded: true })
+            : renderSignalChartMarkup(context.snapshot, { expanded: true })
+        }</div>
         ${renderChartLightboxDetails(context)}
       `
     : chartEl.innerHTML;
@@ -5169,6 +5371,8 @@ const saveReview = async (review, buttonEl) => {
 const renderReviewCard = (review) => {
   const node = reviewTemplate.content.firstElementChild.cloneNode(true);
   const chartSnapshot = review.alertSnapshot?.chartSnapshot;
+  const replayTrace = review.replayTrace;
+  const replayStatus = describeReplayStatus(replayTrace);
   const alertLike = buildAlertLikeContext(review);
   const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Rule-qualified signal';
   const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Risk state unavailable';
@@ -5190,15 +5394,16 @@ const renderReviewCard = (review) => {
     review.alertSnapshot ?? review
   );
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
-  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
+  reviewChartEl.innerHTML = renderReplayChartMarkup(review);
   configureExpandableChart(
     reviewChartEl,
     {
       title: `${review.symbol} ${review.side} • ${setupLabel(review.setupType)}`,
-      meta: `${chartSnapshot?.timeframe ?? '5m'} replay case at ${fmtTime(review.detectedAt)} • swipe down to return`,
+      meta: `${chartSnapshot?.timeframe ?? '5m'} replay path at ${fmtTime(review.detectedAt)} • swipe down to return`,
       snapshot: chartSnapshot,
       candidate: review.alertSnapshot?.candidate,
-      review
+      review,
+      replayTrace
     }
   );
   hydrateTradingViewChecklist(node, {
@@ -5214,42 +5419,31 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewEntry').textContent = fmtNum(review.alertSnapshot?.candidate?.entry, 2);
   node.querySelector('.reviewStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
   node.querySelector('.reviewTakeProfitOne').textContent = fmtNum(review.alertSnapshot?.candidate?.takeProfit?.[0], 2);
-  node.querySelector('.reviewProjectedTakeProfit').textContent = fmtNum(
-    review.alertSnapshot?.candidate?.takeProfit?.[0],
-    2
-  );
-  node.querySelector('.reviewProjectedTakeProfitNote').textContent = formatProjectionNote(
-    review.alertSnapshot?.candidate?.entry,
-    review.alertSnapshot?.candidate?.takeProfit?.[0],
-    'target'
-  );
-  node.querySelector('.reviewProjectedStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
-  node.querySelector('.reviewProjectedStopLossNote').textContent = formatProjectionNote(
-    review.alertSnapshot?.candidate?.entry,
-    review.alertSnapshot?.candidate?.stopLoss,
-    'stop'
-  );
-  node.querySelector('.reviewSnapshotTimeframe').textContent = chartSnapshot?.timeframe ?? '--';
-  node.querySelector('.reviewSnapshotNote').textContent = chartSnapshot?.generatedAt
-    ? `Saved at ${fmtTime(chartSnapshot.generatedAt)}`
-    : 'No saved trigger snapshot';
-  node.querySelector('.reviewSeenAt').textContent = fmtDateTimeCompact(review.detectedAt);
-  node.querySelector('.reviewSeenAgo').textContent = fmtRelativeMinutes(review.detectedAt);
-  node.querySelector('.reviewSnapshotSavedAt').textContent = fmtDateTimeCompact(chartSnapshot?.generatedAt);
-  node.querySelector('.reviewSnapshotSavedAgo').textContent = fmtRelativeMinutes(chartSnapshot?.generatedAt);
-  node.querySelector('.reviewStateSummary').textContent =
-    review.reviewStatus === 'COMPLETED'
-      ? review.validity
-        ? `${reviewValidityLabel(review.validity)} • ${reviewOutcomeLabel(review.outcome)}`
-        : reviewOutcomeLabel(review.outcome)
-      : review.autoOutcome
-        ? `Auto ${reviewOutcomeLabel(review.autoOutcome)}`
-        : 'Pending';
-  node.querySelector('.reviewStateHint').textContent = review.reviewedAt
-    ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
-    : review.autoLabeledAt
-      ? `Auto-labeled ${fmtRelativeMinutes(review.autoLabeledAt)}`
-      : 'Waiting on your read';
+  node.querySelector('.reviewSnapshotTimeframe').textContent = replayTrace?.bars?.length
+    ? `${chartSnapshot?.timeframe ?? '5m'} replay`
+    : `${chartSnapshot?.timeframe ?? '5m'} snapshot`;
+  node.querySelector('.replayStatusHeadline').textContent = replayStatus.label;
+  node.querySelector('.replayStatusDetail').textContent = replayStatus.detail;
+  node.querySelector('.replayDetectedStepTime').textContent = fmtTime(review.detectedAt);
+  node.querySelector('.replayDetectedStepMeta').textContent = fmtDateTimeCompact(review.detectedAt);
+  node.querySelector('.replayEntryStepTime').textContent = replayTrace?.entryTouchedAt
+    ? fmtTime(replayTrace.entryTouchedAt)
+    : 'No fill';
+  node.querySelector('.replayEntryStepMeta').textContent = replayTrace?.entryTouchedAt
+    ? `Entry ${fmtNum(replayTrace.entryPrice, 2)}`
+    : `Waiting for ${fmtNum(review.alertSnapshot?.candidate?.entry, 2)}`;
+  node.querySelector('.replayExitStepTime').textContent = replayTrace?.exitAt
+    ? fmtTime(replayTrace.exitAt)
+    : replayTrace?.status === 'ENTERED'
+      ? 'Open'
+      : replayTrace?.status === 'WAITING_ENTRY'
+        ? 'Pending'
+        : 'No exit';
+  node.querySelector('.replayExitStepMeta').textContent = replayTrace?.exitReason
+    ? `${replayStatus.label} • ${typeof replayTrace.exitPrice === 'number' ? fmtNum(replayTrace.exitPrice, 2) : '--'}`
+    : replayTrace?.status === 'ENTERED'
+      ? `Still inside ${replayTrace.lookaheadMinutes}m replay window`
+      : `Window ${replayTrace?.lookaheadMinutes ?? 0}m`;
   node.querySelector('.reviewRrValue').textContent = calcRr(
     review.alertSnapshot?.candidate?.entry,
     review.alertSnapshot?.candidate?.stopLoss,
@@ -5297,18 +5491,8 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewedByHint').textContent = review.reviewedBy ? `by ${review.reviewedBy}` : '';
 
   const statusPill = node.querySelector('.reviewStatus');
-  const statusLabel =
-    review.validity === 'INVALID'
-      ? 'INVALID'
-      : review.outcome === 'MISSED'
-        ? 'MISSED'
-        : review.autoOutcome && review.reviewStatus !== 'COMPLETED'
-          ? 'AUTO'
-        : review.reviewStatus === 'COMPLETED'
-          ? 'REVIEWED'
-          : 'NEW';
-  statusPill.textContent = statusLabel;
-  statusPill.classList.add(statusLabel);
+  statusPill.textContent = replayStatus.badge;
+  statusPill.classList.add(replayStatus.pill);
 
   const saveBtn = node.querySelector('.saveReviewBtn');
   saveBtn.textContent = review.reviewStatus === 'COMPLETED' ? 'Update Review' : 'Save Review';
