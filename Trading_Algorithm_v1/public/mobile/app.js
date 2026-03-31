@@ -34,13 +34,8 @@ const pullRefreshMetaEl = document.getElementById('pullRefreshMeta');
 const liveBadgeEl = document.getElementById('liveBadge');
 const lastSyncChipEl = document.getElementById('lastSyncChip');
 const refreshAllBtn = document.getElementById('refreshAll');
-const heroFocusEl = document.getElementById('heroFocus');
-const heroSublineEl = document.getElementById('heroSubline');
-const heroFeedBadgeEl = document.getElementById('heroFeedBadge');
-const heroPushBadgeEl = document.getElementById('heroPushBadge');
-const heroWindowEl = document.getElementById('heroWindow');
-const heroStackEl = document.getElementById('heroStack');
-const heroLastAlertEl = document.getElementById('heroLastAlert');
+const heroBalanceEl = document.getElementById('heroBalance');
+const heroPnlEl = document.getElementById('heroPnl');
 const homeSessionChipEl = document.getElementById('homeSessionChip');
 const homeDirectionCardEl = document.getElementById('homeDirectionCard');
 const homeBiasLabelEl = document.getElementById('homeBiasLabel');
@@ -89,8 +84,6 @@ const pendingTemplate = document.getElementById('pendingItemTemplate');
 const tradeTemplate = document.getElementById('tradeItemTemplate');
 const reviewTemplate = document.getElementById('reviewItemTemplate');
 const signalCountEl = document.getElementById('signalCount');
-const pendingCountEl = document.getElementById('pendingCount');
-const sentCountEl = document.getElementById('sentCount');
 const openRiskCountEl = document.getElementById('openRiskCount');
 const topSetupStatEl = document.getElementById('topSetupStat');
 const signalFilterSummaryEl = document.getElementById('signalFilterSummary');
@@ -99,7 +92,6 @@ const signalLeadWhyEl = document.getElementById('signalLeadWhy');
 const signalReadyBlockedEl = document.getElementById('signalReadyBlocked');
 const signalLeadSymbolEl = document.getElementById('signalLeadSymbol');
 const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
-const reviewPendingStatEl = document.getElementById('reviewPendingStat');
 const reviewSummaryChipEl = document.getElementById('reviewSummaryChip');
 const reviewPendingQueueChipEl = document.getElementById('reviewPendingQueueChip');
 const reviewCompletedQueueChipEl = document.getElementById('reviewCompletedQueueChip');
@@ -1151,6 +1143,19 @@ const renderPaperAccount = () => {
 
   if (homePaperBalanceEl) {
     homePaperBalanceEl.textContent = paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '--';
+  }
+  if (heroBalanceEl) {
+    heroBalanceEl.textContent = paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '$100,000.00';
+  }
+  if (heroPnlEl) {
+    const totalDollar =
+      typeof summary.equity === 'number' && typeof summary.initialBalance === 'number'
+        ? summary.equity - summary.initialBalance
+        : null;
+    heroPnlEl.textContent =
+      paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
+        ? `${fmtSignedUsd(totalDollar)} (${fmtSignedPct(summary.totalReturnPct)}) all-time`
+        : '$0.00 (0.00%) all-time';
   }
   if (homePaperPnlEl) {
     const totalDollar =
@@ -4680,23 +4685,11 @@ const renderHero = () => {
   const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
   const blockedCount = latestAlerts.length - readyCount;
 
-  heroWindowEl.textContent = '08:30-10:30 ET';
-  if (signalSettings) {
-    heroWindowEl.textContent = `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ET`;
-  }
-  heroStackEl.textContent = diagnostics?.notifications?.telegramReady
-    ? 'Web Push • Mac • Telegram'
-    : 'Web Push • Mac';
-
   if (!topAlert) {
-    heroFocusEl.textContent = 'Waiting for structure';
-    heroSublineEl.textContent = 'The system is watching for qualified morning setups.';
     signalLeadIdeaEl.textContent = 'No live idea yet';
     signalLeadWhyEl.textContent = 'Waiting for opening range structure.';
     signalLeadSymbolEl.textContent = '--';
   } else {
-    heroFocusEl.textContent = `${topAlert.symbol} ${topAlert.side} ${topAlert.riskDecision.allowed ? 'ready' : 'watch'}`;
-    heroSublineEl.textContent = formatSignalWhy(topAlert);
     signalLeadIdeaEl.textContent = `${setupLabel(topAlert.setupType)} • ${topAlert.symbol}`;
     signalLeadWhyEl.textContent = topAlert.riskDecision.allowed
       ? formatSignalWhy(topAlert)
@@ -4704,12 +4697,6 @@ const renderHero = () => {
     signalLeadSymbolEl.textContent = `${topAlert.symbol} • ${signalBiasLabel(topAlert)}`;
   }
 
-  const feedState = getFeedStateMeta(diagnostics ?? null);
-  heroFeedBadgeEl.textContent = `Feed ${feedState.segment}`;
-  heroPushBadgeEl.textContent = `${readyCount} ready • ${reviewSummary.pending} review`;
-  heroLastAlertEl.textContent = diagnostics?.lastAlert
-    ? `Last alert ${fmtTime(diagnostics.lastAlert.detectedAt)}`
-    : 'No alert yet';
   signalReadyBlockedEl.textContent = `${readyCount} ready / ${blockedCount} blocked`;
   signalQueueSummaryEl.textContent = `${filteredAlerts.length} shown • ${readyCount} ready`;
 
@@ -4720,16 +4707,9 @@ const renderHero = () => {
 
 const updateStats = () => {
   signalCountEl.textContent = String(latestAlerts.length);
-  pendingCountEl.textContent = String(latestPending.length);
-  reviewPendingStatEl.textContent = String(reviewSummary.pending);
   reviewSummaryChipEl.textContent = `${reviewSummary.pending} pending • ${reviewSummary.completed} done`;
   reviewPendingQueueChipEl.textContent = `${reviewSummary.pending} pending`;
   reviewCompletedQueueChipEl.textContent = `${reviewSummary.completed} completed`;
-
-  const approvedToday = latestTrades.filter(
-    (trade) => trade.status === 'APPROVED' && isSameLocalDay(trade.approvedAt ?? trade.createdAt)
-  ).length;
-  sentCountEl.textContent = String(approvedToday);
 
   const openRisk = latestPending.reduce((sum, intent) => sum + (Number(intent.riskPct) || 0), 0);
   openRiskCountEl.textContent = `${fmtNum(openRisk, 2)}%`;
