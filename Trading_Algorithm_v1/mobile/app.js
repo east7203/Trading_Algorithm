@@ -143,6 +143,9 @@ const textScaleEl = document.getElementById('textScale');
 const reduceMotionEl = document.getElementById('reduceMotion');
 const notificationToggleEl = document.getElementById('notificationToggle');
 const sendTestAppAlertEl = document.getElementById('sendTestAppAlert');
+const installWebAppEl = document.getElementById('installWebApp');
+const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
+const webAppInstallHintEl = document.getElementById('webAppInstallHint');
 const resetUiPrefsEl = document.getElementById('resetUiPrefs');
 const applyMorningPresetEl = document.getElementById('applyMorningPreset');
 const signalMinScoreEl = document.getElementById('signalMinScore');
@@ -286,6 +289,7 @@ let signalFilters = {
 };
 let refreshInFlight = null;
 let serviceWorkerReloading = false;
+let deferredInstallPrompt = null;
 let activeRouteAlertId = null;
 let focusedAlertId = null;
 let localNotificationListenersBound = false;
@@ -327,6 +331,11 @@ const setupToggleMap = {
 const fallbackApiBase = window.location.origin;
 const defaultIbkrWebsiteUrl = 'https://www.interactivebrokers.com/en/general/qr-code-ibkr-mobile-routing.php';
 const tradingViewWidgetScriptUrl = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+
+const isStandaloneWebApp = () =>
+  window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+const isIosBrowser = () => /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 
 const setupLabels = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: 'Sweep -> MSS -> FVG',
@@ -5567,6 +5576,77 @@ const bindNotificationControls = () => {
   });
 };
 
+const updateWebAppInstallUi = () => {
+  if (!webAppInstallStatusEl || !webAppInstallHintEl || !installWebAppEl) {
+    return;
+  }
+
+  if (isStandaloneWebApp()) {
+    webAppInstallStatusEl.textContent = 'Installed and running in standalone mode.';
+    webAppInstallHintEl.textContent = 'This desk is already opening like an app on this device.';
+    installWebAppEl.hidden = true;
+    installWebAppEl.disabled = true;
+    return;
+  }
+
+  if (deferredInstallPrompt) {
+    webAppInstallStatusEl.textContent = 'Ready to install from this browser.';
+    webAppInstallHintEl.textContent = 'Tap Install App to save Evan TradeAssist to your device like a standalone app.';
+    installWebAppEl.hidden = false;
+    installWebAppEl.disabled = false;
+    installWebAppEl.textContent = 'Install App';
+    return;
+  }
+
+  if (isIosBrowser()) {
+    webAppInstallStatusEl.textContent = 'Install using Safari Add to Home Screen.';
+    webAppInstallHintEl.textContent =
+      'In Safari, tap Share and then Add to Home Screen. After that, it will launch like a dedicated app.';
+    installWebAppEl.hidden = true;
+    installWebAppEl.disabled = true;
+    return;
+  }
+
+  webAppInstallStatusEl.textContent = 'Web app is available in the browser.';
+  webAppInstallHintEl.textContent =
+    'If your browser has not offered install yet, keep using the app a bit longer and the prompt should appear.';
+  installWebAppEl.hidden = true;
+  installWebAppEl.disabled = true;
+};
+
+const bindWebAppInstallControls = () => {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updateWebAppInstallUi();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateWebAppInstallUi();
+    setStatus('Status: web app installed');
+  });
+
+  installWebAppEl?.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) {
+      updateWebAppInstallUi();
+      return;
+    }
+
+    installWebAppEl.disabled = true;
+    try {
+      await deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice.catch(() => null);
+    } finally {
+      deferredInstallPrompt = null;
+      installWebAppEl.disabled = false;
+      updateWebAppInstallUi();
+    }
+  });
+
+  updateWebAppInstallUi();
+};
+
 const bindSignalSettingsControls = () => {
   applyMorningPresetEl.addEventListener('click', () => {
     const preset = recommendedMorningPreset();
@@ -5693,6 +5773,7 @@ const bootstrap = async () => {
   applyUiPrefs(prefs);
   bindUiPreferenceControls();
   bindNotificationControls();
+  bindWebAppInstallControls();
   bindSignalSettingsControls();
   bindStatusRecoveryControls();
   bindChartLightbox();

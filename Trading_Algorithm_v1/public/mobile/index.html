@@ -7,11 +7,15 @@
       content="width=device-width, initial-scale=1, minimum-scale=0.75, maximum-scale=5, user-scalable=yes, viewport-fit=cover"
     />
     <meta name="theme-color" content="#07111b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EvanDesk" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>Evan TradeAssist</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=28" />
+    <link rel="stylesheet" href="styles.css?v=33" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -743,6 +747,23 @@
             <button id="resetUiPrefs" class="chip-btn secondary-btn" type="button">Reset Preferences</button>
           </section>
 
+          <section class="settings-block settings-block-accent">
+            <div class="block-head">
+              <div>
+                <h3>Web App</h3>
+                <p class="section-kicker">Install this desk so it opens like a real app from your phone or browser.</p>
+              </div>
+            </div>
+            <div class="safe-summary-card">
+              <p class="stat-label">Install Status</p>
+              <p id="webAppInstallStatus" class="insight-text">Checking web app install support.</p>
+              <p id="webAppInstallHint" class="hint">If your browser supports install, you will see an install button here.</p>
+            </div>
+            <div class="settings-inline-actions">
+              <button id="installWebApp" class="primary-btn" type="button" hidden>Install App</button>
+            </div>
+          </section>
+
           <p id="status" class="status">Status: checking...</p>
         </section>
 
@@ -1300,6 +1321,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=28"></script>
+    <script type="module" src="app.js?v=33"></script>
   </body>
 </html>

@@ -40,10 +40,27 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Board Signal');
     expect(mobile.body).toContain('Macro Read');
     expect(mobile.body).toContain('symbolDetailViewer');
+    expect(mobile.body).toContain('apple-mobile-web-app-capable');
+    expect(mobile.body).toContain('Web App');
+    expect(mobile.body).toContain('Install App');
 
     const opener = await ctx.app.inject({ method: 'GET', path: '/mobile/open-app.html' });
     expect(opener.statusCode).toBe(200);
     expect(opener.body).toContain('Opening App');
+  });
+
+  it('serves a standalone manifest with install shortcuts', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({ method: 'GET', path: '/mobile/manifest.webmanifest' });
+    expect(response.statusCode).toBe(200);
+
+    const manifest = response.json();
+    expect(manifest.name).toBe('Evan TradeAssist');
+    expect(manifest.display).toBe('standalone');
+    expect(manifest.id).toBe('/mobile/');
+    expect(Array.isArray(manifest.shortcuts)).toBe(true);
+    expect(manifest.shortcuts.length).toBeGreaterThanOrEqual(5);
   });
 
   it('redirects malformed mobile restore links back to the mobile shell', async () => {

@@ -1,12 +1,43 @@
 {
+  "id": "/mobile/",
   "name": "Evan TradeAssist",
   "short_name": "EvanDesk",
   "description": "Evan's live futures desk for NQ and ES decision flow.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
   "background_color": "#07111b",
   "theme_color": "#07111b",
+  "categories": ["finance", "productivity", "business"],
+  "shortcuts": [
+    {
+      "name": "Home",
+      "short_name": "Home",
+      "url": "./?tab=home"
+    },
+    {
+      "name": "Board",
+      "short_name": "Board",
+      "url": "./?tab=signals"
+    },
+    {
+      "name": "Paper",
+      "short_name": "Paper",
+      "url": "./?tab=trades"
+    },
+    {
+      "name": "Replay",
+      "short_name": "Replay",
+      "url": "./?tab=reviews"
+    },
+    {
+      "name": "Engine",
+      "short_name": "Engine",
+      "url": "./?tab=status"
+    }
+  ],
   "icons": [
     {
       "src": "icon.svg",
