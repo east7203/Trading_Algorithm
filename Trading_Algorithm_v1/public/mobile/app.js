@@ -73,6 +73,8 @@ const homeAlertStateEl = document.getElementById('homeAlertState');
 const homePaperAccountCardEl = document.getElementById('homePaperAccountCard');
 const homePaperBalanceEl = document.getElementById('homePaperBalance');
 const homePaperPnlEl = document.getElementById('homePaperPnl');
+const rhPortfolioValueEl = document.getElementById('rhPortfolioValue');
+const rhPortfolioPnlEl = document.getElementById('rhPortfolioPnl');
 const homePaperMetaEl = document.getElementById('homePaperMeta');
 const homePaperChipEl = document.getElementById('homePaperChip');
 const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
@@ -1161,6 +1163,26 @@ const renderPaperAccount = () => {
       paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
         ? `${fmtSignedUsd(totalDollar)} • ${fmtSignedPct(summary.totalReturnPct)}`
         : 'Paper account standing by';
+  }
+
+  // Robinhood-style header portfolio value
+  if (rhPortfolioValueEl) {
+    rhPortfolioValueEl.textContent =
+      paperEnabled && typeof summary.equity === 'number' ? fmtUsd(summary.equity) : '--';
+  }
+  if (rhPortfolioPnlEl) {
+    const totalDollar =
+      typeof summary.equity === 'number' && typeof summary.initialBalance === 'number'
+        ? summary.equity - summary.initialBalance
+        : null;
+    const isPositive = typeof totalDollar === 'number' && totalDollar > 0;
+    const isNegative = typeof totalDollar === 'number' && totalDollar < 0;
+    rhPortfolioPnlEl.textContent =
+      paperEnabled && typeof totalDollar === 'number' && typeof summary.totalReturnPct === 'number'
+        ? `${fmtSignedUsd(totalDollar)} (${fmtSignedPct(summary.totalReturnPct)}) all-time`
+        : 'Today: --';
+    rhPortfolioPnlEl.classList.toggle('is-positive', isPositive);
+    rhPortfolioPnlEl.classList.toggle('is-negative', isNegative);
   }
   if (homePaperMetaEl) {
     homePaperMetaEl.textContent = paperEnabled
