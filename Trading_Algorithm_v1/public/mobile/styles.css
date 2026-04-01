@@ -6604,3 +6604,23 @@ select {
     padding: 24px 24px 18px;
   }
 }
+
+/* ---- iPhone bottom-nav fit ---- */
+.tabbar,
+.tabbar-top {
+  padding: 2px 0 env(safe-area-inset-bottom) !important;
+}
+
+.tab-btn,
+.tabbar-top .tab-btn {
+  min-height: 50px !important;
+  padding: 5px 4px 1px !important;
+}
+
+.phone-shell {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+}
+
+.view {
+  padding-bottom: calc(74px + env(safe-area-inset-bottom)) !important;
+}
