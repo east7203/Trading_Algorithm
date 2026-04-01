@@ -60,6 +60,11 @@ interface PublishedAlertContext {
   source: string;
 }
 
+interface ObservedCandidateContext {
+  alert: SignalAlert;
+  source: string;
+}
+
 interface EvaluateSymbolOptions {
   source: string;
   publishAlerts: boolean;
@@ -256,6 +261,9 @@ export const deriveResearchAiContext = (
 
 const buildAlertKey = (candidate: SetupCandidate): string =>
   `${candidate.symbol}|${candidate.setupType}|${candidate.side}|${candidate.generatedAt}`;
+
+const buildAutonomousAlertId = (candidate: SetupCandidate): string =>
+  `paper-auto:${buildAlertKey(candidate)}`;
 
 const listCsvFiles = async (dirPath: string, recursive: boolean): Promise<string[]> => {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -479,6 +487,7 @@ export class SignalMonitorService {
     private readonly signalReviewStore: SignalReviewStore,
     private readonly getAccountSnapshot?: ((now: string) => AccountSnapshot) | null,
     private readonly onAlertPublished?: ((context: PublishedAlertContext) => Promise<void> | void) | null,
+    private readonly onCandidateObserved?: ((context: ObservedCandidateContext) => Promise<void> | void) | null,
     private readonly nativePushNotificationService?: NativePushNotificationService | null,
     private readonly webPushNotificationService?: WebPushNotificationService | null,
     private readonly telegramAlertService?: TelegramAlertService | null
@@ -1282,12 +1291,65 @@ export class SignalMonitorService {
 
     const activeModel = this.rankingModelStore.get();
     const ranked = rankCandidates({ candidates: contextualCandidates }, activeModel);
+    const rankedCandidatesWithRisk = ranked.map((candidate) => {
+      const riskDecision = evaluateRisk(
+        {
+          candidate,
+          account: this.getAccountSnapshot?.(currentBar.timestamp) ?? this.config.accountSnapshot,
+          market: this.config.marketConditions,
+          now: currentBar.timestamp,
+          newsEvents
+        },
+        this.getRiskConfig()
+      );
+
+      const autonomousCandidate: SetupCandidate = {
+        ...candidate,
+        metadata: {
+          ...candidate.metadata,
+          paperAutonomous: true,
+          paperAutonomySource: 'signal-monitor-autonomous'
+        }
+      };
+
+      const alert: SignalAlert = {
+        alertId: buildAutonomousAlertId(candidate),
+        symbol: autonomousCandidate.symbol,
+        setupType: autonomousCandidate.setupType,
+        side: autonomousCandidate.side,
+        detectedAt: currentBar.timestamp,
+        rankingModelId: activeModel.modelId,
+        title: `${autonomousCandidate.symbol} ${autonomousCandidate.side} autonomous paper signal`,
+        summary: summarizeCandidate(autonomousCandidate),
+        candidate: autonomousCandidate,
+        riskDecision,
+        chartSnapshot: createChartSnapshot(candles5m, autonomousCandidate, input.sessionLevels)
+      };
+
+      return {
+        candidate,
+        riskDecision,
+        alert
+      };
+    });
+
+    if (options.source === 'signal-monitor' && this.onCandidateObserved) {
+      for (const candidateContext of rankedCandidatesWithRisk) {
+        await this.onCandidateObserved({
+          alert: candidateContext.alert,
+          source: 'signal-monitor-autonomous'
+        });
+      }
+    }
+
     const minScoreThreshold =
       settings.aPlusOnlyAfterFirstHour && localNow.minuteOfDay >= rangeEnd
         ? Math.max(settings.minFinalScore, settings.aPlusMinScore)
         : settings.minFinalScore;
-    const qualifyingCandidates = ranked.filter((candidate) => (candidate.finalScore ?? 0) >= minScoreThreshold);
-    const topCandidate = qualifyingCandidates[0];
+    const qualifyingCandidates = rankedCandidatesWithRisk.filter(
+      ({ candidate }) => (candidate.finalScore ?? 0) >= minScoreThreshold
+    );
+    const topCandidate = qualifyingCandidates[0]?.candidate;
     if (!topCandidate) {
       return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
     }
@@ -1312,7 +1374,7 @@ export class SignalMonitorService {
     let publishedAlerts = 0;
     let skippedAlerts = 0;
 
-    for (const candidate of qualifyingCandidates) {
+    for (const { candidate, riskDecision } of qualifyingCandidates) {
       const alertKey = buildAlertKey(candidate);
       if (options.seenAlertKeys.has(alertKey)) {
         skippedAlerts += 1;
@@ -1320,17 +1382,6 @@ export class SignalMonitorService {
       }
       options.seenAlertKeys.add(alertKey);
       matchedAlerts += 1;
-
-      const riskDecision = evaluateRisk(
-        {
-          candidate,
-          account: this.getAccountSnapshot?.(currentBar.timestamp) ?? this.config.accountSnapshot,
-          market: this.config.marketConditions,
-          now: currentBar.timestamp,
-          newsEvents
-        },
-        this.getRiskConfig()
-      );
 
       if (options.recordJournal) {
         this.journalStore.addEvent({

@@ -143,6 +143,8 @@ const textScaleEl = document.getElementById('textScale');
 const reduceMotionEl = document.getElementById('reduceMotion');
 const notificationToggleEl = document.getElementById('notificationToggle');
 const paperMaxConcurrentTradesEl = document.getElementById('paperMaxConcurrentTrades');
+const paperAutonomyModeEl = document.getElementById('paperAutonomyMode');
+const paperAutonomyRiskPctEl = document.getElementById('paperAutonomyRiskPct');
 const savePaperSettingsEl = document.getElementById('savePaperSettings');
 const paperConfigMetaEl = document.getElementById('paperConfigMeta');
 const sendTestAppAlertEl = document.getElementById('sendTestAppAlert');
@@ -994,6 +996,13 @@ const renderHomeResearchLab = () => {
 
 const getPaperAccountStatus = () => latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
 
+const formatPaperTradeCap = (value) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '--';
+  }
+  return value <= 0 ? 'unlimited' : String(value);
+};
+
 const getReviewForAlert = (alertId) => latestReviews.find((review) => review.alertId === alertId) ?? null;
 
 const getPaperLatestPrice = (symbol) => {
@@ -1223,7 +1232,7 @@ const renderPaperAccount = () => {
   }
   if (homePaperMetaEl) {
     homePaperMetaEl.textContent = paperEnabled
-      ? `${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • cap ${paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades ?? '--'}`
+      ? `${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • cap ${formatPaperTradeCap(paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades)}`
       : 'The paper account is not enabled on this desk yet.';
   }
   if (homePaperChipEl) {
@@ -1274,7 +1283,7 @@ const renderPaperAccount = () => {
   }
   if (paperHeroMetaEl) {
     paperHeroMetaEl.textContent = paperEnabled
-      ? `Started with ${fmtUsd(summary.initialBalance)} • cap ${paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades ?? '--'} live trades • ${summary.closedTrades ?? 0} resolved paper trades`
+      ? `Started with ${fmtUsd(summary.initialBalance)} • ${formatPaperTradeCap(paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades)} live-trade cap • ${summary.closedTrades ?? 0} resolved paper trades`
       : 'Paper account diagnostics are not available.';
   }
   if (paperOpenChipEl) {
@@ -1302,15 +1311,25 @@ const renderPaperAccount = () => {
 
 const renderPaperConfig = () => {
   const paper = latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
-  const maxConcurrentTrades = paper?.maxConcurrentTrades ?? 3;
+  const maxConcurrentTrades = paper?.maxConcurrentTrades ?? 0;
+  const autonomyMode = paper?.autonomyMode ?? 'UNRESTRICTED';
+  const autonomyRiskPct = paper?.autonomyRiskPct ?? 0.35;
 
   if (paperMaxConcurrentTradesEl && document.activeElement !== paperMaxConcurrentTradesEl) {
     paperMaxConcurrentTradesEl.value = String(maxConcurrentTrades);
   }
+  if (paperAutonomyModeEl && document.activeElement !== paperAutonomyModeEl) {
+    paperAutonomyModeEl.value = autonomyMode;
+  }
+  if (paperAutonomyRiskPctEl && document.activeElement !== paperAutonomyRiskPctEl) {
+    paperAutonomyRiskPctEl.value = Number(autonomyRiskPct).toFixed(2);
+  }
 
   if (paperConfigMetaEl) {
     paperConfigMetaEl.textContent = paper?.enabled
-      ? `Paper engine is live with a cap of ${maxConcurrentTrades} concurrent trades. Closed paper results feed the learning loop automatically.`
+      ? autonomyMode === 'UNRESTRICTED'
+        ? `Paper engine is in unrestricted autonomy mode with ${formatPaperTradeCap(maxConcurrentTrades)} concurrent trades. It self-sizes at ${Number(autonomyRiskPct).toFixed(2)}% risk from paper equity, and closed paper results feed the learning loop automatically.`
+        : `Paper engine is following only risk-cleared alerts with ${formatPaperTradeCap(maxConcurrentTrades)} concurrent trades. Closed paper results still feed the learning loop automatically.`
       : 'Paper trading is disabled on this desk.';
   }
 };
@@ -5756,8 +5775,15 @@ const bindSignalSettingsControls = () => {
 const bindPaperSettingsControls = () => {
   savePaperSettingsEl?.addEventListener('click', async () => {
     const requestedCap = Number(paperMaxConcurrentTradesEl?.value);
-    if (!Number.isFinite(requestedCap) || requestedCap < 1 || requestedCap > 20) {
-      setStatus('Status: paper trade cap must be between 1 and 20', true);
+    const requestedRiskPct = Number(paperAutonomyRiskPctEl?.value);
+    const requestedAutonomyMode =
+      paperAutonomyModeEl?.value === 'FOLLOW_ALLOWED_ALERTS' ? 'FOLLOW_ALLOWED_ALERTS' : 'UNRESTRICTED';
+    if (!Number.isFinite(requestedCap) || requestedCap < 0 || requestedCap > 50) {
+      setStatus('Status: paper trade cap must be between 0 and 50', true);
+      return;
+    }
+    if (!Number.isFinite(requestedRiskPct) || requestedRiskPct < 0.01 || requestedRiskPct > 5) {
+      setStatus('Status: autonomy risk must be between 0.01 and 5', true);
       return;
     }
 
@@ -5770,7 +5796,9 @@ const bindPaperSettingsControls = () => {
       const { paperAccount } = await apiFetch('/paper-account/config', {
         method: 'PATCH',
         body: JSON.stringify({
-          maxConcurrentTrades: requestedCap
+          maxConcurrentTrades: requestedCap,
+          autonomyMode: requestedAutonomyMode,
+          autonomyRiskPct: requestedRiskPct
         })
       });
 
@@ -5779,15 +5807,19 @@ const bindPaperSettingsControls = () => {
       }
       if (latestHomeDeck?.deck?.paperAccount) {
         latestHomeDeck.deck.paperAccount.maxConcurrentTrades = paperAccount.maxConcurrentTrades;
+        latestHomeDeck.deck.paperAccount.autonomyMode = paperAccount.autonomyMode;
+        latestHomeDeck.deck.paperAccount.autonomyRiskPct = paperAccount.autonomyRiskPct;
       }
       renderPaperAccount();
-      setStatus(`Status: paper trade cap set to ${paperAccount.maxConcurrentTrades}`);
+      setStatus(
+        `Status: paper autonomy updated (${paperAccount.autonomyMode === 'UNRESTRICTED' ? 'unrestricted' : 'follow-allowed'} • cap ${formatPaperTradeCap(paperAccount.maxConcurrentTrades)} • ${Number(paperAccount.autonomyRiskPct).toFixed(2)}% risk)`
+      );
     } catch (error) {
-      setStatus(`Status: failed to update paper trade cap (${error.message})`, true);
+      setStatus(`Status: failed to update paper autonomy (${error.message})`, true);
     } finally {
       if (savePaperSettingsEl) {
         savePaperSettingsEl.disabled = false;
-        savePaperSettingsEl.textContent = 'Save Paper Limit';
+        savePaperSettingsEl.textContent = 'Save Paper Autonomy';
       }
     }
   });

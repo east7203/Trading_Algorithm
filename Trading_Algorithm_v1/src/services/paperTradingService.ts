@@ -40,6 +40,8 @@ export interface PaperTradingConfig {
   initialBalance: number;
   maxHoldMinutes: number;
   maxConcurrentTrades: number;
+  autonomyMode?: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
+  autonomyRiskPct?: number;
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
@@ -69,6 +71,8 @@ export interface PaperTradingStatus {
   statePath?: string;
   initialBalance: number;
   maxConcurrentTrades: number;
+  autonomyMode: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
+  autonomyRiskPct: number;
   balance: number;
   equity: number;
   realizedPnl: number;
@@ -87,6 +91,10 @@ export interface PaperTradingStatus {
   recentClosedTrades: PaperTrade[];
 }
 
+const PAPER_SIGNAL_SOURCES = new Set(['signal-monitor', 'signal-monitor-autonomous']);
+
+const isPaperSignalSource = (source: string): boolean => PAPER_SIGNAL_SOURCES.has(source);
+
 interface PersistedPaperTradingState {
   balance: number;
   lastUpdatedAt?: string;
@@ -94,6 +102,8 @@ interface PersistedPaperTradingState {
   equityHistory?: PaperTradeEquityPoint[];
   settings?: {
     maxConcurrentTrades?: number;
+    autonomyMode?: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
+    autonomyRiskPct?: number;
   };
 }
 
@@ -125,6 +135,16 @@ const normalizeEquityPoint = (value: unknown): PaperTradeEquityPoint | null => {
 };
 
 const round = (value: number, digits = 2): number => Number(value.toFixed(digits));
+
+const normalizeConcurrentTradeCap = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  return Math.max(1, Math.round(value));
+};
 
 const clamp = (value: number, min: number, max: number): number => {
   if (value < min) {
@@ -232,10 +252,14 @@ export class PaperTradingService {
   private balance: number;
   private lastUpdatedAt: string | undefined;
   private maxConcurrentTrades: number;
+  private autonomyMode: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
+  private autonomyRiskPct: number;
 
   constructor(private readonly config: PaperTradingConfig) {
     this.balance = config.initialBalance;
-    this.maxConcurrentTrades = Math.max(1, Math.round(config.maxConcurrentTrades));
+    this.maxConcurrentTrades = normalizeConcurrentTradeCap(config.maxConcurrentTrades);
+    this.autonomyMode = config.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' ? 'FOLLOW_ALLOWED_ALERTS' : 'UNRESTRICTED';
+    this.autonomyRiskPct = Math.max(0.01, Number((config.autonomyRiskPct ?? 0.35).toFixed(2)));
   }
 
   async start(): Promise<void> {
@@ -291,7 +315,16 @@ export class PaperTradingService {
         .slice(-this.config.maxEquityHistory);
       const persistedMaxConcurrentTrades = parsed.settings?.maxConcurrentTrades;
       if (typeof persistedMaxConcurrentTrades === 'number' && Number.isFinite(persistedMaxConcurrentTrades)) {
-        this.maxConcurrentTrades = Math.max(1, Math.round(persistedMaxConcurrentTrades));
+        const normalizedPersistedCap = normalizeConcurrentTradeCap(persistedMaxConcurrentTrades);
+        if (!(this.autonomyMode === 'UNRESTRICTED' && normalizeConcurrentTradeCap(this.config.maxConcurrentTrades) === 0)) {
+          this.maxConcurrentTrades = normalizedPersistedCap;
+        }
+      }
+      if (parsed.settings?.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' || parsed.settings?.autonomyMode === 'UNRESTRICTED') {
+        this.autonomyMode = parsed.settings.autonomyMode;
+      }
+      if (typeof parsed.settings?.autonomyRiskPct === 'number' && Number.isFinite(parsed.settings.autonomyRiskPct)) {
+        this.autonomyRiskPct = Math.max(0.01, Number(parsed.settings.autonomyRiskPct.toFixed(2)));
       }
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
@@ -319,7 +352,9 @@ export class PaperTradingService {
       trades: this.listTrades(),
       equityHistory: this.equityHistory,
       settings: {
-        maxConcurrentTrades: this.maxConcurrentTrades
+        maxConcurrentTrades: this.maxConcurrentTrades,
+        autonomyMode: this.autonomyMode,
+        autonomyRiskPct: this.autonomyRiskPct
       }
     };
 
@@ -469,7 +504,7 @@ export class PaperTradingService {
   }
 
   async recordAlert(alert: SignalAlert, source: string): Promise<PaperTrade | null> {
-    if (!this.config.enabled || source !== 'signal-monitor' || !alert.riskDecision.allowed) {
+    if (!this.config.enabled || !isPaperSignalSource(source)) {
       return null;
     }
     await this.start();
@@ -478,15 +513,45 @@ export class PaperTradingService {
       return this.trades.get(alert.alertId) ?? null;
     }
 
-    const riskAmount = round(Math.abs(alert.candidate.entry - alert.candidate.stopLoss) * alert.riskDecision.positionSize, 2);
-    if (riskAmount <= 0 || alert.riskDecision.positionSize <= 0) {
+    const existingTrade = [...this.trades.values()].find((trade) => trade.candidateId === alert.candidate.id);
+    if (existingTrade) {
+      return existingTrade;
+    }
+
+    if (source === 'signal-monitor-autonomous' && this.autonomyMode !== 'UNRESTRICTED') {
+      return null;
+    }
+
+    if (this.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' && !alert.riskDecision.allowed) {
+      return null;
+    }
+
+    const stopDistance = Math.abs(alert.candidate.entry - alert.candidate.stopLoss);
+    if (stopDistance <= 0) {
+      return null;
+    }
+
+    const paperEquity = this.computeEquityBreakdown().equity;
+    const autonomousRiskAmount = round(paperEquity * (this.autonomyRiskPct / 100), 2);
+    const autonomousQuantity = Number((autonomousRiskAmount / stopDistance).toFixed(4));
+    const derivedQuantity =
+      this.autonomyMode === 'UNRESTRICTED'
+        ? autonomousQuantity
+        : round(alert.riskDecision.positionSize, 4);
+    const derivedRiskPct =
+      this.autonomyMode === 'UNRESTRICTED'
+        ? this.autonomyRiskPct
+        : round(alert.riskDecision.finalRiskPct, 4);
+    const riskAmount = round(stopDistance * derivedQuantity, 2);
+
+    if (riskAmount <= 0 || derivedQuantity <= 0) {
       return null;
     }
 
     const concurrentTrades = [...this.trades.values()].filter(
       (trade) => trade.status === 'PENDING_ENTRY' || trade.status === 'OPEN'
     ).length;
-    if (concurrentTrades >= this.maxConcurrentTrades) {
+    if (this.maxConcurrentTrades > 0 && concurrentTrades >= this.maxConcurrentTrades) {
       return null;
     }
 
@@ -503,8 +568,8 @@ export class PaperTradingService {
       entry: round(alert.candidate.entry, 4),
       stopLoss: round(alert.candidate.stopLoss, 4),
       takeProfit: round(alert.candidate.takeProfit[0] ?? alert.candidate.entry, 4),
-      quantity: round(alert.riskDecision.positionSize, 4),
-      riskPct: round(alert.riskDecision.finalRiskPct, 4),
+      quantity: derivedQuantity,
+      riskPct: derivedRiskPct,
       riskAmount,
       source
     };
@@ -630,6 +695,8 @@ export class PaperTradingService {
       statePath: this.config.statePath,
       initialBalance: round(this.config.initialBalance, 2),
       maxConcurrentTrades: this.maxConcurrentTrades,
+      autonomyMode: this.autonomyMode,
+      autonomyRiskPct: this.autonomyRiskPct,
       balance: round(this.balance, 2),
       equity,
       realizedPnl,
@@ -669,10 +736,18 @@ export class PaperTradingService {
     return this.status(now);
   }
 
-  async updateConfig(next: Partial<Pick<PaperTradingConfig, 'maxConcurrentTrades'>>): Promise<PaperTradingStatus> {
+  async updateConfig(
+    next: Partial<Pick<PaperTradingConfig, 'maxConcurrentTrades' | 'autonomyMode' | 'autonomyRiskPct'>>
+  ): Promise<PaperTradingStatus> {
     await this.start();
     if (typeof next.maxConcurrentTrades === 'number' && Number.isFinite(next.maxConcurrentTrades)) {
-      this.maxConcurrentTrades = Math.max(1, Math.round(next.maxConcurrentTrades));
+      this.maxConcurrentTrades = normalizeConcurrentTradeCap(next.maxConcurrentTrades);
+    }
+    if (next.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' || next.autonomyMode === 'UNRESTRICTED') {
+      this.autonomyMode = next.autonomyMode;
+    }
+    if (typeof next.autonomyRiskPct === 'number' && Number.isFinite(next.autonomyRiskPct)) {
+      this.autonomyRiskPct = Math.max(0.01, Number(next.autonomyRiskPct.toFixed(2)));
     }
     await this.persist();
     return this.status();

@@ -236,6 +236,156 @@ describe('paper trading service', () => {
     expect(status.pendingEntries).toBe(2);
   });
 
+  it('takes blocked live alerts in unrestricted autonomy mode and sizes them from paper equity', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const trade = await service.recordAlert(
+      buildAlert('2026-03-25T13:30:00.000Z', {
+        riskDecision: {
+          allowed: false,
+          finalRiskPct: 0,
+          positionSize: 0,
+          reasonCodes: ['OUTSIDE_ALLOWED_TRADING_WINDOW'],
+          blockedByNewsWindow: false,
+          blockedByTradingWindow: true,
+          blockedByPolicy: false,
+          checkedAt: '2026-03-25T13:30:00.000Z'
+        }
+      }),
+      'signal-monitor'
+    );
+
+    expect(trade).not.toBeNull();
+    expect(trade?.quantity).toBeGreaterThan(0);
+    expect(trade?.riskPct).toBe(0.35);
+    expect(service.status().pendingEntries).toBe(1);
+  });
+
+  it('accepts autonomous candidates only in unrestricted mode', async () => {
+    const unrestricted = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+    const restricted = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'FOLLOW_ALLOWED_ALERTS',
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await unrestricted.start();
+    await restricted.start();
+
+    const autonomousAlert = buildAlert('2026-03-25T13:30:00.000Z', {
+      alertId: 'paper-auto:NQ|NY_BREAK_RETEST_MOMENTUM|LONG|2026-03-25T13:30:00.000Z'
+    });
+
+    const unrestrictedTrade = await unrestricted.recordAlert(autonomousAlert, 'signal-monitor-autonomous');
+    const restrictedTrade = await restricted.recordAlert(autonomousAlert, 'signal-monitor-autonomous');
+
+    expect(unrestrictedTrade).not.toBeNull();
+    expect(restrictedTrade).toBeNull();
+  });
+
+  it('does not double-enter the same candidate when both autonomous and live paths see it', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const candidate = buildAlert('2026-03-25T13:30:00.000Z').candidate;
+    const autonomousTrade = await service.recordAlert(
+      buildAlert('2026-03-25T13:30:00.000Z', {
+        alertId: 'paper-auto:NQ|NY_BREAK_RETEST_MOMENTUM|LONG|2026-03-25T13:30:00.000Z',
+        candidate
+      }),
+      'signal-monitor-autonomous'
+    );
+    const liveTrade = await service.recordAlert(
+      buildAlert('2026-03-25T13:30:00.000Z', {
+        alertId: 'live-alert-1',
+        candidate
+      }),
+      'signal-monitor'
+    );
+
+    expect(autonomousTrade).not.toBeNull();
+    expect(liveTrade?.paperTradeId).toBe(autonomousTrade?.paperTradeId);
+    expect(service.status().pendingEntries).toBe(1);
+  });
+
+  it('treats a zero concurrency cap as unlimited in unrestricted mode', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const firstTrade = await service.recordAlert(buildAlert('2026-03-25T13:30:00.000Z'), 'signal-monitor');
+    const secondTrade = await service.recordAlert(
+      buildAlert('2026-03-25T13:35:00.000Z', {
+        alertId: 'alert-2',
+        candidate: {
+          ...buildAlert('2026-03-25T13:35:00.000Z').candidate,
+          id: 'candidate-2',
+          generatedAt: '2026-03-25T13:35:00.000Z'
+        }
+      }),
+      'signal-monitor'
+    );
+
+    expect(firstTrade).not.toBeNull();
+    expect(secondTrade).not.toBeNull();
+    expect(service.status().pendingEntries).toBe(2);
+  });
+
   it('respects the configured max concurrent paper trades cap', async () => {
     const service = new PaperTradingService({
       enabled: true,
@@ -266,5 +416,32 @@ describe('paper trading service', () => {
     expect(firstTrade).not.toBeNull();
     expect(secondTrade).toBeNull();
     expect(service.status('2026-03-25T13:35:00.000Z').pendingEntries).toBe(1);
+  });
+
+  it('updates autonomy settings through config changes', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 1,
+      autonomyMode: 'FOLLOW_ALLOWED_ALERTS',
+      autonomyRiskPct: 0.25,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const status = await service.updateConfig({
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.5
+    });
+
+    expect(status.maxConcurrentTrades).toBe(0);
+    expect(status.autonomyMode).toBe('UNRESTRICTED');
+    expect(status.autonomyRiskPct).toBe(0.5);
   });
 });

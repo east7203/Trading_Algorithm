@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=35" />
+    <link rel="stylesheet" href="styles.css?v=36" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -601,13 +601,24 @@
             <div class="block-head">
               <div>
                 <h3>Paper Autonomy</h3>
-                <p class="section-kicker">Let the paper engine trade on its own, but keep a hard cap on how many live ideas it can stack at once.</p>
+                <p class="section-kicker">Let the paper engine trade on its own. Set the cap to 0 if you want it completely unrestricted.</p>
               </div>
             </div>
             <div class="row row-wrap">
+              <label class="inline-label" for="paperAutonomyMode">Autonomy mode</label>
+              <select id="paperAutonomyMode">
+                <option value="UNRESTRICTED">Unrestricted learning</option>
+                <option value="FOLLOW_ALLOWED_ALERTS">Follow allowed alerts only</option>
+              </select>
+            </div>
+            <div class="row row-wrap">
+              <label class="inline-label" for="paperAutonomyRiskPct">Autonomy risk %</label>
+              <input id="paperAutonomyRiskPct" type="number" min="0.01" max="5" step="0.01" inputmode="decimal" />
+            </div>
+            <div class="row row-wrap">
               <label class="inline-label" for="paperMaxConcurrentTrades">Max concurrent paper trades</label>
-              <input id="paperMaxConcurrentTrades" type="number" min="1" max="20" step="1" inputmode="numeric" />
-              <button id="savePaperSettings" class="primary-btn" type="button">Save Paper Limit</button>
+              <input id="paperMaxConcurrentTrades" type="number" min="0" max="50" step="1" inputmode="numeric" />
+              <button id="savePaperSettings" class="primary-btn" type="button">Save Paper Autonomy</button>
             </div>
             <p id="paperConfigMeta" class="hint">Paper autonomy settings are loading.</p>
           </section>
@@ -1336,6 +1347,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=35"></script>
+    <script type="module" src="app.js?v=36"></script>
   </body>
 </html>

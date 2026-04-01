@@ -228,7 +228,82 @@ describe('signal monitor integration', () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it('updates the paper trade concurrency cap through the API', async () => {
+  it('opens autonomous paper trades even when no live alert is published', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-autonomous-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 100,
+        maxBarsPerSymbol: 500
+      },
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        autonomyMode: 'UNRESTRICTED',
+        maxConcurrentTrades: 0
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+    const tightenThreshold = await ctx.app.inject({
+      method: 'PATCH',
+      path: '/signals/config',
+      payload: {
+        minFinalScore: 100,
+        aPlusOnlyAfterFirstHour: false,
+        aPlusMinScore: 100
+      }
+    });
+
+    expect(tightenThreshold.statusCode).toBe(200);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const alertsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+    expect(alertsResponse.statusCode).toBe(200);
+    expect(alertsResponse.json().alerts.length).toBe(0);
+
+    const paperStatus = await ctx.app.inject({
+      method: 'GET',
+      path: '/paper-account/status'
+    });
+    expect(paperStatus.statusCode).toBe(200);
+    const paperAccount = paperStatus.json().paperAccount;
+    expect(
+      (paperAccount.pendingEntries ?? 0)
+      + (paperAccount.openTrades ?? 0)
+      + (paperAccount.closedTrades ?? 0)
+      + (paperAccount.canceledTrades ?? 0)
+    ).toBeGreaterThanOrEqual(1);
+
+    const reviewsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/reviews?status=ALL&limit=20'
+    });
+    expect(reviewsResponse.statusCode).toBe(200);
+    expect(reviewsResponse.json().reviews.length).toBeGreaterThan(0);
+  });
+
+  it('updates the paper trade concurrency cap through the API, including unlimited mode', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-config-'));
     tempDirs.push(tempDir);
 
@@ -255,12 +330,16 @@ describe('signal monitor integration', () => {
       method: 'PATCH',
       path: '/paper-account/config',
       payload: {
-        maxConcurrentTrades: 2
+        maxConcurrentTrades: 0,
+        autonomyMode: 'UNRESTRICTED',
+        autonomyRiskPct: 0.5
       }
     });
 
     expect(patch.statusCode).toBe(200);
-    expect(patch.json().paperAccount.maxConcurrentTrades).toBe(2);
+    expect(patch.json().paperAccount.maxConcurrentTrades).toBe(0);
+    expect(patch.json().paperAccount.autonomyMode).toBe('UNRESTRICTED');
+    expect(patch.json().paperAccount.autonomyRiskPct).toBe(0.5);
 
     const status = await ctx.app.inject({
       method: 'GET',
@@ -268,7 +347,9 @@ describe('signal monitor integration', () => {
     });
 
     expect(status.statusCode).toBe(200);
-    expect(status.json().paperAccount.maxConcurrentTrades).toBe(2);
+    expect(status.json().paperAccount.maxConcurrentTrades).toBe(0);
+    expect(status.json().paperAccount.autonomyMode).toBe('UNRESTRICTED');
+    expect(status.json().paperAccount.autonomyRiskPct).toBe(0.5);
   });
 
   it('feeds closed paper-trade outcomes back into learning as auto labels', async () => {

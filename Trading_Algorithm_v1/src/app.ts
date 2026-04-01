@@ -192,6 +192,8 @@ interface PaperTradingConfigInput {
   initialBalance: number;
   maxHoldMinutes: number;
   maxConcurrentTrades: number;
+  autonomyMode: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
+  autonomyRiskPct: number;
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
@@ -755,7 +757,12 @@ const resolvePaperTradingConfig = (
       15,
       1440
     ),
-    maxConcurrentTrades: parseIntEnv('PAPER_TRADING_MAX_CONCURRENT_TRADES', 3, 1, 20),
+    maxConcurrentTrades: parseIntEnv('PAPER_TRADING_MAX_CONCURRENT_TRADES', 0, 0, 50),
+    autonomyMode:
+      (process.env.PAPER_TRADING_AUTONOMY_MODE ?? 'UNRESTRICTED').trim().toUpperCase() === 'FOLLOW_ALLOWED_ALERTS'
+        ? 'FOLLOW_ALLOWED_ALERTS'
+        : 'UNRESTRICTED',
+    autonomyRiskPct: parseFloatEnv('PAPER_TRADING_AUTONOMY_RISK_PCT', 0.35, 0.01, 5),
     timezone: process.env.PAPER_TRADING_TIMEZONE ?? signalMonitorConfig.timezone,
     sessionStartHour: parseIntEnv(
       'PAPER_TRADING_SESSION_START_HOUR',
@@ -1623,6 +1630,33 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   await paperTradingService.recordAlert(alert, source);
                 }
               : null,
+            paperTradingService
+              ? async ({ alert, source }) => {
+                  const trade = await paperTradingService.recordAlert(alert, source);
+                  if (!trade) {
+                    return;
+                  }
+
+                  const existingReview = await signalReviewStore.getReview(alert.alertId);
+                  if (existingReview) {
+                    return;
+                  }
+
+                  const reviewEntry = await signalReviewStore.recordAlert(alert);
+                  journalStore.addEvent({
+                    type: 'SIGNAL_ALERTED',
+                    timestamp: alert.detectedAt,
+                    candidateId: reviewEntry.candidateId,
+                    symbol: reviewEntry.symbol,
+                    payload: {
+                      alertId: reviewEntry.alertId,
+                      executionIntentId: undefined,
+                      finalScore: alert.candidate.finalScore ?? null,
+                      source
+                    }
+                  });
+                }
+              : null,
             nativePushNotificationService,
             webPushNotificationService,
             telegramAlertService
@@ -2069,6 +2103,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           ? {
               initialBalance: Number(paper.initialBalance.toFixed(2)),
               maxConcurrentTrades: paper.maxConcurrentTrades,
+              autonomyMode: paper.autonomyMode,
+              autonomyRiskPct: Number(paper.autonomyRiskPct.toFixed(2)),
               balance: Number(paper.balance.toFixed(2)),
               equity: Number(paper.equity.toFixed(2)),
               realizedPnl: Number(paper.realizedPnl.toFixed(2)),
@@ -2544,21 +2580,39 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.patch('/paper-account/config', async (request, reply) => {
-    const maxConcurrentTrades = Number((request.body as { maxConcurrentTrades?: unknown } | undefined)?.maxConcurrentTrades);
+    const body = (request.body as {
+      maxConcurrentTrades?: unknown;
+      autonomyMode?: unknown;
+      autonomyRiskPct?: unknown;
+    } | undefined) ?? {};
+    const maxConcurrentTrades = Number(body.maxConcurrentTrades);
+    const autonomyMode =
+      body.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' || body.autonomyMode === 'UNRESTRICTED'
+        ? body.autonomyMode
+        : undefined;
+    const autonomyRiskPct = body.autonomyRiskPct === undefined ? undefined : Number(body.autonomyRiskPct);
     if (!paperTradingService) {
       return reply.status(409).send({
         message: 'Paper trading is disabled'
       });
     }
 
-    if (!Number.isFinite(maxConcurrentTrades) || maxConcurrentTrades < 1 || maxConcurrentTrades > 20) {
+    if (!Number.isFinite(maxConcurrentTrades) || maxConcurrentTrades < 0 || maxConcurrentTrades > 50) {
       return reply.status(400).send({
-        message: 'maxConcurrentTrades must be a number between 1 and 20'
+        message: 'maxConcurrentTrades must be a number between 0 and 50'
+      });
+    }
+
+    if (autonomyRiskPct !== undefined && (!Number.isFinite(autonomyRiskPct) || autonomyRiskPct < 0.01 || autonomyRiskPct > 5)) {
+      return reply.status(400).send({
+        message: 'autonomyRiskPct must be a number between 0.01 and 5'
       });
     }
 
     const paperAccount = await paperTradingService.updateConfig({
-      maxConcurrentTrades
+      maxConcurrentTrades,
+      ...(autonomyMode ? { autonomyMode } : {}),
+      ...(autonomyRiskPct !== undefined ? { autonomyRiskPct } : {})
     });
 
     return reply.status(200).send({
