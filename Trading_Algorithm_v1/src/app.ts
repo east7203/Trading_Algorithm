@@ -191,6 +191,7 @@ interface PaperTradingConfigInput {
   statePath?: string;
   initialBalance: number;
   maxHoldMinutes: number;
+  maxConcurrentTrades: number;
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
@@ -754,6 +755,7 @@ const resolvePaperTradingConfig = (
       15,
       1440
     ),
+    maxConcurrentTrades: parseIntEnv('PAPER_TRADING_MAX_CONCURRENT_TRADES', 3, 1, 20),
     timezone: process.env.PAPER_TRADING_TIMEZONE ?? signalMonitorConfig.timezone,
     sessionStartHour: parseIntEnv(
       'PAPER_TRADING_SESSION_START_HOUR',
@@ -2066,6 +2068,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         paperAccount: paper
           ? {
               initialBalance: Number(paper.initialBalance.toFixed(2)),
+              maxConcurrentTrades: paper.maxConcurrentTrades,
               balance: Number(paper.balance.toFixed(2)),
               equity: Number(paper.equity.toFixed(2)),
               realizedPnl: Number(paper.realizedPnl.toFixed(2)),
@@ -2537,6 +2540,30 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   app.get('/paper-account/status', async (_request, reply) => {
     return reply.status(200).send({
       paperAccount: paperTradingService ? paperTradingService.status() : { enabled: false, started: false }
+    });
+  });
+
+  app.patch('/paper-account/config', async (request, reply) => {
+    const maxConcurrentTrades = Number((request.body as { maxConcurrentTrades?: unknown } | undefined)?.maxConcurrentTrades);
+    if (!paperTradingService) {
+      return reply.status(409).send({
+        message: 'Paper trading is disabled'
+      });
+    }
+
+    if (!Number.isFinite(maxConcurrentTrades) || maxConcurrentTrades < 1 || maxConcurrentTrades > 20) {
+      return reply.status(400).send({
+        message: 'maxConcurrentTrades must be a number between 1 and 20'
+      });
+    }
+
+    const paperAccount = await paperTradingService.updateConfig({
+      maxConcurrentTrades
+    });
+
+    return reply.status(200).send({
+      ok: true,
+      paperAccount
     });
   });
 

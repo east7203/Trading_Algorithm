@@ -142,6 +142,9 @@ const densityPresetEl = document.getElementById('densityPreset');
 const textScaleEl = document.getElementById('textScale');
 const reduceMotionEl = document.getElementById('reduceMotion');
 const notificationToggleEl = document.getElementById('notificationToggle');
+const paperMaxConcurrentTradesEl = document.getElementById('paperMaxConcurrentTrades');
+const savePaperSettingsEl = document.getElementById('savePaperSettings');
+const paperConfigMetaEl = document.getElementById('paperConfigMeta');
 const sendTestAppAlertEl = document.getElementById('sendTestAppAlert');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
@@ -357,6 +360,26 @@ const reviewOutcomeLabels = {
   BREAKEVEN: 'Breakeven',
   MISSED: 'Missed',
   SKIPPED: 'Skipped'
+};
+
+const isPaperLabeledReview = (review) => review?.autoLabeledBy === 'paper-trading-engine';
+
+const paperOutcomeBadgeLabel = (review) => {
+  if (!isPaperLabeledReview(review)) {
+    return null;
+  }
+
+  const outcome = review?.autoOutcome ?? review?.effectiveOutcome;
+  if (outcome === 'WOULD_WIN') {
+    return 'Paper result • Win';
+  }
+  if (outcome === 'WOULD_LOSE') {
+    return 'Paper result • Loss';
+  }
+  if (outcome === 'BREAKEVEN') {
+    return 'Paper result • Breakeven';
+  }
+  return 'Paper result';
 };
 
 const setupLabel = (code) => setupLabels[code] ?? code;
@@ -971,6 +994,8 @@ const renderHomeResearchLab = () => {
 
 const getPaperAccountStatus = () => latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
 
+const getReviewForAlert = (alertId) => latestReviews.find((review) => review.alertId === alertId) ?? null;
+
 const getPaperLatestPrice = (symbol) => {
   const deckMatch = latestHomeDeck?.deck?.watchlist?.find((item) => item.symbol === symbol);
   if (typeof deckMatch?.latestPrice === 'number') {
@@ -1068,6 +1093,8 @@ const renderPaperTradeCards = (container, trades, emptyText, mode = 'open') => {
   }
 
   trades.forEach((trade) => {
+    const review = getReviewForAlert(trade.alertId);
+    const paperBadge = paperOutcomeBadgeLabel(review);
     const markPrice = getPaperLatestPrice(trade.symbol);
     const hasMark = typeof markPrice === 'number';
     const hasFill = typeof trade.filledPrice === 'number';
@@ -1092,6 +1119,7 @@ const renderPaperTradeCards = (container, trades, emptyText, mode = 'open') => {
           <span>${mode === 'open' ? 'live' : trade.exitReason?.replaceAll('_', ' ') ?? 'closed'}</span>
         </div>
       </div>
+      ${paperBadge ? `<div class="paper-learning-row"><span class="pill paperLearningPill">${paperBadge}</span></div>` : ''}
       <div class="paper-position-grid">
         <div>
           <span class="paper-position-label">Entry</span>
@@ -1195,7 +1223,7 @@ const renderPaperAccount = () => {
   }
   if (homePaperMetaEl) {
     homePaperMetaEl.textContent = paperEnabled
-      ? `${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • ${typeof summary.hitRate === 'number' ? `${Math.round(summary.hitRate * 100)}% hit rate` : 'No hit rate yet'}`
+      ? `${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • cap ${paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades ?? '--'}`
       : 'The paper account is not enabled on this desk yet.';
   }
   if (homePaperChipEl) {
@@ -1246,7 +1274,7 @@ const renderPaperAccount = () => {
   }
   if (paperHeroMetaEl) {
     paperHeroMetaEl.textContent = paperEnabled
-      ? `Started with ${fmtUsd(summary.initialBalance)} • ${summary.pendingEntries ?? 0} pending entries • ${summary.closedTrades ?? 0} resolved paper trades`
+      ? `Started with ${fmtUsd(summary.initialBalance)} • cap ${paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades ?? '--'} live trades • ${summary.closedTrades ?? 0} resolved paper trades`
       : 'Paper account diagnostics are not available.';
   }
   if (paperOpenChipEl) {
@@ -1269,6 +1297,22 @@ const renderPaperAccount = () => {
     'No closed paper trades yet.',
     'closed'
   );
+  renderPaperConfig();
+};
+
+const renderPaperConfig = () => {
+  const paper = latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
+  const maxConcurrentTrades = paper?.maxConcurrentTrades ?? 3;
+
+  if (paperMaxConcurrentTradesEl && document.activeElement !== paperMaxConcurrentTradesEl) {
+    paperMaxConcurrentTradesEl.value = String(maxConcurrentTrades);
+  }
+
+  if (paperConfigMetaEl) {
+    paperConfigMetaEl.textContent = paper?.enabled
+      ? `Paper engine is live with a cap of ${maxConcurrentTrades} concurrent trades. Closed paper results feed the learning loop automatically.`
+      : 'Paper trading is disabled on this desk.';
+  }
 };
 
 const buildSymbolDetailStats = (item, deck) => {
@@ -5195,6 +5239,16 @@ const renderReviewCard = (review) => {
     node.querySelector('.reviewResearchNote'),
     review.alertSnapshot ?? review
   );
+  const outcomeSourceRowEl = node.querySelector('.reviewOutcomeSourceRow');
+  const paperBadge = paperOutcomeBadgeLabel(review);
+  if (paperBadge) {
+    const chip = document.createElement('span');
+    chip.className = 'pill paperLearningPill';
+    chip.textContent = paperBadge;
+    outcomeSourceRowEl.appendChild(chip);
+  } else {
+    outcomeSourceRowEl.remove();
+  }
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
   reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
   configureExpandableChart(
@@ -5254,7 +5308,7 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewStateHint').textContent = review.reviewedAt
     ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
     : review.autoLabeledAt
-      ? `Auto-labeled ${fmtRelativeMinutes(review.autoLabeledAt)}`
+      ? `${isPaperLabeledReview(review) ? 'Paper-labeled' : 'Auto-labeled'} ${fmtRelativeMinutes(review.autoLabeledAt)}`
       : 'Waiting on your read';
   node.querySelector('.reviewRrValue').textContent = calcRr(
     review.alertSnapshot?.candidate?.entry,
@@ -5298,7 +5352,7 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewUpdatedAt').textContent = review.reviewedAt
     ? `Reviewed ${fmtDateTime(review.reviewedAt)}`
     : review.autoLabeledAt
-      ? `Auto-read ${fmtDateTime(review.autoLabeledAt)}`
+      ? `${isPaperLabeledReview(review) ? 'Paper result' : 'Auto-read'} ${fmtDateTime(review.autoLabeledAt)}`
       : 'Not reviewed yet';
   node.querySelector('.reviewedByHint').textContent = review.reviewedBy ? `by ${review.reviewedBy}` : '';
 
@@ -5353,11 +5407,13 @@ const loadReviews = async () => {
 
     renderReviewInsights();
     updateStats();
+    renderPaperAccount();
   } catch (error) {
     latestReviews = [];
     reviewSummary = { pending: 0, completed: 0, total: 0 };
     renderReviewInsights();
     updateStats();
+    renderPaperAccount();
     renderEmpty(reviewsPendingListEl, `Failed to load reviews: ${error.message}`);
     renderEmpty(reviewsCompletedListEl, 'Review history unavailable.');
   }
@@ -5697,6 +5753,46 @@ const bindSignalSettingsControls = () => {
   });
 };
 
+const bindPaperSettingsControls = () => {
+  savePaperSettingsEl?.addEventListener('click', async () => {
+    const requestedCap = Number(paperMaxConcurrentTradesEl?.value);
+    if (!Number.isFinite(requestedCap) || requestedCap < 1 || requestedCap > 20) {
+      setStatus('Status: paper trade cap must be between 1 and 20', true);
+      return;
+    }
+
+    if (savePaperSettingsEl) {
+      savePaperSettingsEl.disabled = true;
+      savePaperSettingsEl.textContent = 'Saving...';
+    }
+
+    try {
+      const { paperAccount } = await apiFetch('/paper-account/config', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          maxConcurrentTrades: requestedCap
+        })
+      });
+
+      if (latestDiagnostics?.diagnostics) {
+        latestDiagnostics.diagnostics.paperAccount = paperAccount;
+      }
+      if (latestHomeDeck?.deck?.paperAccount) {
+        latestHomeDeck.deck.paperAccount.maxConcurrentTrades = paperAccount.maxConcurrentTrades;
+      }
+      renderPaperAccount();
+      setStatus(`Status: paper trade cap set to ${paperAccount.maxConcurrentTrades}`);
+    } catch (error) {
+      setStatus(`Status: failed to update paper trade cap (${error.message})`, true);
+    } finally {
+      if (savePaperSettingsEl) {
+        savePaperSettingsEl.disabled = false;
+        savePaperSettingsEl.textContent = 'Save Paper Limit';
+      }
+    }
+  });
+};
+
 const bindStatusRecoveryControls = () => {
   ibkrRetryLoginEl?.addEventListener('click', async () => {
     ibkrRetryLoginEl.disabled = true;
@@ -5775,6 +5871,7 @@ const bootstrap = async () => {
   bindNotificationControls();
   bindWebAppInstallControls();
   bindSignalSettingsControls();
+  bindPaperSettingsControls();
   bindStatusRecoveryControls();
   bindChartLightbox();
   bindSymbolDetailViewer();

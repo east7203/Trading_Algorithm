@@ -69,6 +69,7 @@ describe('paper trading service', () => {
       statePath: path.join(tempDir, 'paper-account.json'),
       initialBalance: 100_000,
       maxHoldMinutes: 120,
+      maxConcurrentTrades: 3,
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
@@ -107,6 +108,7 @@ describe('paper trading service', () => {
       statePath: path.join(tempDir, 'paper-account.json'),
       initialBalance: 100_000,
       maxHoldMinutes: 60,
+      maxConcurrentTrades: 3,
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
@@ -140,6 +142,7 @@ describe('paper trading service', () => {
       enabled: true,
       initialBalance: 100_000,
       maxHoldMinutes: 60,
+      maxConcurrentTrades: 3,
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
@@ -160,6 +163,7 @@ describe('paper trading service', () => {
       enabled: true,
       initialBalance: 100_000,
       maxHoldMinutes: 60,
+      maxConcurrentTrades: 3,
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
@@ -204,6 +208,7 @@ describe('paper trading service', () => {
       enabled: true,
       initialBalance: 100_000,
       maxHoldMinutes: 60,
+      maxConcurrentTrades: 3,
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
@@ -229,5 +234,37 @@ describe('paper trading service', () => {
     expect(firstTrade).not.toBeNull();
     expect(secondTrade).not.toBeNull();
     expect(status.pendingEntries).toBe(2);
+  });
+
+  it('respects the configured max concurrent paper trades cap', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 1,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const firstTrade = await service.recordAlert(buildAlert('2026-03-25T13:30:00.000Z'), 'signal-monitor');
+    const secondTrade = await service.recordAlert(
+      buildAlert('2026-03-25T13:35:00.000Z', {
+        alertId: 'alert-2',
+        candidate: {
+          ...buildAlert('2026-03-25T13:35:00.000Z').candidate,
+          id: 'candidate-2',
+          generatedAt: '2026-03-25T13:35:00.000Z'
+        }
+      }),
+      'signal-monitor'
+    );
+
+    expect(firstTrade).not.toBeNull();
+    expect(secondTrade).toBeNull();
+    expect(service.status('2026-03-25T13:35:00.000Z').pendingEntries).toBe(1);
   });
 });

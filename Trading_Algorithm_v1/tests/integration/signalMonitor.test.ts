@@ -228,6 +228,49 @@ describe('signal monitor integration', () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
+  it('updates the paper trade concurrency cap through the API', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-config-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      },
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        maxConcurrentTrades: 3
+      }
+    });
+    contexts.push(ctx);
+
+    const patch = await ctx.app.inject({
+      method: 'PATCH',
+      path: '/paper-account/config',
+      payload: {
+        maxConcurrentTrades: 2
+      }
+    });
+
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().paperAccount.maxConcurrentTrades).toBe(2);
+
+    const status = await ctx.app.inject({
+      method: 'GET',
+      path: '/paper-account/status'
+    });
+
+    expect(status.statusCode).toBe(200);
+    expect(status.json().paperAccount.maxConcurrentTrades).toBe(2);
+  });
+
   it('feeds closed paper-trade outcomes back into learning as auto labels', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-learning-'));
     tempDirs.push(tempDir);

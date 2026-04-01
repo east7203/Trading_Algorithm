@@ -39,6 +39,7 @@ export interface PaperTradingConfig {
   statePath?: string;
   initialBalance: number;
   maxHoldMinutes: number;
+  maxConcurrentTrades: number;
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
@@ -67,6 +68,7 @@ export interface PaperTradingStatus {
   started: boolean;
   statePath?: string;
   initialBalance: number;
+  maxConcurrentTrades: number;
   balance: number;
   equity: number;
   realizedPnl: number;
@@ -90,6 +92,9 @@ interface PersistedPaperTradingState {
   lastUpdatedAt?: string;
   trades: PaperTrade[];
   equityHistory?: PaperTradeEquityPoint[];
+  settings?: {
+    maxConcurrentTrades?: number;
+  };
 }
 
 const MAX_RECENT_TRADES = 8;
@@ -226,9 +231,11 @@ export class PaperTradingService {
   private equityHistory: PaperTradeEquityPoint[] = [];
   private balance: number;
   private lastUpdatedAt: string | undefined;
+  private maxConcurrentTrades: number;
 
   constructor(private readonly config: PaperTradingConfig) {
     this.balance = config.initialBalance;
+    this.maxConcurrentTrades = Math.max(1, Math.round(config.maxConcurrentTrades));
   }
 
   async start(): Promise<void> {
@@ -282,6 +289,10 @@ export class PaperTradingService {
         .map((point) => normalizeEquityPoint(point))
         .filter((point): point is PaperTradeEquityPoint => point !== null)
         .slice(-this.config.maxEquityHistory);
+      const persistedMaxConcurrentTrades = parsed.settings?.maxConcurrentTrades;
+      if (typeof persistedMaxConcurrentTrades === 'number' && Number.isFinite(persistedMaxConcurrentTrades)) {
+        this.maxConcurrentTrades = Math.max(1, Math.round(persistedMaxConcurrentTrades));
+      }
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (error instanceof SyntaxError || err.code === 'ENOENT') {
@@ -306,7 +317,10 @@ export class PaperTradingService {
       balance: round(this.balance, 2),
       lastUpdatedAt: this.lastUpdatedAt,
       trades: this.listTrades(),
-      equityHistory: this.equityHistory
+      equityHistory: this.equityHistory,
+      settings: {
+        maxConcurrentTrades: this.maxConcurrentTrades
+      }
     };
 
     this.writeChain = this.writeChain.then(async () => {
@@ -469,6 +483,13 @@ export class PaperTradingService {
       return null;
     }
 
+    const concurrentTrades = [...this.trades.values()].filter(
+      (trade) => trade.status === 'PENDING_ENTRY' || trade.status === 'OPEN'
+    ).length;
+    if (concurrentTrades >= this.maxConcurrentTrades) {
+      return null;
+    }
+
     const trade: PaperTrade = {
       paperTradeId: uuidv4(),
       alertId: alert.alertId,
@@ -608,6 +629,7 @@ export class PaperTradingService {
       started: this.started,
       statePath: this.config.statePath,
       initialBalance: round(this.config.initialBalance, 2),
+      maxConcurrentTrades: this.maxConcurrentTrades,
       balance: round(this.balance, 2),
       equity,
       realizedPnl,
@@ -645,5 +667,14 @@ export class PaperTradingService {
     this.pushEquityPoint(now);
     await this.persist();
     return this.status(now);
+  }
+
+  async updateConfig(next: Partial<Pick<PaperTradingConfig, 'maxConcurrentTrades'>>): Promise<PaperTradingStatus> {
+    await this.start();
+    if (typeof next.maxConcurrentTrades === 'number' && Number.isFinite(next.maxConcurrentTrades)) {
+      this.maxConcurrentTrades = Math.max(1, Math.round(next.maxConcurrentTrades));
+    }
+    await this.persist();
+    return this.status();
   }
 }

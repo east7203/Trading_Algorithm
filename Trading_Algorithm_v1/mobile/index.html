@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=33" />
+    <link rel="stylesheet" href="styles.css?v=34" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -163,6 +163,20 @@
             <span id="homeSessionChip" class="chip chip-neutral">Desk --</span>
           </div>
 
+          <button id="homePaperAccountCard" class="home-paper-card home-paper-card-top" type="button">
+            <div class="home-paper-head">
+              <div>
+                <p class="panel-label">Paper Account</p>
+                <p id="homePaperBalance" class="home-paper-balance">--</p>
+              </div>
+              <span id="homePaperChip" class="chip chip-neutral">Paper --</span>
+            </div>
+            <div class="home-paper-body">
+              <p id="homePaperPnl" class="home-paper-pnl">--</p>
+              <p id="homePaperMeta" class="home-paper-meta">Live paper account is loading.</p>
+            </div>
+          </button>
+
           <section class="stats-grid">
             <article class="stat-card">
               <p class="stat-label">Pending</p>
@@ -256,20 +270,6 @@
               <p class="home-snapshot-note">Phone, Telegram, and recovery path.</p>
             </article>
           </section>
-
-          <button id="homePaperAccountCard" class="home-paper-card" type="button">
-            <div class="home-paper-head">
-              <div>
-                <p class="panel-label">Paper Account</p>
-                <p id="homePaperBalance" class="home-paper-balance">--</p>
-              </div>
-              <span id="homePaperChip" class="chip chip-neutral">Paper --</span>
-            </div>
-            <div class="home-paper-body">
-              <p id="homePaperPnl" class="home-paper-pnl">--</p>
-              <p id="homePaperMeta" class="home-paper-meta">Live paper account is loading.</p>
-            </div>
-          </button>
 
           <details id="homeDeskBriefCard" class="home-fold home-brief-card" data-tone="neutral">
             <summary class="home-fold-summary">
@@ -596,6 +596,20 @@
               <p class="stat-label">Alerts</p>
               <p id="sysGlanceAlerts" class="insight-text">--</p>
             </article>
+          </section>
+          <section class="settings-block">
+            <div class="block-head">
+              <div>
+                <h3>Paper Autonomy</h3>
+                <p class="section-kicker">Let the paper engine trade on its own, but keep a hard cap on how many live ideas it can stack at once.</p>
+              </div>
+            </div>
+            <div class="row row-wrap">
+              <label class="inline-label" for="paperMaxConcurrentTrades">Max concurrent paper trades</label>
+              <input id="paperMaxConcurrentTrades" type="number" min="1" max="20" step="1" inputmode="numeric" />
+              <button id="savePaperSettings" class="primary-btn" type="button">Save Paper Limit</button>
+            </div>
+            <p id="paperConfigMeta" class="hint">Paper autonomy settings are loading.</p>
           </section>
           <section class="settings-block">
             <div class="block-head">
@@ -1118,6 +1132,7 @@
         <p class="setupType"></p>
         <div class="chip-row engineAgreementRow"></div>
         <p class="reviewResearchNote">--</p>
+        <div class="chip-row reviewOutcomeSourceRow"></div>
         <div class="review-casefile-grid">
           <article class="review-case-card">
             <p class="card-section-label">Seen</p>
@@ -1321,6 +1336,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=33"></script>
+    <script type="module" src="app.js?v=34"></script>
   </body>
 </html>

@@ -6223,6 +6223,10 @@ h2, h3 {
   transform: none;
 }
 
+.home-paper-card-top {
+  margin-bottom: 16px;
+}
+
 .home-paper-balance,
 .paper-hero-equity {
   color: #ffffff;
@@ -6250,6 +6254,24 @@ h2, h3 {
 .paper-position-pnl.is-negative p { color: var(--rh-red); }
 .paper-position-pnl span { color: var(--rh-muted); }
 .paper-position-grid p { color: #e2e8f0; }
+
+.paper-learning-row,
+.reviewOutcomeSourceRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.paperLearningPill {
+  color: #ffbf66;
+  background: rgba(143, 92, 18, 0.2);
+  border: 1px solid rgba(255, 174, 66, 0.25);
+}
+
+.row-wrap {
+  flex-wrap: wrap;
+}
 
 /* ---- Fold / brief cards ---- */
 .home-fold,
