@@ -198,4 +198,36 @@ describe('paper trading service', () => {
     expect(status.equityHistory.length).toBeGreaterThanOrEqual(3);
     expect(status.recentClosedTrades[0].status).toBe('CLOSED');
   });
+
+  it('records multiple allowed alerts for the same symbol and side so the paper engine can learn from the full stream', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const firstTrade = await service.recordAlert(buildAlert('2026-03-25T13:30:00.000Z'), 'signal-monitor');
+    const secondTrade = await service.recordAlert(
+      buildAlert('2026-03-25T13:35:00.000Z', {
+        alertId: 'alert-2',
+        candidate: {
+          ...buildAlert('2026-03-25T13:35:00.000Z').candidate,
+          id: 'candidate-2',
+          generatedAt: '2026-03-25T13:35:00.000Z'
+        }
+      }),
+      'signal-monitor'
+    );
+
+    const status = service.status('2026-03-25T13:35:00.000Z');
+    expect(firstTrade).not.toBeNull();
+    expect(secondTrade).not.toBeNull();
+    expect(status.pendingEntries).toBe(2);
+  });
 });

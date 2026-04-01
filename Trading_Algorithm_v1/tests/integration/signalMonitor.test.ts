@@ -228,6 +228,94 @@ describe('signal monitor integration', () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
+  it('feeds closed paper-trade outcomes back into learning as auto labels', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-learning-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      },
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json')
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+    await confirmPolicy(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const settleIngest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: [
+          {
+            symbol: 'NQ',
+            timestamp: '2026-01-06T14:45:00.000Z',
+            open: 101.3,
+            high: 101.6,
+            low: 101.2,
+            close: 101.5,
+            volume: 150
+          },
+          {
+            symbol: 'NQ',
+            timestamp: '2026-01-06T14:46:00.000Z',
+            open: 101.5,
+            high: 104.2,
+            low: 101.4,
+            close: 103.9,
+            volume: 180
+          }
+        ]
+      }
+    });
+
+    expect(settleIngest.statusCode).toBe(200);
+
+    const reviewsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/reviews?status=ALL&limit=20'
+    });
+
+    expect(reviewsResponse.statusCode).toBe(200);
+    const paperLabeledReview = reviewsResponse
+      .json()
+      .reviews.find((review: { autoLabeledBy?: string; autoOutcome?: string }) => (
+        review.autoLabeledBy === 'paper-trading-engine'
+        && review.autoOutcome === 'WOULD_WIN'
+      ));
+
+    expect(paperLabeledReview).toBeTruthy();
+
+    const learningResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/learning/performance'
+    });
+
+    expect(learningResponse.statusCode).toBe(200);
+    expect(learningResponse.json().feedback.autoResolvedReviews).toBeGreaterThan(0);
+  });
+
   it('adds macro-news context to ranked candidates and blocks setups during critical windows', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-macro-news-'));
     tempDirs.push(tempDir);

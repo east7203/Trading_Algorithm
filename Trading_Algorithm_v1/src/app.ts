@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
-import type { SymbolCode } from './domain/types.js';
+import type { SignalReviewOutcome, SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
 import { evaluateRisk } from './services/riskEngine.js';
 import { ExecutionService } from './services/executionService.js';
@@ -777,6 +777,31 @@ const resolvePaperTradingConfig = (
   };
 };
 
+const resolvePaperTradeReviewOutcome = (event: PaperTradeEvent): SignalReviewOutcome | null => {
+  if (event.kind !== 'TRADE_CLOSED') {
+    return null;
+  }
+
+  switch (event.trade.exitReason) {
+    case 'TAKE_PROFIT':
+      return 'WOULD_WIN';
+    case 'STOP_LOSS':
+      return 'WOULD_LOSE';
+    case 'TIME_EXIT': {
+      const realizedPnl = event.trade.realizedPnl ?? 0;
+      if (realizedPnl > 0) {
+        return 'WOULD_WIN';
+      }
+      if (realizedPnl < 0) {
+        return 'WOULD_LOSE';
+      }
+      return 'BREAKEVEN';
+    }
+    default:
+      return null;
+  }
+};
+
 const resolveSignalReviewStorePath = (override?: string): string => {
   if (override) {
     return path.resolve(process.cwd(), override);
@@ -1506,6 +1531,33 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   }
                 );
                 return;
+              }
+
+              const reviewOutcome = resolvePaperTradeReviewOutcome(event);
+              if (reviewOutcome) {
+                const existingReview = await signalReviewStore.getReview(event.trade.alertId);
+                if (existingReview && !existingReview.outcome) {
+                  const updatedReview = await signalReviewStore.applyAutoOutcome(
+                    event.trade.alertId,
+                    reviewOutcome,
+                    event.at,
+                    'paper-trading-engine'
+                  );
+                  journalStore.addEvent({
+                    type: 'SIGNAL_AUTO_LABELED',
+                    timestamp: event.at,
+                    candidateId: updatedReview.candidateId,
+                    symbol: updatedReview.symbol,
+                    payload: {
+                      alertId: updatedReview.alertId,
+                      autoOutcome: updatedReview.autoOutcome ?? null,
+                      effectiveOutcome: updatedReview.effectiveOutcome ?? null,
+                      autoLabeledAt: updatedReview.autoLabeledAt ?? null,
+                      autoLabeledBy: updatedReview.autoLabeledBy ?? null,
+                      source: 'paper-trading'
+                    }
+                  });
+                }
               }
 
               const realizedPnl = event.trade.realizedPnl ?? 0;

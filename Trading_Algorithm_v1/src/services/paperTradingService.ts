@@ -469,16 +469,6 @@ export class PaperTradingService {
       return null;
     }
 
-    const existingOpenTrade = [...this.trades.values()].find(
-      (trade) =>
-        (trade.status === 'PENDING_ENTRY' || trade.status === 'OPEN')
-        && trade.symbol === alert.symbol
-        && trade.side === alert.side
-    );
-    if (existingOpenTrade) {
-      return null;
-    }
-
     const trade: PaperTrade = {
       paperTradeId: uuidv4(),
       alertId: alert.alertId,
