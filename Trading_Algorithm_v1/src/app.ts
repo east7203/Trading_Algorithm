@@ -2077,6 +2077,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/mobile', async (_request, reply) => reply.redirect('/mobile/'));
+  app.get('/mobile/2*', async (request, reply) => {
+    const malformedPath = request.raw.url ?? '/mobile/';
+    const prefix = '/mobile/2';
+    const index = malformedPath.indexOf(prefix);
+    const encodedQuery = index >= 0 ? malformedPath.slice(index + prefix.length) : '';
+    const query = encodedQuery.length > 0 ? encodedQuery : '';
+    return reply.redirect(`/mobile/${query.length > 0 ? `?${query}` : ''}`);
+  });
 
   app.get('/health', async (_request, reply) => {
     return reply.status(200).send({

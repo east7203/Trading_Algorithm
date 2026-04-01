@@ -46,6 +46,18 @@ describe('mobile app endpoints', () => {
     expect(opener.body).toContain('Opening App');
   });
 
+  it('redirects malformed mobile restore links back to the mobile shell', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({
+      method: 'GET',
+      path: '/mobile/2restore=f3ec911&refresh=v30'
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe('/mobile/?restore=f3ec911&refresh=v30');
+  });
+
   it('serves compact ai context with bounded arrays', async () => {
     const ctx = withApp();
 
