@@ -4201,22 +4201,19 @@ const setActiveTab = (tabName) => {
   });
 
   Object.entries(views).forEach(([name, view]) => {
-    view.classList.toggle('is-active', name === normalizedTab);
+    const isActive = name === normalizedTab;
+    view.classList.toggle('is-active', isActive);
+    // Force display via inline style with !important so no stale CSS can override
+    view.style.setProperty('display', isActive ? 'block' : 'none', 'important');
+    if (isActive) {
+      view.scrollTop = 0;
+    }
   });
 
   updateRouteState({
     tab: normalizedTab,
     alertId: normalizedTab === 'signals' ? activeRouteAlertId : null
   });
-
-  try {
-    window.scrollTo({
-      top: 0,
-      behavior: document.documentElement.classList.contains('reduce-motion') ? 'auto' : 'smooth'
-    });
-  } catch {
-    // no-op in test/non-browser environments that stub scrollTo
-  }
 };
 
 const acknowledgeAlert = async (alertId, buttonEl) => {

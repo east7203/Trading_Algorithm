@@ -5658,23 +5658,34 @@ body::after {
   display: none;
 }
 
-/* ---- Top card: Robinhood portfolio header ---- */
-.top-card {
-  border-radius: 0;
-  padding: 0;
+/* ---- Slim top bar (brand + status, all tabs) ---- */
+.top-card,
+.rh-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
   border: none;
   border-bottom: 1px solid var(--rh-border);
   background: #000000;
   box-shadow: none;
+  border-radius: 0;
 }
 
 .top-card::before {
   display: none;
 }
 
-/* Portfolio hero section inside top-card */
+.rh-topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Portfolio hero — inside view-home, scrolls with content */
 .rh-portfolio-hero {
-  padding: 20px 20px 16px;
+  padding: 20px 0 16px;
 }
 
 .rh-portfolio-label {
@@ -5743,11 +5754,11 @@ h1 {
   background: var(--rh-green-dim);
 }
 
-/* Chip row */
+/* Chip row (not used in top bar anymore — keep rule harmless) */
 .chip-row {
-  padding: 0 20px 14px;
+  padding: 0;
   margin-top: 0;
-  border-bottom: 1px solid var(--rh-border);
+  border: none;
 }
 
 .chip,
@@ -5786,11 +5797,11 @@ h1 {
   box-shadow: none;
 }
 
-/* Hero grid (keep but darken) */
+/* Hero grid (removed from header; keep rule harmless) */
 .hero-grid {
   margin-top: 0;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--rh-border);
+  padding: 0;
+  border-bottom: none;
 }
 
 .hero-panel,
@@ -5876,40 +5887,54 @@ h2, h3 {
   color: var(--rh-muted);
 }
 
-/* Stats grid */
+/* Stats grid — now inside view-home only */
 .stats-grid {
-  padding: 14px 20px 0;
+  margin: 16px 0;
+  padding: 0;
   gap: 10px;
 }
 
 .stat-card {
   border-radius: 14px;
-  border-color: var(--rh-border);
+  border: 1px solid var(--rh-border);
   background: var(--rh-surface);
   min-height: 80px;
+  padding: 14px;
 }
 
 /* Views */
 .views {
   margin-top: 0;
-  padding: 0 0 80px;
+  padding: 0;
 }
 
 .view {
+  display: none;
   border: none;
   border-radius: 0;
-  padding: 16px 20px;
+  padding: 20px 20px 24px;
   background: #000000;
   box-shadow: none;
+}
+
+.view.is-active {
+  display: block;
 }
 
 .view::before {
   display: none;
 }
 
+/* Explicitly re-assert view switching — many prior passes touch .view */
+.view { display: none !important; }
+.view.is-active { display: block !important; }
+
 /* ---- Tab bar: Robinhood bottom nav ---- */
-.tabbar {
-  position: fixed;
+/* Override all .tabbar-top rules that set position:sticky + top */
+.tabbar,
+.tabbar-top {
+  position: fixed !important;
+  top: auto !important;
   bottom: 0;
   left: 0;
   right: 0;
@@ -5923,14 +5948,22 @@ h2, h3 {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   z-index: 40;
+  /* Restore grid layout for tab buttons */
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  overflow: visible;
 }
 
-.tab-btn {
+.tab-btn,
+.tabbar-top .tab-btn {
   color: var(--rh-muted);
   background: transparent;
   border: none;
   padding: 6px 4px 4px;
   min-height: 52px;
+  border-radius: 0;
+  flex: unset;
 }
 
 .tab-btn-content {
@@ -6433,6 +6466,8 @@ select {
   padding-inline: 0;
   width: 100%;
   max-width: 760px;
+  /* Reserve space for fixed bottom tab bar (~60px + safe-area) */
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
 }
 
 /* ---- Pull-to-refresh ---- */
@@ -6531,229 +6566,19 @@ select {
 /* ---- Responsive: wider screens ---- */
 @media (min-width: 720px) {
   .phone-shell {
-    width: min(1120px, calc(100% - 32px));
-    padding-inline: 16px;
+    width: min(760px, calc(100% - 32px));
+    padding-inline: 0;
   }
 
   .view {
-    padding: 20px 24px;
-  }
-
-  .hero-grid {
-    padding: 16px 24px;
-  }
-
-  .stats-grid {
-    padding: 16px 24px 0;
+    padding: 20px 24px 28px;
   }
 
   .chip-row {
-    padding: 0 24px 16px;
+    padding: 10px 24px 14px;
   }
 
   .rh-portfolio-hero {
     padding: 24px 24px 18px;
-  }
-}
-
-/* ---- Final phone-fit pass ---- */
-@media (max-width: 430px) {
-  html,
-  body {
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .phone-shell {
-    width: 100%;
-    max-width: 100%;
-    height: 100dvh;
-    gap: 0;
-    padding: max(8px, env(safe-area-inset-top)) 0 0;
-  }
-
-  .top-card {
-    border-radius: 0;
-  }
-
-  .rh-portfolio-hero {
-    padding: 14px 16px 10px;
-  }
-
-  .masthead-row {
-    align-items: center;
-    gap: 8px;
-  }
-
-  .brand-cluster {
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .masthead-tags {
-    margin-left: auto;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .eyebrow {
-    font-size: 0.64rem;
-    letter-spacing: 0.1em;
-  }
-
-  .rh-portfolio-label {
-    font-size: 0.72rem;
-  }
-
-  .rh-portfolio-value {
-    font-size: clamp(1.8rem, 8vw, 2.35rem);
-  }
-
-  .rh-portfolio-pnl {
-    font-size: 0.82rem;
-  }
-
-  .chip-row {
-    padding: 0 16px 10px;
-    gap: 8px;
-  }
-
-  .chip,
-  .chip-btn,
-  .micro-pill {
-    min-height: 32px;
-    padding: 7px 10px;
-    font-size: 0.72rem;
-  }
-
-  .hero-grid {
-    display: none;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-auto-flow: row;
-    grid-auto-columns: auto;
-    width: 100%;
-    overflow: visible;
-    margin-top: 0;
-    padding: 12px 16px 0;
-    gap: 8px;
-  }
-
-  .stat-card {
-    min-height: 72px;
-    padding: 10px;
-    border-radius: 14px;
-  }
-
-  .stat-label {
-    font-size: 0.62rem;
-  }
-
-  .stat-value {
-    font-size: 1rem;
-  }
-
-  .stat-value-sm {
-    font-size: 0.88rem;
-  }
-
-  .views {
-    flex: 1 1 auto;
-    min-height: 0;
-    margin-top: 0;
-    padding: 0 0 calc(74px + env(safe-area-inset-bottom));
-    overflow: hidden;
-  }
-
-  .view {
-    height: 100%;
-    min-height: 0;
-    padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
-    overflow-y: auto;
-  }
-
-  .view-home {
-    gap: 12px;
-  }
-
-  .home-direction-card,
-  .home-paper-card,
-  .home-fold,
-  .home-market-panel,
-  .home-snapshot-card {
-    border-radius: 14px;
-  }
-
-  .home-direction-head {
-    gap: 10px;
-  }
-
-  .home-direction-stack {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .home-direction-grid,
-  .home-snapshot-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .tabbar-top,
-  .tabbar {
-    position: fixed;
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    align-items: end;
-    gap: 0;
-    margin: 0;
-    padding: 4px 2px calc(4px + env(safe-area-inset-bottom));
-    border-radius: 0;
-    border: none;
-    border-top: 1px solid var(--rh-border);
-    background: rgba(0, 0, 0, 0.96);
-    box-shadow: 0 -1px 0 var(--rh-border);
-    overflow: visible;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    z-index: 40;
-  }
-
-  .tabbar-top .tab-btn,
-  .tab-btn {
-    width: 100%;
-    min-height: 54px;
-    border-radius: 12px;
-    padding: 6px 2px 4px;
-    color: var(--rh-muted);
-  }
-
-  .tab-btn-content {
-    gap: 2px;
-  }
-
-  .tab-icon {
-    width: 22px;
-    height: 22px;
-  }
-
-  .tab-label {
-    font-size: 0.61rem;
-  }
-
-  .tab-btn.is-active {
-    background: transparent;
-  }
-
-  .tab-btn.is-active .tab-label,
-  .tab-btn.is-active .tab-icon {
-    color: var(--rh-green);
   }
 }
