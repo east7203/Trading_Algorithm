@@ -26,6 +26,11 @@ import {
   type PaperTradeEvent
 } from './services/paperTradingService.js';
 import {
+  PaperAutonomyService,
+  type PaperAutonomyConfig,
+  type PaperAutonomyStatus
+} from './services/paperAutonomyService.js';
+import {
   NativePushNotificationService,
   type NativePushNotificationConfig,
   type NativePushNotificationStatus
@@ -96,6 +101,7 @@ export interface AppContext {
   operationalReminderService: OperationalReminderService | null;
   marketResearchService: MarketResearchService | null;
   paperTradingService: PaperTradingService | null;
+  paperAutonomyService: PaperAutonomyService | null;
 }
 
 interface BuildAppOptions {
@@ -129,6 +135,9 @@ interface BuildAppOptions {
   paperTradingEnabled?: boolean;
   paperTradingConfig?: Partial<PaperTradingConfig>;
   paperTradingService?: PaperTradingService | null;
+  paperAutonomyEnabled?: boolean;
+  paperAutonomyConfig?: Partial<PaperAutonomyConfig>;
+  paperAutonomyService?: PaperAutonomyService | null;
   ibkrLoginTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
   ibkrResendPushTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
   webPushEnabled?: boolean;
@@ -199,6 +208,26 @@ interface PaperTradingConfigInput {
   sessionStartMinute: number;
   maxClosedTrades: number;
   maxEquityHistory: number;
+}
+
+interface PaperAutonomyConfigInput {
+  enabled: boolean;
+  statePath?: string;
+  archivePath?: string;
+  bootstrapCsvDir?: string;
+  bootstrapRecursive: boolean;
+  timezone: string;
+  sessionStartHour: number;
+  sessionStartMinute: number;
+  sessionEndHour: number;
+  sessionEndMinute: number;
+  focusSymbols: SymbolCode[];
+  maxBarsPerSymbol: number;
+  maxIdeas: number;
+  maxHoldMinutes: number;
+  minTrendConfidence: number;
+  breakoutLookbackBars5m: number;
+  pullbackLookbackBars5m: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -783,6 +812,47 @@ const resolvePaperTradingConfig = (
   return {
     ...defaults,
     ...overrides
+  };
+};
+
+const resolvePaperAutonomyConfig = (
+  overrides: Partial<PaperAutonomyConfig> = {}
+): PaperAutonomyConfigInput => {
+  const knownSymbols = new Set<SymbolCode>(['NQ', 'ES']);
+  const envSymbols = parseCsvEnv('PAPER_AUTONOMY_SYMBOLS', ['NQ', 'ES'])
+    .map((symbol) => symbol.toUpperCase() as SymbolCode)
+    .filter((symbol) => knownSymbols.has(symbol));
+
+  const defaults: PaperAutonomyConfigInput = {
+    enabled: parseBooleanEnv('PAPER_AUTONOMY_ENABLED', true),
+    statePath: parseOptionalPathEnv(
+      'PAPER_AUTONOMY_STATE_PATH',
+      path.resolve(process.cwd(), 'data', 'paper-trading', 'paper-autonomy-state.json')
+    ),
+    archivePath: parseOptionalPathEnv(
+      'PAPER_AUTONOMY_ARCHIVE_PATH',
+      path.resolve(process.cwd(), 'data', 'live', 'one-minute-bars.ndjson')
+    ),
+    bootstrapCsvDir: parseOptionalPathEnv('PAPER_AUTONOMY_BOOTSTRAP_DIR'),
+    bootstrapRecursive: parseBooleanEnv('PAPER_AUTONOMY_BOOTSTRAP_RECURSIVE', true),
+    timezone: process.env.PAPER_AUTONOMY_TIMEZONE ?? 'America/New_York',
+    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', 8, 0, 23),
+    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', 30, 0, 59),
+    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', 15, 0, 23),
+    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', 0, 0, 59),
+    focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
+    maxBarsPerSymbol: parseIntEnv('PAPER_AUTONOMY_MAX_BARS_PER_SYMBOL', 6_000, 500),
+    maxIdeas: parseIntEnv('PAPER_AUTONOMY_MAX_IDEAS', 300, 25, 5_000),
+    maxHoldMinutes: parseIntEnv('PAPER_AUTONOMY_MAX_HOLD_MINUTES', 180, 5, 1_440),
+    minTrendConfidence: parseFloatEnv('PAPER_AUTONOMY_MIN_TREND_CONFIDENCE', 0.58, 0, 1),
+    breakoutLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_BREAKOUT_LOOKBACK_BARS_5M', 6, 3, 24),
+    pullbackLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_PULLBACK_LOOKBACK_BARS_5M', 8, 3, 24)
+  };
+
+  return {
+    ...defaults,
+    ...overrides,
+    focusSymbols: overrides.focusSymbols ?? defaults.focusSymbols
   };
 };
 
@@ -1511,6 +1581,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   const resolvedSignalMonitorConfig = resolveSignalMonitorConfig(options.signalMonitorConfig);
   const resolvedPaperTradingConfig = resolvePaperTradingConfig(resolvedSignalMonitorConfig, options.paperTradingConfig);
+  const resolvedPaperAutonomyConfig = resolvePaperAutonomyConfig(options.paperAutonomyConfig);
   const paperTradingEnabled = options.paperTradingEnabled ?? resolvedPaperTradingConfig.enabled;
   const paperTradingService =
     options.paperTradingService === undefined
@@ -1519,6 +1590,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedPaperTradingConfig,
             enabled: true,
             onTradeEvent: async (event: PaperTradeEvent) => {
+              if (event.trade.source === 'paper-autonomy') {
+                await paperAutonomyService?.recordTradeOutcome(event);
+              }
+
               if (event.kind === 'TRADE_OPENED') {
                 await notifyTradeAssistChannels(
                   {
@@ -1598,6 +1673,18 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           })
         : null
       : options.paperTradingService;
+  const paperAutonomyEnabled = options.paperAutonomyEnabled ?? resolvedPaperAutonomyConfig.enabled;
+  const paperAutonomyService =
+    options.paperAutonomyService === undefined
+      ? paperAutonomyEnabled && paperTradingService
+        ? new PaperAutonomyService({
+            ...resolvedPaperAutonomyConfig,
+            enabled: true,
+            getMarketResearchStatus: () => marketResearchService?.status() ?? null,
+            submitAlert: async (alert, source) => paperTradingService.recordAlert(alert, source)
+          })
+        : null
+      : options.paperAutonomyService;
   signalMonitorSettingsStore.seed({
     timezone: resolvedSignalMonitorConfig.timezone,
     sessionStartHour: resolvedSignalMonitorConfig.sessionStartHour,
@@ -1624,39 +1711,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             () => signalMonitorSettingsStore.get(),
             () => marketResearchService?.status() ?? null,
             signalReviewStore,
-            paperTradingService ? (now: string) => paperTradingService.getRiskAccountSnapshot(now) : null,
-            paperTradingService
-              ? async ({ alert, source }) => {
-                  await paperTradingService.recordAlert(alert, source);
-                }
-              : null,
-            paperTradingService
-              ? async ({ alert, source }) => {
-                  const trade = await paperTradingService.recordAlert(alert, source);
-                  if (!trade) {
-                    return;
-                  }
-
-                  const existingReview = await signalReviewStore.getReview(alert.alertId);
-                  if (existingReview) {
-                    return;
-                  }
-
-                  const reviewEntry = await signalReviewStore.recordAlert(alert);
-                  journalStore.addEvent({
-                    type: 'SIGNAL_ALERTED',
-                    timestamp: alert.detectedAt,
-                    candidateId: reviewEntry.candidateId,
-                    symbol: reviewEntry.symbol,
-                    payload: {
-                      alertId: reviewEntry.alertId,
-                      executionIntentId: undefined,
-                      finalScore: alert.candidate.finalScore ?? null,
-                      source
-                    }
-                  });
-                }
-              : null,
+            null,
+            null,
+            null,
             nativePushNotificationService,
             webPushNotificationService,
             telegramAlertService
@@ -1672,6 +1729,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     void paperTradingService.start();
     app.addHook('onClose', async () => {
       paperTradingService.stop();
+    });
+  }
+
+  if (paperAutonomyService) {
+    void paperAutonomyService.start();
+    app.addHook('onClose', async () => {
+      paperAutonomyService.stop();
     });
   }
 
@@ -2442,6 +2506,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const paperAccount: PaperTradingStatus | { enabled: false; started: false } = paperTradingService
       ? paperTradingService.status()
       : { enabled: false, started: false };
+    const paperAutonomy: PaperAutonomyStatus | { enabled: false; started: false } = paperAutonomyService
+      ? paperAutonomyService.status()
+      : { enabled: false, started: false };
     const trainingLatestBarTimestamp =
       'latestBarTimestamp' in training && typeof training.latestBarTimestamp === 'string'
         ? training.latestBarTimestamp
@@ -2510,6 +2577,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           upcomingEvents: upcomingCalendarEvents
         },
         paperAccount,
+        paperAutonomy,
         ibkrRecovery,
         operationalReminder,
         training,
@@ -2570,6 +2638,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   app.get('/research/status', async (_request, reply) => {
     return reply.status(200).send({
       research: marketResearchService ? marketResearchService.status() : { enabled: false, started: false }
+    });
+  });
+
+  app.get('/paper-autonomy/status', async (_request, reply) => {
+    return reply.status(200).send({
+      paperAutonomy: paperAutonomyService ? paperAutonomyService.status() : { enabled: false, started: false }
     });
   });
 
@@ -3401,7 +3475,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.post('/training/ingest-bars', async (request, reply) => {
     try {
-      if (!continuousTrainingService && !signalMonitorService && !marketResearchService && !paperTradingService) {
+      if (!continuousTrainingService && !signalMonitorService && !marketResearchService && !paperTradingService && !paperAutonomyService) {
         return reply.status(409).send({
           message: 'No live bar consumers are enabled'
         });
@@ -3418,6 +3492,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           };
       const signalIngest = signalMonitorService ? await signalMonitorService.ingestBars(body.bars) : { accepted: 0 };
       const researchIngest = marketResearchService ? await marketResearchService.ingestBars(body.bars) : { accepted: 0 };
+      const paperAutonomyIngest = paperAutonomyService
+        ? await paperAutonomyService.ingestBars(body.bars)
+        : { accepted: 0, ideasOpened: 0 };
       const paperIngest = paperTradingService ? await paperTradingService.ingestBars(body.bars) : { accepted: 0, settled: 0 };
       return reply.status(200).send({
         ingest,
@@ -3425,6 +3502,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         signalIngest,
         research: marketResearchService ? marketResearchService.status() : { enabled: false, started: false },
         researchIngest,
+        paperAutonomy: paperAutonomyService ? paperAutonomyService.status() : { enabled: false, started: false },
+        paperAutonomyIngest,
         paperAccount: paperTradingService ? paperTradingService.status() : { enabled: false, started: false },
         paperIngest,
         training: continuousTrainingService
@@ -3472,6 +3551,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     telegramAlertService,
     operationalReminderService,
     marketResearchService,
-    paperTradingService
+    paperTradingService,
+    paperAutonomyService
   };
 };

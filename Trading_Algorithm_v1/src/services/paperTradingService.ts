@@ -91,9 +91,20 @@ export interface PaperTradingStatus {
   recentClosedTrades: PaperTrade[];
 }
 
-const PAPER_SIGNAL_SOURCES = new Set(['signal-monitor', 'signal-monitor-autonomous']);
+const PAPER_SIGNAL_SOURCES = new Set(['signal-monitor', 'signal-monitor-autonomous', 'paper-autonomy']);
 
 const isPaperSignalSource = (source: string): boolean => PAPER_SIGNAL_SOURCES.has(source);
+
+const asOptionalIsoTimestamp = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) {
+    return undefined;
+  }
+  return new Date(ms).toISOString();
+};
 
 interface PersistedPaperTradingState {
   balance: number;
@@ -518,7 +529,7 @@ export class PaperTradingService {
       return existingTrade;
     }
 
-    if (source === 'signal-monitor-autonomous' && this.autonomyMode !== 'UNRESTRICTED') {
+    if ((source === 'signal-monitor-autonomous' || source === 'paper-autonomy') && this.autonomyMode !== 'UNRESTRICTED') {
       return null;
     }
 
@@ -555,6 +566,13 @@ export class PaperTradingService {
       return null;
     }
 
+    const metadataExpiry = asOptionalIsoTimestamp(alert.candidate.metadata.paperTradeExpiresAt);
+    const defaultExpiry = new Date(Date.parse(alert.detectedAt) + this.config.maxHoldMinutes * 60_000).toISOString();
+    const expiresAt =
+      metadataExpiry && Date.parse(metadataExpiry) > Date.parse(alert.detectedAt)
+        ? metadataExpiry
+        : defaultExpiry;
+
     const trade: PaperTrade = {
       paperTradeId: uuidv4(),
       alertId: alert.alertId,
@@ -564,7 +582,7 @@ export class PaperTradingService {
       side: alert.side,
       status: 'PENDING_ENTRY',
       submittedAt: alert.detectedAt,
-      expiresAt: new Date(Date.parse(alert.detectedAt) + this.config.maxHoldMinutes * 60_000).toISOString(),
+      expiresAt,
       entry: round(alert.candidate.entry, 4),
       stopLoss: round(alert.candidate.stopLoss, 4),
       takeProfit: round(alert.candidate.takeProfit[0] ?? alert.candidate.entry, 4),
