@@ -28,6 +28,7 @@ import {
 import {
   PaperAutonomyService,
   type PaperAutonomyConfig,
+  type PaperAutonomyLearningUpdate,
   type PaperAutonomyStatus
 } from './services/paperAutonomyService.js';
 import {
@@ -828,7 +829,7 @@ const resolvePaperTradingConfig = (
       (process.env.PAPER_TRADING_AUTONOMY_MODE ?? 'UNRESTRICTED').trim().toUpperCase() === 'FOLLOW_ALLOWED_ALERTS'
         ? 'FOLLOW_ALLOWED_ALERTS'
         : 'UNRESTRICTED',
-    autonomyRiskPct: parseFloatEnv('PAPER_TRADING_AUTONOMY_RISK_PCT', 0.35, 0.01, 5),
+    autonomyRiskPct: parseFloatEnv('PAPER_TRADING_AUTONOMY_RISK_PCT', 0.25, 0.01, 5),
     timezone: process.env.PAPER_TRADING_TIMEZONE ?? signalMonitorConfig.timezone,
     sessionStartHour: parseIntEnv(
       'PAPER_TRADING_SESSION_START_HOUR',
@@ -874,11 +875,10 @@ const resolvePaperAutonomyConfig = (
     bootstrapCsvDir: parseOptionalPathEnv('PAPER_AUTONOMY_BOOTSTRAP_DIR'),
     bootstrapRecursive: parseBooleanEnv('PAPER_AUTONOMY_BOOTSTRAP_RECURSIVE', true),
     timezone: process.env.PAPER_AUTONOMY_TIMEZONE ?? signalMonitorConfig.timezone,
-    // Paper autonomy now defaults to a full-session research loop instead of inheriting desk hours.
-    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', 0, 0, 23),
-    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', 0, 0, 59),
-    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', 23, 0, 23),
-    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', 59, 0, 59),
+    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', signalMonitorConfig.sessionStartHour, 0, 23),
+    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', signalMonitorConfig.sessionStartMinute, 0, 59),
+    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', signalMonitorConfig.sessionEndHour, 0, 23),
+    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', signalMonitorConfig.sessionEndMinute, 0, 59),
     focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
     maxBarsPerSymbol: parseIntEnv('PAPER_AUTONOMY_MAX_BARS_PER_SYMBOL', 6_000, 500),
     maxIdeas: parseIntEnv('PAPER_AUTONOMY_MAX_IDEAS', 300, 25, 5_000),
@@ -918,6 +918,31 @@ const resolvePaperTradeReviewOutcome = (event: PaperTradeEvent): SignalReviewOut
     default:
       return null;
   }
+};
+
+const formatPaperAutonomyThesisLabel = (value: string | undefined): string => {
+  switch (value) {
+    case 'TREND_BREAKOUT_EXPANSION':
+      return 'Trend Breakout Expansion';
+    case 'TREND_PULLBACK_RECLAIM':
+      return 'Trend Pullback Reclaim';
+    case 'RANGE_FADE_REVERSION':
+      return 'Range Fade Reversion';
+    case 'FAILED_BREAKOUT_REVERSAL':
+      return 'Failed Breakout Reversal';
+    case 'VOLATILITY_COMPRESSION_RELEASE':
+      return 'Volatility Compression Release';
+    default:
+      return value ?? 'Autonomy thesis';
+  }
+};
+
+const formatLearningUpdateTitle = (update: PaperAutonomyLearningUpdate): string => {
+  const outcomeLabel =
+    update.outcome === 'WIN' ? 'win'
+      : update.outcome === 'LOSS' ? 'loss'
+        : 'flat';
+  return `Paper autonomy learned ${outcomeLabel}`;
 };
 
 const resolveSignalReviewStorePath = (override?: string): string => {
@@ -1727,26 +1752,33 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedPaperTradingConfig,
             enabled: true,
             onTradeEvent: async (event: PaperTradeEvent) => {
-              if (event.trade.source === 'paper-autonomy') {
-                await paperAutonomyService?.recordTradeOutcome(event);
-              }
+              const autonomyLearningUpdate =
+                event.trade.source === 'paper-autonomy'
+                  ? await paperAutonomyService?.recordTradeOutcome(event)
+                  : null;
 
               if (event.kind === 'TRADE_OPENED') {
+                const autonomyThesisLabel = formatPaperAutonomyThesisLabel(event.trade.autonomyThesis);
+                const autonomyReason = event.trade.autonomyReason;
                 await notifyTradeAssistChannels(
                   {
                     title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
-                    body: `${event.trade.setupType} • Entry ${event.trade.entry.toFixed(2)} • Risk ${event.trade.riskPct.toFixed(2)}%`,
+                    body:
+                      event.trade.source === 'paper-autonomy'
+                        ? `${autonomyThesisLabel} • ${autonomyReason ?? event.trade.setupType} • Risk ${event.trade.riskPct.toFixed(2)}%`
+                        : `${event.trade.setupType} • Entry ${event.trade.entry.toFixed(2)} • Risk ${event.trade.riskPct.toFixed(2)}%`,
                     url: '/mobile/?tab=trades',
                     tag: `paper-open-${event.trade.paperTradeId}`
                   },
                   {
                     title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
                     lines: [
-                      `Setup: ${event.trade.setupType}`,
+                      `Setup: ${event.trade.source === 'paper-autonomy' ? autonomyThesisLabel : event.trade.setupType}`,
                       `Entry: ${event.trade.entry.toFixed(2)}`,
                       `Stop: ${event.trade.stopLoss.toFixed(2)}`,
                       `TP1: ${event.trade.takeProfit.toFixed(2)}`,
-                      `Risk: ${event.trade.riskPct.toFixed(2)}%`
+                      `Risk: ${event.trade.riskPct.toFixed(2)}%`,
+                      ...(event.trade.source === 'paper-autonomy' && autonomyReason ? [`Why: ${autonomyReason}`] : [])
                     ],
                     buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=trades` }]
                   }
@@ -1788,21 +1820,43 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   : realizedPnl < 0
                     ? 'loser'
                     : 'flat';
-              await notifyTradeAssistChannels(
-                {
-                  title: `Paper trade closed ${event.trade.symbol} ${outcomeLabel}`,
-                  body: `${formatSignedUsd(realizedPnl)} • ${event.trade.exitReason ?? 'closed'} • Equity ${formatUsd(event.equityPoint.equity)}`,
-                  url: '/mobile/?tab=trades',
-                  tag: `paper-close-${event.trade.paperTradeId}`
-                },
-                {
-                  title: `Paper trade closed ${event.trade.symbol} ${outcomeLabel}`,
-                  lines: [
+              const title =
+                autonomyLearningUpdate
+                  ? formatLearningUpdateTitle(autonomyLearningUpdate)
+                  : `Paper trade closed ${event.trade.symbol} ${outcomeLabel}`;
+              const body =
+                autonomyLearningUpdate
+                  ? `${autonomyLearningUpdate.thesisLabel} • ${formatSignedUsd(realizedPnl)} • hit rate ${Math.round(autonomyLearningUpdate.thesisHitRate * 100)}% over ${autonomyLearningUpdate.thesisClosed} trades`
+                  : `${formatSignedUsd(realizedPnl)} • ${event.trade.exitReason ?? 'closed'} • Equity ${formatUsd(event.equityPoint.equity)}`;
+              const lines = autonomyLearningUpdate
+                ? [
+                    `Trade: ${autonomyLearningUpdate.symbol} ${autonomyLearningUpdate.side} • ${autonomyLearningUpdate.outcome}`,
+                    `Thesis: ${autonomyLearningUpdate.thesisLabel}`,
+                    `Why it traded: ${autonomyLearningUpdate.reason}`,
+                    `This thesis: ${Math.round(autonomyLearningUpdate.thesisHitRate * 100)}% hit rate • ${autonomyLearningUpdate.thesisClosed} closed • ${autonomyLearningUpdate.thesisAvgR.toFixed(2)}R avg`,
+                    `Realized by thesis: ${formatSignedUsd(autonomyLearningUpdate.thesisRealizedPnl)}`,
+                    autonomyLearningUpdate.bestThesisChanged
+                      ? `Best thesis changed: ${autonomyLearningUpdate.previousBestThesisLabel ?? 'none'} -> ${autonomyLearningUpdate.bestThesisLabel ?? autonomyLearningUpdate.thesisLabel}`
+                      : `Best thesis: ${autonomyLearningUpdate.bestThesisLabel ?? autonomyLearningUpdate.thesisLabel}`,
+                    `Learning samples: ${autonomyLearningUpdate.learningSamples}`,
+                    `Equity: ${formatUsd(event.equityPoint.equity)}`
+                  ]
+                : [
                     `P&L: ${formatSignedUsd(realizedPnl)}`,
                     `Exit: ${event.trade.exitReason ?? 'closed'}`,
                     `Equity: ${formatUsd(event.equityPoint.equity)}`,
                     `Closed: ${event.at}`
-                  ],
+                  ];
+              await notifyTradeAssistChannels(
+                {
+                  title,
+                  body,
+                  url: '/mobile/?tab=trades',
+                  tag: `paper-close-${event.trade.paperTradeId}`
+                },
+                {
+                  title,
+                  lines,
                   buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=trades` }]
                 }
               );
@@ -2945,10 +2999,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const paperAccount = paperTradingService
       ? await paperTradingService.reset()
       : { enabled: false, started: false };
+    const paperAutonomy = paperAutonomyService
+      ? await paperAutonomyService.reset()
+      : { enabled: false, started: false };
 
     return reply.status(200).send({
       ok: true,
-      paperAccount
+      paperAccount,
+      paperAutonomy
     });
   });
 

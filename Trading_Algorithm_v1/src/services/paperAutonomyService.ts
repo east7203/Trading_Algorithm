@@ -123,6 +123,23 @@ export interface PaperAutonomyStatus {
   recentClosedIdeas: PaperAutonomyIdeaRecord[];
 }
 
+export interface PaperAutonomyLearningUpdate {
+  thesis: PaperAutonomyThesis;
+  thesisLabel: string;
+  symbol: SymbolCode;
+  side: Side;
+  outcome: 'WIN' | 'LOSS' | 'FLAT';
+  reason: string;
+  learningSamples: number;
+  thesisClosed: number;
+  thesisHitRate: number;
+  thesisAvgR: number;
+  thesisRealizedPnl: number;
+  bestThesisLabel?: string;
+  previousBestThesisLabel?: string;
+  bestThesisChanged: boolean;
+}
+
 interface PersistedPaperAutonomyState {
   ideas: PaperAutonomyIdeaRecord[];
 }
@@ -191,6 +208,25 @@ const completeCandles = (
 
 const average = (values: number[]): number =>
   values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+
+const getMinuteOfDayInTimezone = (timestamp: string, timezone: string): number => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = formatter.formatToParts(new Date(timestamp));
+  const hour = Number(parts.find((entry) => entry.type === 'hour')?.value ?? '0');
+  const minute = Number(parts.find((entry) => entry.type === 'minute')?.value ?? '0');
+  return hour * 60 + minute;
+};
+
+const isMinuteInWindow = (
+  minuteOfDay: number,
+  startMinute: number,
+  endMinute: number
+): boolean => minuteOfDay >= startMinute && minuteOfDay <= endMinute;
 
 const calcEma = (values: number[], period: number): number[] => {
   if (values.length === 0) {
@@ -434,11 +470,6 @@ export class PaperAutonomyService {
 
   private buildTradeExpiry(timestamp: string): string {
     return new Date(Date.parse(timestamp) + this.config.maxHoldMinutes * 60_000).toISOString();
-  }
-
-  private isSessionWindowEnforced(): boolean {
-    const paperStatus = this.config.getPaperTradingStatus?.() ?? null;
-    return paperStatus?.autonomyMode !== 'UNRESTRICTED';
   }
 
   private buildThesisBias(thesis: PaperAutonomyThesis, symbol: SymbolCode): number {
@@ -1211,6 +1242,13 @@ export class PaperAutonomyService {
       return;
     }
 
+    const minuteOfDay = getMinuteOfDayInTimezone(currentBar.timestamp, this.config.timezone);
+    const sessionStartMinute = this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
+    const sessionEndMinute = this.config.sessionEndHour * 60 + this.config.sessionEndMinute;
+    if (!isMinuteInWindow(minuteOfDay, sessionStartMinute, sessionEndMinute)) {
+      return;
+    }
+
     const barsUntilNow = bars.slice(0, currentIndex + 1);
     const candles5m = completeCandles(barsUntilNow, currentBar.timestamp, 5, 30);
     const candles15m = completeCandles(barsUntilNow, currentBar.timestamp, 15, 20);
@@ -1364,13 +1402,14 @@ export class PaperAutonomyService {
     };
   }
 
-  async recordTradeOutcome(event: PaperTradeEvent): Promise<void> {
+  async recordTradeOutcome(event: PaperTradeEvent): Promise<PaperAutonomyLearningUpdate | null> {
     if (event.trade.source !== 'paper-autonomy') {
-      return;
+      return null;
     }
+    const previousStatus = this.status();
     const idea = this.ideas.get(event.trade.alertId);
     if (!idea || event.kind !== 'TRADE_CLOSED' || idea.status === 'CLOSED') {
-      return;
+      return null;
     }
     const outcome =
       event.trade.exitReason === 'TAKE_PROFIT'
@@ -1391,10 +1430,38 @@ export class PaperAutonomyService {
       outcome
     });
     await this.persistState();
+    const nextStatus = this.status();
+    const thesisStats = nextStatus.thesisStats.find((entry) => entry.thesis === idea.thesis);
+    return {
+      thesis: idea.thesis,
+      thesisLabel: thesisLabel(idea.thesis),
+      symbol: idea.symbol,
+      side: idea.side,
+      outcome,
+      reason: idea.reason,
+      learningSamples: nextStatus.performance.learningSamples,
+      thesisClosed: thesisStats?.closed ?? 0,
+      thesisHitRate: thesisStats?.hitRate ?? 0,
+      thesisAvgR: thesisStats?.avgR ?? 0,
+      thesisRealizedPnl: thesisStats?.realizedPnl ?? 0,
+      bestThesisLabel: nextStatus.bestThesis?.label,
+      previousBestThesisLabel: previousStatus.bestThesis?.label,
+      bestThesisChanged: previousStatus.bestThesis?.thesis !== nextStatus.bestThesis?.thesis
+    };
+  }
+
+  async reset(now = new Date().toISOString()): Promise<PaperAutonomyStatus> {
+    await this.start();
+    const retainedClosedIdeas = [...this.ideas.values()].filter((idea) => idea.status === 'CLOSED');
+    this.ideas = new Map(retainedClosedIdeas.map((idea) => [idea.alertId, idea]));
+    this.lastIdeaAt = retainedClosedIdeas[0]?.openedAt;
+    this.lastEvaluatedAt = now;
+    this.lastError = undefined;
+    await this.persistState();
+    return this.status();
   }
 
   status(): PaperAutonomyStatus {
-    const unrestrictedSession = !this.isSessionWindowEnforced();
     const ideas = [...this.ideas.values()].sort((left, right) => right.openedAt.localeCompare(left.openedAt));
     const openIdeas = ideas.filter((idea) => idea.status === 'OPEN');
     const closedIdeas = ideas.filter((idea) => idea.status === 'CLOSED');
@@ -1458,10 +1525,10 @@ export class PaperAutonomyService {
       focusSymbols: [...this.config.focusSymbols],
       session: {
         timezone: this.config.timezone,
-        startHour: unrestrictedSession ? 0 : this.config.sessionStartHour,
-        startMinute: unrestrictedSession ? 0 : this.config.sessionStartMinute,
-        endHour: unrestrictedSession ? 23 : this.config.sessionEndHour,
-        endMinute: unrestrictedSession ? 59 : this.config.sessionEndMinute
+        startHour: this.config.sessionStartHour,
+        startMinute: this.config.sessionStartMinute,
+        endHour: this.config.sessionEndHour,
+        endMinute: this.config.sessionEndMinute
       },
       totalIdeas: ideas.length,
       openIdeas: openIdeas.length,
