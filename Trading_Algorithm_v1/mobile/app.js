@@ -23,6 +23,14 @@ const tradingViewSymbolMap = {
   ES: 'CME_MINI:ES1!'
 };
 
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
 const tvChecklistFields = ['macro_clear', 'sweep_confirmed', 'structure_confirmed', 'rr_acceptable', 'session_valid'];
 
 const apiBaseInput = document.getElementById('apiBase');
@@ -77,6 +85,14 @@ const rhPortfolioValueEl = document.getElementById('rhPortfolioValue');
 const rhPortfolioPnlEl = document.getElementById('rhPortfolioPnl');
 const homePaperMetaEl = document.getElementById('homePaperMeta');
 const homePaperChipEl = document.getElementById('homePaperChip');
+const homePaperAutonomyStampEl = document.getElementById('homePaperAutonomyStamp');
+const homePaperAutonomyHeadlineEl = document.getElementById('homePaperAutonomyHeadline');
+const homePaperAutonomyBestThesisEl = document.getElementById('homePaperAutonomyBestThesis');
+const homePaperAutonomyPerformanceEl = document.getElementById('homePaperAutonomyPerformance');
+const homePaperAutonomyThesesEl = document.getElementById('homePaperAutonomyTheses');
+const homePaperAutonomySymbolsEl = document.getElementById('homePaperAutonomySymbols');
+const homePaperAutonomyStateEl = document.getElementById('homePaperAutonomyState');
+const homePaperAutonomyStateNoteEl = document.getElementById('homePaperAutonomyStateNote');
 const homeMacroSummaryEl = document.getElementById('homeMacroSummary');
 const homeMacroListEl = document.getElementById('homeMacroList');
 const approvedByInput = document.getElementById('approvedBy');
@@ -187,6 +203,14 @@ const diagResearchWhyEl = document.getElementById('diagResearchWhy');
 const diagResearchBestThesisEl = document.getElementById('diagResearchBestThesis');
 const diagResearchHypothesesEl = document.getElementById('diagResearchHypotheses');
 const diagResearchInsightEl = document.getElementById('diagResearchInsight');
+const diagPaperAutonomyStatusEl = document.getElementById('diagPaperAutonomyStatus');
+const diagPaperAutonomyIdeasEl = document.getElementById('diagPaperAutonomyIdeas');
+const diagPaperAutonomyWinRateEl = document.getElementById('diagPaperAutonomyWinRate');
+const diagPaperAutonomyPnlEl = document.getElementById('diagPaperAutonomyPnl');
+const diagPaperAutonomyBestThesisEl = document.getElementById('diagPaperAutonomyBestThesis');
+const diagPaperAutonomyLastIdeaEl = document.getElementById('diagPaperAutonomyLastIdea');
+const diagPaperAutonomySymbolsEl = document.getElementById('diagPaperAutonomySymbols');
+const diagPaperAutonomyThesesEl = document.getElementById('diagPaperAutonomyTheses');
 const calendarEventsListEl = document.getElementById('calendarEventsList');
 const diagTrainingCadenceEl = document.getElementById('diagTrainingCadence');
 const diagTrainingLastRunEl = document.getElementById('diagTrainingLastRun');
@@ -889,28 +913,28 @@ const renderHomeDeck = () => {
       <div class="home-watchlist-head">
         <div>
           <div class="home-watchlist-symbol-row">
-            <p class="home-watchlist-symbol">${item.symbol}</p>
+            <p class="home-watchlist-symbol">${escapeHtml(item.symbol)}</p>
             ${item.lead ? '<span class="chip chip-online">Lead</span>' : ''}
           </div>
-          <p class="home-watchlist-setup">${latestAlertLabel}</p>
+          <p class="home-watchlist-setup">${escapeHtml(latestAlertLabel)}</p>
         </div>
         <div class="home-watchlist-price-block">
-          <p class="home-watchlist-price">${item.latestPrice !== null && item.latestPrice !== undefined ? fmtNum(item.latestPrice, 2) : '--'}</p>
-          <span class="chip ${latestAlertState === 'Ready' ? 'chip-online' : latestAlertState === 'Blocked' ? 'chip-offline' : 'chip-neutral'}">${latestAlertState}</span>
+          <p class="home-watchlist-price">${escapeHtml(item.latestPrice !== null && item.latestPrice !== undefined ? fmtNum(item.latestPrice, 2) : '--')}</p>
+          <span class="chip ${latestAlertState === 'Ready' ? 'chip-online' : latestAlertState === 'Blocked' ? 'chip-offline' : 'chip-neutral'}">${escapeHtml(latestAlertState)}</span>
         </div>
       </div>
       <div class="home-watchlist-meter">
         <span class="home-watchlist-meter-fill" style="width:${Math.max(8, Math.min(100, Number(item.researchConfidence ?? 0) * 100))}%"></span>
       </div>
       <div class="home-watchlist-meta">
-        <span>${researchDirectionLabel(trendDirection)} • ${confidence}</span>
-        <span>${item.latestBarTimestamp ? fmtRelativeMinutes(item.latestBarTimestamp) : 'No bar'}</span>
+        <span>${escapeHtml(`${researchDirectionLabel(trendDirection)} • ${confidence}`)}</span>
+        <span>${escapeHtml(item.latestBarTimestamp ? fmtRelativeMinutes(item.latestBarTimestamp) : 'No bar')}</span>
       </div>
       <div class="home-watchlist-meta home-watchlist-meta-secondary">
-        <span>${latestScore}</span>
+        <span>${escapeHtml(latestScore)}</span>
         <span>Tap for detail</span>
       </div>
-      <p class="home-watchlist-note">${item.researchReason ?? 'Waiting for a clearer symbol-specific read.'}</p>
+      <p class="home-watchlist-note">${escapeHtml(item.researchReason ?? 'Waiting for a clearer symbol-specific read.')}</p>
     `;
     const openDetail = () => openSymbolDetailViewer(item, deck);
     card.addEventListener('click', openDetail);
@@ -952,12 +976,12 @@ const renderResearchHypothesisChips = (container, hypotheses, emptyText) => {
     const evidence = Array.isArray(item.evidence) && item.evidence.length > 0 ? item.evidence.join(' • ') : 'Evidence is still building.';
     chip.innerHTML = `
       <div class="research-hypothesis-head">
-        <span class="chip ${directionTone}">${researchDirectionLabel(item.direction ?? 'BALANCED')}</span>
-        <span class="chip chip-neutral">${confidenceLabel}</span>
+        <span class="chip ${directionTone}">${escapeHtml(researchDirectionLabel(item.direction ?? 'BALANCED'))}</span>
+        <span class="chip chip-neutral">${escapeHtml(confidenceLabel)}</span>
       </div>
-      <p class="research-hypothesis-title">${item.thesisLabel ?? item.label ?? 'Research hypothesis'}</p>
-      <p class="research-hypothesis-meta">${item.leadSymbol ? `${item.leadSymbol} leading • ` : ''}${item.openedAt ? `${fmtRelativeMinutes(item.openedAt)} • ` : ''}${item.horizonMinutes ? `${item.horizonMinutes}m horizon` : 'Monitoring'}</p>
-      <p class="research-hypothesis-copy">${evidence}</p>
+      <p class="research-hypothesis-title">${escapeHtml(item.thesisLabel ?? item.label ?? 'Research hypothesis')}</p>
+      <p class="research-hypothesis-meta">${escapeHtml(`${item.leadSymbol ? `${item.leadSymbol} leading • ` : ''}${item.openedAt ? `${fmtRelativeMinutes(item.openedAt)} • ` : ''}${item.horizonMinutes ? `${item.horizonMinutes}m horizon` : 'Monitoring'}`)}</p>
+      <p class="research-hypothesis-copy">${escapeHtml(evidence)}</p>
     `;
     container.appendChild(chip);
   });
@@ -995,6 +1019,161 @@ const renderHomeResearchLab = () => {
 };
 
 const getPaperAccountStatus = () => latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
+const getPaperAutonomyStatus = () => latestDiagnostics?.diagnostics?.paperAutonomy ?? latestHomeDeck?.deck?.paperAutonomy ?? null;
+
+const formatDeskWindow = (session) => {
+  if (!session) {
+    return 'Window --';
+  }
+  const tzLabel = session.timezone === 'America/New_York' ? 'ET' : session.timezone;
+  return `${formatTimeValue(session.startHour, session.startMinute)}-${formatTimeValue(session.endHour, session.endMinute)} ${tzLabel}`;
+};
+
+const paperAutonomyThesisLabel = (thesis) => {
+  switch (thesis) {
+    case 'TREND_BREAKOUT_EXPANSION':
+      return 'Trend Breakout Expansion';
+    case 'TREND_PULLBACK_RECLAIM':
+      return 'Trend Pullback Reclaim';
+    case 'RANGE_FADE_REVERSION':
+      return 'Range Fade Reversion';
+    case 'FAILED_BREAKOUT_REVERSAL':
+      return 'Failed Breakout Reversal';
+    case 'VOLATILITY_COMPRESSION_RELEASE':
+      return 'Volatility Compression Release';
+    default:
+      return thesis ?? 'Autonomy thesis';
+  }
+};
+
+const renderPaperAutonomyThesisCards = (container, items, emptyText) => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  if (!Array.isArray(items) || items.length === 0) {
+    renderEmpty(container, emptyText);
+    return;
+  }
+
+  items.forEach((item) => {
+    const label = item.label ?? paperAutonomyThesisLabel(item.thesis);
+    const openIdeas = Number(item.openIdeas ?? item.open ?? 0);
+    const totalIdeas = Number(item.totalIdeas ?? item.total ?? openIdeas);
+    const closedIdeas = Number(item.closed ?? Math.max(0, totalIdeas - openIdeas));
+    const hitRate = Number(item.hitRate);
+    const avgR = Number(item.avgR);
+    const realizedPnl = Number(item.realizedPnl);
+    const card = document.createElement('article');
+    card.className = 'research-hypothesis-chip';
+    card.innerHTML = `
+      <div class="research-hypothesis-head">
+        <span class="chip chip-neutral">${escapeHtml(`${openIdeas} open`)}</span>
+        <span class="chip chip-neutral">${escapeHtml(`${totalIdeas} total`)}</span>
+      </div>
+      <p class="research-hypothesis-title">${escapeHtml(label)}</p>
+      <p class="research-hypothesis-meta">${escapeHtml(item.lastOpenedAt ? `Last idea ${fmtRelativeMinutes(item.lastOpenedAt)}` : `${closedIdeas} closed ideas`)}</p>
+      <p class="research-hypothesis-copy">${escapeHtml(
+        Number.isFinite(hitRate)
+          ? `${Math.round(hitRate * 100)}% hit rate${Number.isFinite(avgR) ? ` • ${fmtNum(avgR, 2)}R avg` : ''}${Number.isFinite(realizedPnl) ? ` • ${fmtSignedUsd(realizedPnl)}` : ''}`
+          : 'Autonomy is still building evidence on this thesis.'
+      )}</p>
+    `;
+    container.appendChild(card);
+  });
+};
+
+const renderPaperAutonomySymbolCards = (container, items, emptyText) => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  if (!Array.isArray(items) || items.length === 0) {
+    renderEmpty(container, emptyText);
+    return;
+  }
+
+  items.forEach((item) => {
+    const direction = item.direction ?? 'BALANCED';
+    const directionTone =
+      direction === 'BULLISH'
+        ? 'chip-online'
+        : direction === 'BEARISH'
+          ? 'chip-offline'
+          : 'chip-neutral';
+    const confidence = Number(item.confidence);
+    const confidenceLabel = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '--';
+    const openIdeas = Number(item.openIdeas ?? 0);
+    const closedIdeas = Number(item.closedIdeas ?? 0);
+    const realizedPnl = Number(item.realizedPnl);
+    const card = document.createElement('article');
+    card.className = 'research-hypothesis-chip';
+    card.innerHTML = `
+      <div class="research-hypothesis-head">
+        <span class="chip ${directionTone}">${escapeHtml(researchDirectionLabel(direction))}</span>
+        <span class="chip chip-neutral">${escapeHtml(confidenceLabel)}</span>
+      </div>
+      <p class="research-hypothesis-title">${escapeHtml(`${item.symbol} autonomy bias${item.exploratory ? ' • exploratory' : ''}`)}</p>
+      <p class="research-hypothesis-meta">${escapeHtml(`${openIdeas} open • ${closedIdeas} closed${item.latestBarTimestamp ? ` • ${fmtRelativeMinutes(item.latestBarTimestamp)}` : ''}`)}</p>
+      <p class="research-hypothesis-copy">${escapeHtml(item.reason ?? (Number.isFinite(realizedPnl) ? fmtSignedUsd(realizedPnl) : 'Autonomy is still reading this symbol.'))}</p>
+    `;
+    container.appendChild(card);
+  });
+};
+
+const renderHomePaperAutonomy = () => {
+  const autonomy = latestHomeDeck?.deck?.paperAutonomy ?? latestDiagnostics?.diagnostics?.paperAutonomy ?? null;
+  const latestIdea = autonomy?.latestIdea ?? autonomy?.recentIdeas?.[0] ?? null;
+  const bestThesis = autonomy?.bestThesis ?? null;
+  const performance = autonomy?.performance ?? null;
+  const symbolStatus = autonomy?.symbolStatus ?? [];
+
+  if (homePaperAutonomyStampEl) {
+    homePaperAutonomyStampEl.textContent = latestHomeDeck?.deck?.generatedAt
+      ? `Updated ${fmtRelativeMinutes(latestHomeDeck.deck.generatedAt)}`
+      : 'Updating';
+  }
+  if (homePaperAutonomyHeadlineEl) {
+    homePaperAutonomyHeadlineEl.textContent = latestIdea
+      ? `${latestIdea.symbol} ${latestIdea.side} • ${latestIdea.thesisLabel ?? paperAutonomyThesisLabel(latestIdea.thesis)}`
+      : bestThesis
+        ? `${bestThesis.label} is leading the autonomy book.`
+        : 'Independent futures engine is scanning the desk window.';
+  }
+  if (homePaperAutonomyBestThesisEl) {
+    homePaperAutonomyBestThesisEl.textContent = bestThesis
+      ? `${bestThesis.label} • ${Math.round(Number(bestThesis.hitRate ?? 0) * 100)}% hit rate • ${fmtNum(bestThesis.avgR ?? 0, 2)}R avg`
+      : 'No autonomy thesis has enough closed trades to score yet.';
+  }
+  if (homePaperAutonomyPerformanceEl) {
+    homePaperAutonomyPerformanceEl.textContent = autonomy
+      ? `${autonomy.openIdeas ?? 0} open • ${autonomy.closedIdeas ?? 0} closed • ${fmtSignedUsd(performance?.realizedPnl ?? 0)} • ${Math.round(Number(autonomy.winRate ?? 0) * 100)}% win`
+      : 'Autonomy performance is loading.';
+  }
+  if (homePaperAutonomyStateEl) {
+    homePaperAutonomyStateEl.textContent = autonomy
+      ? `${autonomy.openIdeas ?? 0} live • ${fmtSignedUsd(performance?.realizedPnl ?? 0)}`
+      : 'Loading';
+  }
+  if (homePaperAutonomyStateNoteEl) {
+    homePaperAutonomyStateNoteEl.textContent = latestIdea?.reason
+      ?? symbolStatus.find((item) => item.direction === 'BULLISH' || item.direction === 'BEARISH')?.reason
+      ?? `Autonomy trades only inside ${formatDeskWindow(autonomy?.session)}.`;
+  }
+
+  renderPaperAutonomyThesisCards(
+    homePaperAutonomyThesesEl,
+    autonomy?.activeTheses ?? [],
+    'No active autonomy thesis'
+  );
+  renderPaperAutonomySymbolCards(
+    homePaperAutonomySymbolsEl,
+    autonomy?.symbolStatus ?? [],
+    'No autonomy symbol bias yet'
+  );
+};
 
 const formatPaperTradeCap = (value) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -1373,9 +1552,9 @@ const renderSymbolDetailStats = (item, deck) => {
     const card = document.createElement('article');
     card.className = 'symbol-viewer-stat-card';
     card.innerHTML = `
-      <p class="symbol-viewer-stat-label">${stat.label}</p>
-      <p class="symbol-viewer-stat-value">${stat.value}</p>
-      <p class="symbol-viewer-stat-note">${stat.note}</p>
+      <p class="symbol-viewer-stat-label">${escapeHtml(stat.label)}</p>
+      <p class="symbol-viewer-stat-value">${escapeHtml(stat.value)}</p>
+      <p class="symbol-viewer-stat-note">${escapeHtml(stat.note)}</p>
     `;
     symbolDetailViewerStatsEl.appendChild(card);
   });
@@ -1400,33 +1579,33 @@ const renderSymbolDetailSetup = (item) => {
   symbolDetailViewerSetupEl.innerHTML = `
     <div class="symbol-viewer-setup-head">
       <div>
-        <p class="symbol-viewer-setup-title">${latestAlert.side} • ${setupLabel(latestAlert.setupType)}</p>
-        <p class="symbol-viewer-setup-subtitle">${latestAlert.detectedAt ? `Seen ${fmtDateTimeCompact(latestAlert.detectedAt)}` : 'Seen time unavailable'}</p>
+        <p class="symbol-viewer-setup-title">${escapeHtml(`${latestAlert.side} • ${setupLabel(latestAlert.setupType)}`)}</p>
+        <p class="symbol-viewer-setup-subtitle">${escapeHtml(latestAlert.detectedAt ? `Seen ${fmtDateTimeCompact(latestAlert.detectedAt)}` : 'Seen time unavailable')}</p>
       </div>
-      <span class="chip ${latestAlert.allowed ? 'chip-online' : 'chip-offline'}">${latestAlert.allowed ? 'Ready' : 'Blocked'}</span>
+      <span class="chip ${latestAlert.allowed ? 'chip-online' : 'chip-offline'}">${escapeHtml(latestAlert.allowed ? 'Ready' : 'Blocked')}</span>
     </div>
     <div class="symbol-viewer-level-row">
-      <span class="level-chip level-chip-entry">Entry <b>${fmtNum(latestAlert.entry, 2)}</b></span>
-      <span class="level-chip level-chip-stop">SL <b>${fmtNum(latestAlert.stopLoss, 2)}</b></span>
-      <span class="level-chip level-chip-target">TP1 <b>${fmtNum(latestAlert.takeProfitOne, 2)}</b></span>
+      <span class="level-chip level-chip-entry">Entry <b>${escapeHtml(fmtNum(latestAlert.entry, 2))}</b></span>
+      <span class="level-chip level-chip-stop">SL <b>${escapeHtml(fmtNum(latestAlert.stopLoss, 2))}</b></span>
+      <span class="level-chip level-chip-target">TP1 <b>${escapeHtml(fmtNum(latestAlert.takeProfitOne, 2))}</b></span>
     </div>
     <div class="symbol-viewer-setup-grid">
       <article class="symbol-viewer-setup-card">
         <p class="symbol-viewer-stat-label">Score</p>
-        <p class="symbol-viewer-stat-value">${fmtNum(latestAlert.finalScore, 1)}</p>
+        <p class="symbol-viewer-stat-value">${escapeHtml(fmtNum(latestAlert.finalScore, 1))}</p>
       </article>
       <article class="symbol-viewer-setup-card">
         <p class="symbol-viewer-stat-label">1m Confidence</p>
-        <p class="symbol-viewer-stat-value">${fmtNum(latestAlert.oneMinuteConfidence, 2)}</p>
+        <p class="symbol-viewer-stat-value">${escapeHtml(fmtNum(latestAlert.oneMinuteConfidence, 2))}</p>
       </article>
       <article class="symbol-viewer-setup-card">
         <p class="symbol-viewer-stat-label">Risk / Reward</p>
-        <p class="symbol-viewer-stat-value">${calcRr(latestAlert.entry, latestAlert.stopLoss, latestAlert.takeProfitOne)}</p>
+        <p class="symbol-viewer-stat-value">${escapeHtml(calcRr(latestAlert.entry, latestAlert.stopLoss, latestAlert.takeProfitOne))}</p>
       </article>
     </div>
     <div class="symbol-viewer-chip-group">
-      ${(latestAlert.reasons ?? []).map((reason) => `<span class="chip chip-neutral">${reason}</span>`).join('')}
-      ${(latestAlert.guardrails ?? []).map((reason) => `<span class="chip chip-offline">${humanizeRiskReason(reason)}</span>`).join('')}
+      ${(latestAlert.reasons ?? []).map((reason) => `<span class="chip chip-neutral">${escapeHtml(reason)}</span>`).join('')}
+      ${(latestAlert.guardrails ?? []).map((reason) => `<span class="chip chip-offline">${escapeHtml(humanizeRiskReason(reason))}</span>`).join('')}
     </div>
   `;
 };
@@ -1448,7 +1627,7 @@ const renderSymbolDetailReasons = (item, deck) => {
   reasons.slice(0, 4).forEach((reason) => {
     const row = document.createElement('article');
     row.className = 'symbol-viewer-reason-item';
-    row.innerHTML = `<p class="symbol-viewer-reason-copy">${reason}</p>`;
+    row.innerHTML = `<p class="symbol-viewer-reason-copy">${escapeHtml(reason)}</p>`;
     symbolDetailViewerReasonListEl.appendChild(row);
   });
 
@@ -1601,14 +1780,14 @@ const renderHomeMacroList = (events) => {
     card.innerHTML = `
       <div class="home-macro-head">
         <div>
-          <p class="stat-label">${String(event.impact ?? 'low').toUpperCase()} • ${event.currency ?? 'Macro'}</p>
-          <p class="home-macro-title">${event.title ?? event.category ?? 'Economic event'}</p>
+          <p class="stat-label">${escapeHtml(`${String(event.impact ?? 'low').toUpperCase()} • ${event.currency ?? 'Macro'}`)}</p>
+          <p class="home-macro-title">${escapeHtml(event.title ?? event.category ?? 'Economic event')}</p>
         </div>
-        <span class="chip chip-neutral">${formatMinutesUntil(event.startsAt)}</span>
+        <span class="chip chip-neutral">${escapeHtml(formatMinutesUntil(event.startsAt))}</span>
       </div>
-      <p class="home-macro-copy">${read.summary}</p>
-      <p class="home-macro-note">${read.detail}</p>
-      <p class="home-macro-meta">${fmtDateTimeCompact(event.startsAt)}${event.forecast ? ` • Forecast ${event.forecast}` : ''}${event.previous ? ` • Prev ${event.previous}` : ''}</p>
+      <p class="home-macro-copy">${escapeHtml(read.summary)}</p>
+      <p class="home-macro-note">${escapeHtml(read.detail)}</p>
+      <p class="home-macro-meta">${escapeHtml(`${fmtDateTimeCompact(event.startsAt)}${event.forecast ? ` • Forecast ${event.forecast}` : ''}${event.previous ? ` • Prev ${event.previous}` : ''}`)}</p>
     `;
 
     homeMacroListEl.appendChild(card);
@@ -1732,6 +1911,7 @@ const renderHomeDashboard = () => {
   renderDeskBrief();
   renderHomeDeck();
   renderHomeResearchLab();
+  renderHomePaperAutonomy();
   renderHomeMacroList(upcomingEvents);
   renderPaperAccount();
 };
@@ -3185,7 +3365,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
             font-size="${expanded ? '8' : '7.4'}"
             font-weight="700"
             letter-spacing="0.03em"
-          >${zone.label}</text>
+          >${escapeHtml(zone.label)}</text>
         </g>
       `
     )
@@ -3302,8 +3482,8 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
             text-anchor="middle"
             letter-spacing="0.02em"
           >
-            <tspan x="${labelX + level.boxWidth / 2}" dy="0">${level.label}</tspan>
-            ${expanded && level.valueLabel ? `<tspan x="${labelX + level.boxWidth / 2}" dy="9.2" font-size="7.8">${level.valueLabel}</tspan>` : ''}
+            <tspan x="${labelX + level.boxWidth / 2}" dy="0">${escapeHtml(level.label)}</tspan>
+            ${expanded && level.valueLabel ? `<tspan x="${labelX + level.boxWidth / 2}" dy="9.2" font-size="7.8">${escapeHtml(level.valueLabel)}</tspan>` : ''}
           </text>
         </g>
       `
@@ -3314,7 +3494,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
     <g>
       <rect x="${padding.left}" y="${padding.top}" width="${expanded ? 138 : 96}" height="${expanded ? 20 : 16}" rx="8" fill="rgba(6, 15, 25, 0.86)" stroke="rgba(213, 234, 255, 0.18)" />
       <text x="${padding.left + (expanded ? 69 : 48)}" y="${padding.top + (expanded ? 13 : 11)}" fill="#d8ecff" font-size="${expanded ? '9.2' : '8.2'}" font-weight="700" text-anchor="middle" letter-spacing="0.04em">
-        ${snapshot.symbol} ${snapshot.timeframe ?? '5m'} exact case
+        ${escapeHtml(`${snapshot.symbol} ${snapshot.timeframe ?? '5m'} exact case`)}
       </text>
     </g>
   `;
@@ -3338,7 +3518,7 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
         font-weight="700"
         text-anchor="middle"
         letter-spacing="0.04em"
-      >${snapshot.side}</text>
+      >${escapeHtml(snapshot.side)}</text>
     </g>
   `;
 
@@ -3394,8 +3574,8 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
               return `
                 <span class="signalChartLegendChip">
                   <span class="signalChartLegendSwatch" style="--swatch:${color}"></span>
-                  <span class="signalChartLegendText">${item.label}</span>
-                  <span class="signalChartLegendPrice">${price}</span>
+                  <span class="signalChartLegendText">${escapeHtml(item.label)}</span>
+                  <span class="signalChartLegendPrice">${escapeHtml(price)}</span>
                 </span>
               `;
             })
@@ -3410,8 +3590,8 @@ const renderSignalChartMarkup = (snapshot, options = {}) => {
             .map(
               (level) => `
                 <span class="signalChartLegendChip is-muted">
-                  <span class="signalChartLegendText">${level.label}</span>
-                  <span class="signalChartLegendPrice">${fmtNum(level.price, 2)}</span>
+                  <span class="signalChartLegendText">${escapeHtml(level.label)}</span>
+                  <span class="signalChartLegendPrice">${escapeHtml(fmtNum(level.price, 2))}</span>
                 </span>
               `
             )
@@ -3492,54 +3672,54 @@ const renderChartLightboxDetails = (context) => {
       <div class="chart-lightbox-detail-grid">
         <article class="chart-lightbox-detail-card">
           <p class="chart-lightbox-detail-label">Entry</p>
-          <p class="chart-lightbox-detail-value">${fmtNum(entry, 2)}</p>
+          <p class="chart-lightbox-detail-value">${escapeHtml(fmtNum(entry, 2))}</p>
         </article>
         <article class="chart-lightbox-detail-card chart-lightbox-detail-card-stop">
           <p class="chart-lightbox-detail-label">Stop Loss</p>
-          <p class="chart-lightbox-detail-value">${fmtNum(stopLoss, 2)}</p>
+          <p class="chart-lightbox-detail-value">${escapeHtml(fmtNum(stopLoss, 2))}</p>
         </article>
         <article class="chart-lightbox-detail-card chart-lightbox-detail-card-target">
           <p class="chart-lightbox-detail-label">Take Profit</p>
-          <p class="chart-lightbox-detail-value">${fmtNum(takeProfit, 2)}</p>
+          <p class="chart-lightbox-detail-value">${escapeHtml(fmtNum(takeProfit, 2))}</p>
         </article>
         <article class="chart-lightbox-detail-card">
           <p class="chart-lightbox-detail-label">Risk / Reward</p>
-          <p class="chart-lightbox-detail-value">${calcRr(entry, stopLoss, takeProfit)}</p>
+          <p class="chart-lightbox-detail-value">${escapeHtml(calcRr(entry, stopLoss, takeProfit))}</p>
           <p class="chart-lightbox-detail-note">
-            ${typeof riskPoints === 'number' ? `Risk ${fmtNum(riskPoints, 2)}` : '--'}
-            ${typeof rewardPoints === 'number' ? ` • Reward ${fmtNum(rewardPoints, 2)}` : ''}
+            ${escapeHtml(typeof riskPoints === 'number' ? `Risk ${fmtNum(riskPoints, 2)}` : '--')}
+            ${escapeHtml(typeof rewardPoints === 'number' ? ` • Reward ${fmtNum(rewardPoints, 2)}` : '')}
           </p>
         </article>
       </div>
       <div class="chart-lightbox-context-grid">
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Seen</p>
-          <p class="chart-lightbox-context-value">${fmtDateTimeCompact(seenAt)}</p>
-          <p class="chart-lightbox-detail-note">${fmtRelativeMinutes(seenAt)}</p>
+          <p class="chart-lightbox-context-value">${escapeHtml(fmtDateTimeCompact(seenAt))}</p>
+          <p class="chart-lightbox-detail-note">${escapeHtml(fmtRelativeMinutes(seenAt))}</p>
         </article>
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Snapshot Saved</p>
-          <p class="chart-lightbox-context-value">${fmtDateTimeCompact(snapshotAt)}</p>
-          <p class="chart-lightbox-detail-note">${fmtRelativeMinutes(snapshotAt)}</p>
+          <p class="chart-lightbox-context-value">${escapeHtml(fmtDateTimeCompact(snapshotAt))}</p>
+          <p class="chart-lightbox-detail-note">${escapeHtml(fmtRelativeMinutes(snapshotAt))}</p>
         </article>
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Review State</p>
-          <p class="chart-lightbox-context-value">${reviewStateSummary}</p>
-          <p class="chart-lightbox-detail-note">${reviewedAt ? `Updated ${fmtDateTimeCompact(reviewedAt)}` : 'No manual review saved yet'}</p>
+          <p class="chart-lightbox-context-value">${escapeHtml(reviewStateSummary)}</p>
+          <p class="chart-lightbox-detail-note">${escapeHtml(reviewedAt ? `Updated ${fmtDateTimeCompact(reviewedAt)}` : 'No manual review saved yet')}</p>
         </article>
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Execution Read</p>
-          <p class="chart-lightbox-context-value">${alertLike?.riskDecision?.allowed ? 'Desk-ready' : 'Guardrail blocked'}</p>
-          <p class="chart-lightbox-detail-note">${typeof candidate?.oneMinuteConfidence === 'number' ? `1m confidence ${fmtNum(candidate.oneMinuteConfidence, 2)}` : '1m confidence unavailable'}</p>
+          <p class="chart-lightbox-context-value">${escapeHtml(alertLike?.riskDecision?.allowed ? 'Desk-ready' : 'Guardrail blocked')}</p>
+          <p class="chart-lightbox-detail-note">${escapeHtml(typeof candidate?.oneMinuteConfidence === 'number' ? `1m confidence ${fmtNum(candidate.oneMinuteConfidence, 2)}` : '1m confidence unavailable')}</p>
         </article>
       </div>
       <article class="chart-lightbox-story-card">
         <p class="chart-lightbox-detail-label">Desk Read</p>
-        <p class="chart-lightbox-story-copy">${signalSummary}</p>
+        <p class="chart-lightbox-story-copy">${escapeHtml(signalSummary)}</p>
       </article>
       <article class="chart-lightbox-story-card">
         <p class="chart-lightbox-detail-label">Guardrails</p>
-        <p class="chart-lightbox-story-copy">${guardrailSummary}</p>
+        <p class="chart-lightbox-story-copy">${escapeHtml(guardrailSummary)}</p>
       </article>
       ${
         researchAgreement
@@ -3548,11 +3728,11 @@ const renderChartLightboxDetails = (context) => {
               <div class="chart-lightbox-chip-row">
                 ${researchAgreement.chips.map((chip) => `<span class="${chip.className}">${chip.label}</span>`).join('')}
               </div>
-              <p class="chart-lightbox-story-copy">${researchAgreement.note}</p>
+              <p class="chart-lightbox-story-copy">${escapeHtml(researchAgreement.note)}</p>
             </article>`
           : ''
       }
-      ${evidence.length ? `<div class="chart-lightbox-chip-row">${evidence.map((tag) => `<span class="evidence-chip">${tag}</span>`).join('')}</div>` : ''}
+      ${evidence.length ? `<div class="chart-lightbox-chip-row">${evidence.map((tag) => `<span class="evidence-chip">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
       ${
         visibleStructureLevels.length || visibleZones.length || hiddenContextLevels.length
           ? `
@@ -3562,19 +3742,19 @@ const renderChartLightboxDetails = (context) => {
                   ${visibleStructureLevels
                     .map(
                       (level) =>
-                        `<span class="evidence-chip">${level.label} ${fmtNum(level.price, 2)}</span>`
+                        `<span class="evidence-chip">${escapeHtml(`${level.label} ${fmtNum(level.price, 2)}`)}</span>`
                     )
                     .join('')}
                   ${visibleZones
                     .map(
                       (zone) =>
-                        `<span class="evidence-chip">${zone.label} ${fmtNum(zone.low, 2)}-${fmtNum(zone.high, 2)}</span>`
+                        `<span class="evidence-chip">${escapeHtml(`${zone.label} ${fmtNum(zone.low, 2)}-${fmtNum(zone.high, 2)}`)}</span>`
                     )
                     .join('')}
                   ${hiddenContextLevels
                     .map(
                       (level) =>
-                        `<span class="evidence-chip evidence-chip-muted">${level.label} ${fmtNum(level.price, 2)}</span>`
+                        `<span class="evidence-chip evidence-chip-muted">${escapeHtml(`${level.label} ${fmtNum(level.price, 2)}`)}</span>`
                     )
                     .join('')}
                 </div>
@@ -3582,7 +3762,7 @@ const renderChartLightboxDetails = (context) => {
             `
           : ''
       }
-      ${reviewNote ? `<article class="chart-lightbox-story-card"><p class="chart-lightbox-detail-label">Review Note</p><p class="chart-lightbox-story-copy">${reviewNote}</p></article>` : ''}
+      ${reviewNote ? `<article class="chart-lightbox-story-card"><p class="chart-lightbox-detail-label">Review Note</p><p class="chart-lightbox-story-copy">${escapeHtml(reviewNote)}</p></article>` : ''}
     </div>
   `;
 };
@@ -4314,6 +4494,7 @@ const apiFetch = async (path, options = {}) => {
   const headers = {
     'Cache-Control': 'no-store',
     Pragma: 'no-cache',
+    'X-TradeAssist-Client': 'mobile-web',
     ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
     ...(options.headers || {})
   };
@@ -4587,6 +4768,51 @@ const renderResearchDiagnostics = (research) => {
   }
 };
 
+const renderPaperAutonomyDiagnostics = (autonomy) => {
+  if (!diagPaperAutonomyStatusEl) {
+    return;
+  }
+
+  if (!autonomy?.enabled) {
+    diagPaperAutonomyStatusEl.textContent = '--';
+    diagPaperAutonomyIdeasEl.textContent = '--';
+    diagPaperAutonomyWinRateEl.textContent = '--';
+    diagPaperAutonomyPnlEl.textContent = '--';
+    diagPaperAutonomyBestThesisEl.textContent = '--';
+    diagPaperAutonomyLastIdeaEl.textContent = '--';
+    if (diagPaperAutonomySymbolsEl) {
+      renderEmpty(diagPaperAutonomySymbolsEl, 'Paper autonomy diagnostics unavailable.');
+    }
+    if (diagPaperAutonomyThesesEl) {
+      renderEmpty(diagPaperAutonomyThesesEl, 'No autonomy thesis activity yet.');
+    }
+    return;
+  }
+
+  const latestIdea = autonomy.latestIdea ?? autonomy.recentIdeas?.[0] ?? null;
+  diagPaperAutonomyStatusEl.textContent = `${autonomy.started ? 'Live' : 'Loading'} • ${formatDeskWindow(autonomy.session)}`;
+  diagPaperAutonomyIdeasEl.textContent = `${autonomy.openIdeas ?? 0} open • ${autonomy.closedIdeas ?? 0} closed • ${autonomy.totalIdeas ?? 0} total`;
+  diagPaperAutonomyWinRateEl.textContent = `${Math.round(Number(autonomy.winRate ?? 0) * 100)}% • ${autonomy.performance?.wins ?? 0}/${autonomy.performance?.learningSamples ?? 0}`;
+  diagPaperAutonomyPnlEl.textContent = `${fmtSignedUsd(autonomy.performance?.realizedPnl ?? 0)} • ${fmtNum(autonomy.performance?.realizedR ?? 0, 2)}R`;
+  diagPaperAutonomyBestThesisEl.textContent = autonomy.bestThesis
+    ? `${autonomy.bestThesis.label} • ${Math.round(Number(autonomy.bestThesis.hitRate ?? 0) * 100)}% • ${fmtNum(autonomy.bestThesis.avgR ?? 0, 2)}R avg`
+    : 'No autonomy thesis has enough closed trades to score yet.';
+  diagPaperAutonomyLastIdeaEl.textContent = latestIdea
+    ? `${latestIdea.symbol} ${latestIdea.side} • ${latestIdea.thesisLabel ?? paperAutonomyThesisLabel(latestIdea.thesis)} • ${fmtRelativeMinutes(latestIdea.openedAt)} • ${latestIdea.reason}`
+    : 'No autonomy idea opened yet.';
+
+  renderPaperAutonomySymbolCards(
+    diagPaperAutonomySymbolsEl,
+    autonomy.symbolStatus ?? [],
+    'No autonomy symbol bias yet.'
+  );
+  renderPaperAutonomyThesisCards(
+    diagPaperAutonomyThesesEl,
+    (autonomy.thesisStats ?? []).filter((entry) => (entry.openIdeas ?? entry.open ?? 0) > 0 || (entry.open ?? 0) > 0),
+    'No active autonomy thesis'
+  );
+};
+
 const renderReviewInsights = () => {
   const summary = reviewPerformanceSummary(latestReviews);
   reviewSetupEdgeEl.textContent = summary.bySetup;
@@ -4632,6 +4858,7 @@ const renderDiagnostics = () => {
     if (diagResearchHypothesesEl) {
       renderEmpty(diagResearchHypothesesEl, 'Research diagnostics unavailable.');
     }
+    renderPaperAutonomyDiagnostics(null);
     renderCalendarEvents(null);
     diagTrainingCadenceEl.textContent = '--';
     diagTrainingLastRunEl.textContent = '--';
@@ -4703,6 +4930,7 @@ const renderDiagnostics = () => {
     : '--';
   diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
   renderResearchDiagnostics(research);
+  renderPaperAutonomyDiagnostics(diagnostics.paperAutonomy ?? null);
   renderCalendarEvents(calendar);
   diagTrainingCadenceEl.textContent = training?.enabled
     ? `${cadence?.retrainIntervalMinutes ?? '--'}m cadence • ${cadence?.minNewBarsForRetrain ?? '--'} bars`

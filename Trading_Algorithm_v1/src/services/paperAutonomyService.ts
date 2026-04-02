@@ -3,14 +3,22 @@ import path from 'node:path';
 import type { Candle, SetupCandidate, SignalAlert, SignalChartSnapshot, Side, SymbolCode } from '../domain/types.js';
 import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training/historicalTrainer.js';
 import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
-import type { PaperTrade, PaperTradeEvent } from './paperTradingService.js';
+import type { PaperTrade, PaperTradeEvent, PaperTradingStatus } from './paperTradingService.js';
 
-export type PaperAutonomyThesis = 'TREND_BREAKOUT_EXPANSION' | 'TREND_PULLBACK_RECLAIM';
+export type PaperAutonomyThesis =
+  | 'TREND_BREAKOUT_EXPANSION'
+  | 'TREND_PULLBACK_RECLAIM'
+  | 'RANGE_FADE_REVERSION'
+  | 'FAILED_BREAKOUT_REVERSAL'
+  | 'VOLATILITY_COMPRESSION_RELEASE';
 
-interface LocalTimeParts {
-  dayKey: string;
-  minuteOfDay: number;
-}
+const PAPER_AUTONOMY_THESES: PaperAutonomyThesis[] = [
+  'TREND_BREAKOUT_EXPANSION',
+  'TREND_PULLBACK_RECLAIM',
+  'RANGE_FADE_REVERSION',
+  'FAILED_BREAKOUT_REVERSAL',
+  'VOLATILITY_COMPRESSION_RELEASE'
+];
 
 export interface PaperAutonomyIdeaRecord {
   alertId: string;
@@ -33,6 +41,7 @@ export interface PaperAutonomyIdeaRecord {
 
 export interface PaperAutonomyThesisStats {
   thesis: PaperAutonomyThesis;
+  label: string;
   total: number;
   open: number;
   closed: number;
@@ -41,6 +50,48 @@ export interface PaperAutonomyThesisStats {
   flats: number;
   hitRate: number;
   avgR: number;
+  realizedPnl: number;
+  lastOpenedAt?: string;
+}
+
+export interface PaperAutonomySymbolStatus {
+  symbol: SymbolCode;
+  direction: ResearchTrendDirection;
+  confidence: number;
+  exploratory: boolean;
+  reason: string;
+  latestBarTimestamp?: string;
+  openIdeas: number;
+  closedIdeas: number;
+  winRate: number;
+  realizedPnl: number;
+}
+
+export interface PaperAutonomyPerformanceSummary {
+  realizedPnl: number;
+  realizedR: number;
+  avgR: number;
+  wins: number;
+  losses: number;
+  flats: number;
+  learningSamples: number;
+}
+
+export interface PaperAutonomyBestThesis {
+  thesis: PaperAutonomyThesis;
+  label: string;
+  hitRate: number;
+  avgR: number;
+  closed: number;
+  realizedPnl: number;
+}
+
+export interface PaperAutonomyActiveThesis {
+  thesis: PaperAutonomyThesis;
+  label: string;
+  openIdeas: number;
+  totalIdeas: number;
+  lastOpenedAt?: string;
 }
 
 export interface PaperAutonomyStatus {
@@ -62,8 +113,13 @@ export interface PaperAutonomyStatus {
   openIdeas: number;
   closedIdeas: number;
   winRate: number;
+  performance: PaperAutonomyPerformanceSummary;
+  bestThesis: PaperAutonomyBestThesis | null;
+  activeTheses: PaperAutonomyActiveThesis[];
+  symbolStatus: PaperAutonomySymbolStatus[];
   thesisStats: PaperAutonomyThesisStats[];
   recentIdeas: PaperAutonomyIdeaRecord[];
+  recentClosedIdeas: PaperAutonomyIdeaRecord[];
 }
 
 interface PersistedPaperAutonomyState {
@@ -89,45 +145,15 @@ export interface PaperAutonomyConfig {
   breakoutLookbackBars5m: number;
   pullbackLookbackBars5m: number;
   getMarketResearchStatus?: () => MarketResearchStatus | null;
+  getPaperTradingStatus?: () => PaperTradingStatus | null;
   submitAlert: (alert: SignalAlert, source: string) => Promise<PaperTrade | null>;
 }
 
-const dtfCache = new Map<string, Intl.DateTimeFormat>();
-const getFormatter = (timezone: string): Intl.DateTimeFormat => {
-  const cached = dtfCache.get(timezone);
-  if (cached) {
-    return cached;
-  }
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23'
-  });
-  dtfCache.set(timezone, formatter);
-  return formatter;
-};
-
-const getLocalTimeParts = (timestamp: string, timezone: string): LocalTimeParts => {
-  const formatter = getFormatter(timezone);
-  const parts = formatter.formatToParts(new Date(timestamp));
-  const find = (type: Intl.DateTimeFormatPartTypes): string => parts.find((entry) => entry.type === type)?.value ?? '00';
-  const year = find('year');
-  const month = find('month');
-  const day = find('day');
-  const hour = Number.parseInt(find('hour'), 10);
-  const minute = Number.parseInt(find('minute'), 10);
-  return {
-    dayKey: `${year}-${month}-${day}`,
-    minuteOfDay: hour * 60 + minute
-  };
-};
-
-const inWindow = (minuteOfDay: number, start: number, end: number): boolean =>
-  minuteOfDay >= start && minuteOfDay <= end;
+interface PaperAutonomyPortfolioAdjustment {
+  scoreAdjustment: number;
+  riskMultiplier: number;
+  summary: string;
+}
 
 const takeLast = <T>(items: T[], count: number): T[] =>
   items.length <= count ? items : items.slice(items.length - count);
@@ -197,8 +223,39 @@ const calcAtr = (candles: Candle[], period: number): number => {
   return average(trs);
 };
 
+const getMinuteOfDayInTimezone = (timestamp: string, timezone: string): number => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  const parts = formatter.formatToParts(new Date(timestamp));
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0');
+  return hour * 60 + minute;
+};
+
+const isMinuteInWindow = (value: number, startMinute: number, endMinute: number): boolean => {
+  if (startMinute === endMinute) {
+    return true;
+  }
+  if (startMinute < endMinute) {
+    return value >= startMinute && value <= endMinute;
+  }
+  return value >= startMinute || value <= endMinute;
+};
+
 const thesisLabel = (thesis: PaperAutonomyThesis): string =>
-  thesis === 'TREND_BREAKOUT_EXPANSION' ? 'Trend Breakout Expansion' : 'Trend Pullback Reclaim';
+  thesis === 'TREND_BREAKOUT_EXPANSION'
+    ? 'Trend Breakout Expansion'
+    : thesis === 'TREND_PULLBACK_RECLAIM'
+      ? 'Trend Pullback Reclaim'
+      : thesis === 'RANGE_FADE_REVERSION'
+        ? 'Range Fade Reversion'
+        : thesis === 'FAILED_BREAKOUT_REVERSAL'
+          ? 'Failed Breakout Reversal'
+          : 'Volatility Compression Release';
 
 const summarizeCandidate = (candidate: SetupCandidate): string => {
   const score = typeof candidate.finalScore === 'number' ? `score ${candidate.finalScore.toFixed(1)}` : 'unscored';
@@ -210,12 +267,16 @@ const normalizeIdea = (value: unknown): PaperAutonomyIdeaRecord | null => {
     return null;
   }
   const candidate = value as Partial<PaperAutonomyIdeaRecord>;
+  const thesis =
+    typeof candidate.thesis === 'string' && PAPER_AUTONOMY_THESES.includes(candidate.thesis as PaperAutonomyThesis)
+      ? (candidate.thesis as PaperAutonomyThesis)
+      : null;
   if (
     typeof candidate.alertId !== 'string'
     || typeof candidate.candidateId !== 'string'
     || (candidate.symbol !== 'NQ' && candidate.symbol !== 'ES')
     || (candidate.side !== 'LONG' && candidate.side !== 'SHORT')
-    || (candidate.thesis !== 'TREND_BREAKOUT_EXPANSION' && candidate.thesis !== 'TREND_PULLBACK_RECLAIM')
+    || thesis === null
     || typeof candidate.score !== 'number'
     || typeof candidate.reason !== 'string'
     || typeof candidate.researchDirection !== 'string'
@@ -230,7 +291,7 @@ const normalizeIdea = (value: unknown): PaperAutonomyIdeaRecord | null => {
     candidateId: candidate.candidateId,
     symbol: candidate.symbol,
     side: candidate.side,
-    thesis: candidate.thesis,
+    thesis,
     score: round(candidate.score, 2),
     reason: candidate.reason,
     researchDirection: candidate.researchDirection as ResearchTrendDirection,
@@ -386,12 +447,8 @@ export class PaperAutonomyService {
     this.started = false;
   }
 
-  private buildSessionExpiry(timestamp: string): string {
-    const local = getLocalTimeParts(timestamp, this.config.timezone);
-    const sessionEndMinute = this.config.sessionEndHour * 60 + this.config.sessionEndMinute;
-    const remainingMinutes = Math.max(1, sessionEndMinute - local.minuteOfDay);
-    const holdMinutes = Math.min(this.config.maxHoldMinutes, remainingMinutes);
-    return new Date(Date.parse(timestamp) + holdMinutes * 60_000).toISOString();
+  private buildTradeExpiry(timestamp: string): string {
+    return new Date(Date.parse(timestamp) + this.config.maxHoldMinutes * 60_000).toISOString();
   }
 
   private buildThesisBias(thesis: PaperAutonomyThesis, symbol: SymbolCode): number {
@@ -404,6 +461,115 @@ export class PaperAutonomyService {
     const wins = evaluated.filter((idea) => idea.outcome === 'WIN').length;
     const hitRate = wins / evaluated.length;
     return clamp((hitRate - 0.5) * 18, -6, 6);
+  }
+
+  private buildAdaptiveRiskPct(thesis: PaperAutonomyThesis, symbol: SymbolCode, confidence: number): number {
+    const evaluated = [...this.ideas.values()].filter(
+      (idea) => idea.thesis === thesis && idea.symbol === symbol && idea.status === 'CLOSED' && idea.outcome
+    );
+    const hitRate =
+      evaluated.length > 0
+        ? evaluated.filter((idea) => idea.outcome === 'WIN').length / evaluated.length
+        : 0.5;
+    const baseRiskPct = 0.2 + confidence * 0.55;
+    const performanceBias = evaluated.length >= 4 ? (hitRate - 0.5) * 0.7 : 0;
+    return round(clamp(baseRiskPct + performanceBias, 0.15, 1.25), 2);
+  }
+
+  private buildPortfolioAdjustment(
+    symbol: SymbolCode,
+    thesis: PaperAutonomyThesis,
+    side: Side
+  ): PaperAutonomyPortfolioAdjustment {
+    const reasons: string[] = [];
+    let scoreAdjustment = 0;
+    let riskMultiplier = 1;
+
+    const openIdeas = [...this.ideas.values()].filter((idea) => idea.status === 'OPEN');
+    const sameSymbolOpen = openIdeas.filter((idea) => idea.symbol === symbol);
+    const sameThesisOpen = sameSymbolOpen.filter((idea) => idea.thesis === thesis && idea.side === side);
+    const sameSideOpen = sameSymbolOpen.filter((idea) => idea.side === side);
+
+    if (sameThesisOpen.length > 0) {
+      scoreAdjustment -= sameThesisOpen.length * 3.5;
+      riskMultiplier *= clamp(1 - sameThesisOpen.length * 0.08, 0.45, 1);
+      reasons.push(`thesis crowding x${sameThesisOpen.length}`);
+    }
+
+    if (sameSideOpen.length >= 3) {
+      const sidePressure = sameSideOpen.length - 2;
+      scoreAdjustment -= sidePressure * 2.25;
+      riskMultiplier *= clamp(1 - sidePressure * 0.06, 0.5, 1);
+      reasons.push(`direction stacking x${sameSideOpen.length}`);
+    }
+
+    const closedIdeas = [...this.ideas.values()]
+      .filter((idea) => idea.status === 'CLOSED')
+      .sort((left, right) => (right.closedAt ?? right.openedAt).localeCompare(left.closedAt ?? left.openedAt));
+    const recentClosedIdeas = closedIdeas.slice(0, 10);
+    let losingStreak = 0;
+    for (const idea of recentClosedIdeas) {
+      if (idea.outcome === 'LOSS') {
+        losingStreak += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (losingStreak >= 2) {
+      scoreAdjustment -= losingStreak * 2.5;
+      riskMultiplier *= clamp(1 - losingStreak * 0.1, 0.4, 1);
+      reasons.push(`recent loss streak ${losingStreak}`);
+    }
+
+    if (recentClosedIdeas.length >= 4) {
+      const averageRecentR = average(recentClosedIdeas.map((idea) => idea.realizedR ?? 0));
+      if (averageRecentR < 0) {
+        scoreAdjustment += averageRecentR * 6;
+        riskMultiplier *= clamp(1 + averageRecentR * 0.18, 0.45, 1);
+        reasons.push(`recent avgR ${round(averageRecentR, 2)}`);
+      }
+    }
+
+    const paperStatus = this.config.getPaperTradingStatus?.() ?? null;
+    if (paperStatus) {
+      const exposureCount = paperStatus.openTrades + paperStatus.pendingEntries;
+      if (exposureCount >= 6) {
+        const exposurePressure = exposureCount - 5;
+        scoreAdjustment -= exposurePressure * 1.8;
+        riskMultiplier *= clamp(1 - exposurePressure * 0.05, 0.45, 1);
+        reasons.push(`portfolio exposure ${exposureCount}`);
+      }
+
+      if (paperStatus.closedTrades >= 6 && paperStatus.hitRate < 0.45) {
+        const hitRateGap = 0.45 - paperStatus.hitRate;
+        scoreAdjustment -= hitRateGap * 20;
+        riskMultiplier *= clamp(1 - hitRateGap * 1.2, 0.45, 1);
+        reasons.push(`hit rate ${round(paperStatus.hitRate * 100, 0)}%`);
+      }
+
+      const drawdownPct =
+        paperStatus.initialBalance > 0
+          ? Math.max(0, ((paperStatus.initialBalance - paperStatus.equity) / paperStatus.initialBalance) * 100)
+          : 0;
+      if (drawdownPct > 0.2) {
+        scoreAdjustment -= drawdownPct * 2.4;
+        riskMultiplier *= clamp(1 - drawdownPct * 0.12, 0.35, 1);
+        reasons.push(`drawdown ${drawdownPct.toFixed(2)}%`);
+      }
+
+      if (paperStatus.closedTrades >= 8 && paperStatus.hitRate > 0.58 && paperStatus.realizedPnl > 0) {
+        scoreAdjustment += 1.5;
+        riskMultiplier *= 1.04;
+        reasons.push('portfolio momentum positive');
+      }
+    }
+
+    return {
+      scoreAdjustment: round(clamp(scoreAdjustment, -30, 6), 2),
+      riskMultiplier: round(clamp(riskMultiplier, 0.25, 1.1), 2),
+      summary: reasons.length > 0 ? reasons.join(' • ') : 'base pressure'
+    };
   }
 
   private buildChartSnapshot(candles5m: Candle[], candidate: SetupCandidate): SignalChartSnapshot | undefined {
@@ -493,6 +659,83 @@ export class PaperAutonomyService {
       direction: 'BALANCED',
       confidence: 0.4,
       reason: 'Autonomous bar-state trend is balanced.'
+    };
+  }
+
+  private resolveTradableBias(
+    symbol: SymbolCode,
+    candles5m: Candle[],
+    candles15m: Candle[],
+    candles1H: Candle[]
+  ): {
+    direction: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>;
+    confidence: number;
+    reason: string;
+    exploratory: boolean;
+  } | null {
+    const trend = this.resolveResearchDirection(symbol, candles5m, candles15m, candles1H);
+    if ((trend.direction === 'BULLISH' || trend.direction === 'BEARISH') && trend.confidence >= this.config.minTrendConfidence) {
+      return {
+        direction: trend.direction,
+        confidence: trend.confidence,
+        reason: trend.reason,
+        exploratory: false
+      };
+    }
+
+    if (candles5m.length < 8 || candles15m.length < 4 || candles1H.length < 3) {
+      return null;
+    }
+
+    const current = candles5m.at(-1);
+    const previous = candles5m.at(-2);
+    if (!current || !previous) {
+      return null;
+    }
+
+    const closes5m = candles5m.map((candle) => candle.close);
+    const closes15m = candles15m.map((candle) => candle.close);
+    const closes1H = candles1H.map((candle) => candle.close);
+    const ema9 = calcEma(closes5m, 9).at(-1) ?? current.close;
+    const ema20 = calcEma(closes5m, 20).at(-1) ?? current.close;
+    const ema15 = calcEma(closes15m, 8).at(-1) ?? closes15m.at(-1) ?? current.close;
+    const ema1H = calcEma(closes1H, 5).at(-1) ?? closes1H.at(-1) ?? current.close;
+    const recent5m = takeLast(candles5m, 6);
+    const swingHigh = Math.max(...recent5m.slice(0, -1).map((candle) => candle.high));
+    const swingLow = Math.min(...recent5m.slice(0, -1).map((candle) => candle.low));
+
+    const bullishVotes =
+      Number(current.close > ema9)
+      + Number(ema9 >= ema20)
+      + Number((closes15m.at(-1) ?? current.close) >= ema15)
+      + Number((closes1H.at(-1) ?? current.close) >= ema1H)
+      + Number(current.close > previous.close)
+      + Number(current.close >= swingHigh);
+    const bearishVotes =
+      Number(current.close < ema9)
+      + Number(ema9 <= ema20)
+      + Number((closes15m.at(-1) ?? current.close) <= ema15)
+      + Number((closes1H.at(-1) ?? current.close) <= ema1H)
+      + Number(current.close < previous.close)
+      + Number(current.close <= swingLow);
+
+    if (bullishVotes === bearishVotes) {
+      return null;
+    }
+
+    const direction = bullishVotes > bearishVotes ? 'BULLISH' : 'BEARISH';
+    const dominantVotes = Math.max(bullishVotes, bearishVotes);
+    const confidence = round(clamp(0.28 + dominantVotes * 0.05 + Math.abs(bullishVotes - bearishVotes) * 0.04, 0.3, 0.62), 2);
+    const reason =
+      direction === 'BULLISH'
+        ? 'Autonomous engine is exploring a bullish bias from local momentum, reclaim, and higher-timeframe drift.'
+        : 'Autonomous engine is exploring a bearish bias from local momentum, rejection, and higher-timeframe drift.';
+
+    return {
+      direction,
+      confidence,
+      reason,
+      exploratory: true
     };
   }
 
@@ -651,6 +894,322 @@ export class PaperAutonomyService {
     };
   }
 
+  private buildRangeFadeIdea(
+    symbol: SymbolCode,
+    candles5m: Candle[],
+    confidence: number
+  ): {
+    thesis: PaperAutonomyThesis;
+    side: Side;
+    entry: number;
+    stopLoss: number;
+    takeProfit: number;
+    score: number;
+    reason: string;
+  } | null {
+    const lookback = Math.max(10, this.config.pullbackLookbackBars5m + 2);
+    if (candles5m.length < lookback) {
+      return null;
+    }
+
+    const current = candles5m.at(-1);
+    const previous = candles5m.at(-2);
+    if (!current || !previous) {
+      return null;
+    }
+
+    const recent = takeLast(candles5m, lookback);
+    const atr = calcAtr(candles5m, 14);
+    if (atr <= 0) {
+      return null;
+    }
+
+    const recentHigh = Math.max(...recent.map((candle) => candle.high));
+    const recentLow = Math.min(...recent.map((candle) => candle.low));
+    const range = recentHigh - recentLow;
+    if (range < atr * 1.4) {
+      return null;
+    }
+
+    const closes = candles5m.map((candle) => candle.close);
+    const ema20 = calcEma(closes, 20).at(-1) ?? current.close;
+    const midpoint = (recentHigh + recentLow) / 2;
+    const lowerFadeBand = recentLow + range * 0.28;
+    const upperFadeBand = recentHigh - range * 0.28;
+
+    if (current.low <= lowerFadeBand && current.close > current.open && current.close >= previous.close) {
+      const stopLoss = round(recentLow - atr * 0.18, 2);
+      if (stopLoss >= current.close) {
+        return null;
+      }
+      const entry = round(current.close, 2);
+      const target = Math.max(midpoint, ema20);
+      if (target <= entry) {
+        return null;
+      }
+      const score = round(
+        clamp(54 + (1 - confidence) * 10 + this.buildThesisBias('RANGE_FADE_REVERSION', symbol), 0, 100),
+        2
+      );
+      return {
+        thesis: 'RANGE_FADE_REVERSION',
+        side: 'LONG',
+        entry,
+        stopLoss,
+        takeProfit: round(target, 2),
+        score,
+        reason: 'Autonomous range fade: 5m flushed into local range support and reclaimed back toward fair value.'
+      };
+    }
+
+    if (current.high >= upperFadeBand && current.close < current.open && current.close <= previous.close) {
+      const stopLoss = round(recentHigh + atr * 0.18, 2);
+      if (stopLoss <= current.close) {
+        return null;
+      }
+      const entry = round(current.close, 2);
+      const target = Math.min(midpoint, ema20);
+      if (target >= entry) {
+        return null;
+      }
+      const score = round(
+        clamp(54 + (1 - confidence) * 10 + this.buildThesisBias('RANGE_FADE_REVERSION', symbol), 0, 100),
+        2
+      );
+      return {
+        thesis: 'RANGE_FADE_REVERSION',
+        side: 'SHORT',
+        entry,
+        stopLoss,
+        takeProfit: round(target, 2),
+        score,
+        reason: 'Autonomous range fade: 5m extended into local range resistance and mean-reverted toward fair value.'
+      };
+    }
+
+    return null;
+  }
+
+  private buildFailedBreakoutIdea(
+    symbol: SymbolCode,
+    candles5m: Candle[],
+    trendDirection: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>,
+    confidence: number
+  ): {
+    thesis: PaperAutonomyThesis;
+    side: Side;
+    entry: number;
+    stopLoss: number;
+    takeProfit: number;
+    score: number;
+    reason: string;
+  } | null {
+    const lookback = Math.max(8, this.config.breakoutLookbackBars5m + 2);
+    if (candles5m.length < lookback) {
+      return null;
+    }
+
+    const current = candles5m.at(-1);
+    if (!current) {
+      return null;
+    }
+    const prior = takeLast(candles5m, lookback).slice(0, -1);
+    if (prior.length < lookback - 1) {
+      return null;
+    }
+    const atr = calcAtr(candles5m, 14);
+    if (atr <= 0) {
+      return null;
+    }
+
+    const priorHigh = Math.max(...prior.map((candle) => candle.high));
+    const priorLow = Math.min(...prior.map((candle) => candle.low));
+
+    if (current.high >= priorHigh + atr * 0.06 && current.close < priorHigh && current.close < current.open) {
+      const stopLoss = round(Math.max(current.high, priorHigh) + atr * 0.16, 2);
+      if (stopLoss <= current.close) {
+        return null;
+      }
+      const entry = round(current.close, 2);
+      const risk = stopLoss - entry;
+      const takeProfit = round(entry - risk * clamp(1.5 + (1 - confidence) * 0.6, 1.5, 2.2), 2);
+      const trendBonus = trendDirection === 'BEARISH' ? 4 : trendDirection === 'BULLISH' ? -4 : 0;
+      const score = round(
+        clamp(57 + (1 - confidence) * 12 + trendBonus + this.buildThesisBias('FAILED_BREAKOUT_REVERSAL', symbol), 0, 100),
+        2
+      );
+      return {
+        thesis: 'FAILED_BREAKOUT_REVERSAL',
+        side: 'SHORT',
+        entry,
+        stopLoss,
+        takeProfit,
+        score,
+        reason: 'Autonomous failed breakout reversal: 5m swept above local range and closed back inside it.'
+      };
+    }
+
+    if (current.low <= priorLow - atr * 0.06 && current.close > priorLow && current.close > current.open) {
+      const stopLoss = round(Math.min(current.low, priorLow) - atr * 0.16, 2);
+      if (stopLoss >= current.close) {
+        return null;
+      }
+      const entry = round(current.close, 2);
+      const risk = entry - stopLoss;
+      const takeProfit = round(entry + risk * clamp(1.5 + (1 - confidence) * 0.6, 1.5, 2.2), 2);
+      const trendBonus = trendDirection === 'BULLISH' ? 4 : trendDirection === 'BEARISH' ? -4 : 0;
+      const score = round(
+        clamp(57 + (1 - confidence) * 12 + trendBonus + this.buildThesisBias('FAILED_BREAKOUT_REVERSAL', symbol), 0, 100),
+        2
+      );
+      return {
+        thesis: 'FAILED_BREAKOUT_REVERSAL',
+        side: 'LONG',
+        entry,
+        stopLoss,
+        takeProfit,
+        score,
+        reason: 'Autonomous failed breakout reversal: 5m flushed below local range and reclaimed back inside it.'
+      };
+    }
+
+    return null;
+  }
+
+  private buildCompressionReleaseIdea(
+    symbol: SymbolCode,
+    candles5m: Candle[],
+    direction: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>,
+    confidence: number
+  ): {
+    thesis: PaperAutonomyThesis;
+    side: Side;
+    entry: number;
+    stopLoss: number;
+    takeProfit: number;
+    score: number;
+    reason: string;
+  } | null {
+    if (candles5m.length < 12) {
+      return null;
+    }
+
+    const current = candles5m.at(-1);
+    if (!current) {
+      return null;
+    }
+    const recent = takeLast(candles5m, 6);
+    const compression = recent.slice(0, -1);
+    if (compression.length < 5) {
+      return null;
+    }
+    const atr = calcAtr(candles5m, 14);
+    if (atr <= 0) {
+      return null;
+    }
+    const avgCompressionRange = average(compression.map((candle) => candle.high - candle.low));
+    const compressionHigh = Math.max(...compression.map((candle) => candle.high));
+    const compressionLow = Math.min(...compression.map((candle) => candle.low));
+    const compressionRange = compressionHigh - compressionLow;
+    const currentRange = current.high - current.low;
+
+    if (avgCompressionRange > atr * 0.85 || compressionRange > atr * 2.4 || currentRange < avgCompressionRange * 1.35) {
+      return null;
+    }
+
+    if (direction === 'BULLISH' && current.close > compressionHigh && current.close > current.open) {
+      const stopLoss = round(compressionLow - atr * 0.14, 2);
+      if (stopLoss >= current.close) {
+        return null;
+      }
+      const entry = round(current.close, 2);
+      const risk = entry - stopLoss;
+      const takeProfit = round(entry + risk * clamp(1.6 + confidence * 0.45, 1.6, 2.25), 2);
+      const score = round(
+        clamp(58 + confidence * 16 + this.buildThesisBias('VOLATILITY_COMPRESSION_RELEASE', symbol), 0, 100),
+        2
+      );
+      return {
+        thesis: 'VOLATILITY_COMPRESSION_RELEASE',
+        side: 'LONG',
+        entry,
+        stopLoss,
+        takeProfit,
+        score,
+        reason: 'Autonomous compression release: 5m volatility coiled and broke higher with expansion.'
+      };
+    }
+
+    if (direction === 'BEARISH' && current.close < compressionLow && current.close < current.open) {
+      const stopLoss = round(compressionHigh + atr * 0.14, 2);
+      if (stopLoss <= current.close) {
+        return null;
+      }
+      const entry = round(current.close, 2);
+      const risk = stopLoss - entry;
+      const takeProfit = round(entry - risk * clamp(1.6 + confidence * 0.45, 1.6, 2.25), 2);
+      const score = round(
+        clamp(58 + confidence * 16 + this.buildThesisBias('VOLATILITY_COMPRESSION_RELEASE', symbol), 0, 100),
+        2
+      );
+      return {
+        thesis: 'VOLATILITY_COMPRESSION_RELEASE',
+        side: 'SHORT',
+        entry,
+        stopLoss,
+        takeProfit,
+        score,
+        reason: 'Autonomous compression release: 5m volatility coiled and broke lower with expansion.'
+      };
+    }
+
+    return null;
+  }
+
+  private buildSymbolStatus(symbol: SymbolCode): PaperAutonomySymbolStatus {
+    const bars = this.barsBySymbol.get(symbol) ?? [];
+    const latestBarTimestamp = bars.at(-1)?.timestamp;
+    const ideas = [...this.ideas.values()].filter((idea) => idea.symbol === symbol);
+    const openIdeas = ideas.filter((idea) => idea.status === 'OPEN');
+    const closedIdeas = ideas.filter((idea) => idea.status === 'CLOSED');
+    const wins = closedIdeas.filter((idea) => idea.outcome === 'WIN').length;
+    const realizedPnl = round(closedIdeas.reduce((sum, idea) => sum + (idea.realizedPnl ?? 0), 0), 2);
+
+    if (bars.length < 40 || !latestBarTimestamp) {
+      return {
+        symbol,
+        direction: 'STAND_ASIDE',
+        confidence: 0,
+        exploratory: false,
+        reason: 'Autonomy engine is still building enough bars for this symbol.',
+        latestBarTimestamp,
+        openIdeas: openIdeas.length,
+        closedIdeas: closedIdeas.length,
+        winRate: closedIdeas.length > 0 ? round(wins / closedIdeas.length, 2) : 0,
+        realizedPnl
+      };
+    }
+
+    const candles5m = completeCandles(bars, latestBarTimestamp, 5, 30);
+    const candles15m = completeCandles(bars, latestBarTimestamp, 15, 20);
+    const candles1H = completeCandles(bars, latestBarTimestamp, 60, 12);
+    const tradable = this.resolveTradableBias(symbol, candles5m, candles15m, candles1H);
+    const trend = tradable ?? this.resolveResearchDirection(symbol, candles5m, candles15m, candles1H);
+
+    return {
+      symbol,
+      direction: trend.direction,
+      confidence: round(trend.confidence ?? 0, 2),
+      exploratory: Boolean('exploratory' in trend && trend.exploratory),
+      reason: trend.reason,
+      latestBarTimestamp,
+      openIdeas: openIdeas.length,
+      closedIdeas: closedIdeas.length,
+      winRate: closedIdeas.length > 0 ? round(wins / closedIdeas.length, 2) : 0,
+      realizedPnl
+    };
+  }
+
   private async evaluateSymbol(symbol: SymbolCode, timestamp: string): Promise<void> {
     const bars = this.barsBySymbol.get(symbol) ?? [];
     const currentIndex = bars.findIndex((bar) => bar.timestamp === timestamp);
@@ -661,11 +1220,10 @@ export class PaperAutonomyService {
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
       return;
     }
-
-    const localNow = getLocalTimeParts(currentBar.timestamp, this.config.timezone);
-    const sessionStart = this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
-    const sessionEnd = this.config.sessionEndHour * 60 + this.config.sessionEndMinute;
-    if (!inWindow(localNow.minuteOfDay, sessionStart, sessionEnd)) {
+    const minuteOfDay = getMinuteOfDayInTimezone(currentBar.timestamp, this.config.timezone);
+    const sessionStartMinute = this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
+    const sessionEndMinute = this.config.sessionEndHour * 60 + this.config.sessionEndMinute;
+    if (!isMinuteInWindow(minuteOfDay, sessionStartMinute, sessionEndMinute)) {
       return;
     }
 
@@ -677,18 +1235,36 @@ export class PaperAutonomyService {
       return;
     }
 
-    const trend = this.resolveResearchDirection(symbol, candles5m, candles15m, candles1H);
-    if (trend.direction !== 'BULLISH' && trend.direction !== 'BEARISH') {
+    const trend = this.resolveTradableBias(symbol, candles5m, candles15m, candles1H);
+    if (!trend) {
       return;
     }
-    if (trend.confidence < this.config.minTrendConfidence) {
-      return;
-    }
-
-    const ideas = [
+    const rawIdeas = [
       this.buildBreakoutIdea(symbol, candles5m, trend.direction, trend.confidence),
-      this.buildPullbackIdea(symbol, candles5m, trend.direction, trend.confidence)
+      this.buildPullbackIdea(symbol, candles5m, trend.direction, trend.confidence),
+      this.buildRangeFadeIdea(symbol, candles5m, trend.confidence),
+      this.buildFailedBreakoutIdea(symbol, candles5m, trend.direction, trend.confidence),
+      this.buildCompressionReleaseIdea(symbol, candles5m, trend.direction, trend.confidence)
     ].filter((idea): idea is NonNullable<typeof idea> => Boolean(idea));
+
+    const minimumIdeaScore = trend.exploratory ? 58 : 54;
+    const ideas = rawIdeas
+      .map((idea) => {
+        const adjustment = this.buildPortfolioAdjustment(symbol, idea.thesis, idea.side);
+        const adjustedScore = round(clamp(idea.score + adjustment.scoreAdjustment, 0, 100), 2);
+        const adaptiveRiskPct = round(
+          clamp(this.buildAdaptiveRiskPct(idea.thesis, symbol, trend.confidence) * adjustment.riskMultiplier, 0.1, 1.25),
+          2
+        );
+        return {
+          ...idea,
+          rawScore: idea.score,
+          score: adjustedScore,
+          adaptiveRiskPct,
+          portfolioAdjustment: adjustment
+        };
+      })
+      .filter((idea) => idea.score >= minimumIdeaScore);
 
     const bestIdea = ideas.sort((left, right) => right.score - left.score)[0];
     if (!bestIdea) {
@@ -721,11 +1297,16 @@ export class PaperAutonomyService {
       },
       metadata: {
         autonomyThesis: bestIdea.thesis,
-        autonomyReason: bestIdea.reason,
+        autonomyReason: `${bestIdea.reason} • ${bestIdea.portfolioAdjustment.summary}`,
         researchDirection: trend.direction,
         researchConfidence: trend.confidence,
+        exploratory: trend.exploratory,
         independentPaperEngine: true,
-        paperTradeExpiresAt: this.buildSessionExpiry(currentBar.timestamp)
+        autonomyRawScore: bestIdea.rawScore,
+        autonomyAdjustedScore: bestIdea.score,
+        autonomyPortfolioAdjustment: bestIdea.portfolioAdjustment.summary,
+        paperAutonomyRiskPct: bestIdea.adaptiveRiskPct,
+        paperTradeExpiresAt: this.buildTradeExpiry(currentBar.timestamp)
       },
       generatedAt: currentBar.timestamp
     };
@@ -765,7 +1346,7 @@ export class PaperAutonomyService {
       side: candidate.side,
       thesis: bestIdea.thesis,
       score: bestIdea.score,
-      reason: bestIdea.reason,
+      reason: `${bestIdea.reason} • ${bestIdea.portfolioAdjustment.summary}`,
       researchDirection: trend.direction,
       researchConfidence: trend.confidence,
       openedAt: currentBar.timestamp,
@@ -833,7 +1414,11 @@ export class PaperAutonomyService {
     const openIdeas = ideas.filter((idea) => idea.status === 'OPEN');
     const closedIdeas = ideas.filter((idea) => idea.status === 'CLOSED');
     const wins = closedIdeas.filter((idea) => idea.outcome === 'WIN').length;
-    const thesisStats: PaperAutonomyThesisStats[] = (['TREND_BREAKOUT_EXPANSION', 'TREND_PULLBACK_RECLAIM'] as PaperAutonomyThesis[])
+    const losses = closedIdeas.filter((idea) => idea.outcome === 'LOSS').length;
+    const flats = closedIdeas.filter((idea) => idea.outcome === 'FLAT').length;
+    const realizedPnl = round(closedIdeas.reduce((sum, idea) => sum + (idea.realizedPnl ?? 0), 0), 2);
+    const realizedR = round(closedIdeas.reduce((sum, idea) => sum + (idea.realizedR ?? 0), 0), 2);
+    const thesisStats: PaperAutonomyThesisStats[] = PAPER_AUTONOMY_THESES
       .map((thesis) => {
         const thesisIdeas = ideas.filter((idea) => idea.thesis === thesis);
         const thesisClosed = thesisIdeas.filter((idea) => idea.status === 'CLOSED');
@@ -842,6 +1427,7 @@ export class PaperAutonomyService {
         const thesisFlats = thesisClosed.filter((idea) => idea.outcome === 'FLAT').length;
         return {
           thesis,
+          label: thesisLabel(thesis),
           total: thesisIdeas.length,
           open: thesisIdeas.filter((idea) => idea.status === 'OPEN').length,
           closed: thesisClosed.length,
@@ -849,10 +1435,33 @@ export class PaperAutonomyService {
           losses: thesisLosses,
           flats: thesisFlats,
           hitRate: thesisClosed.length > 0 ? round(thesisWins / thesisClosed.length, 2) : 0,
-          avgR: thesisClosed.length > 0 ? round(average(thesisClosed.map((idea) => idea.realizedR ?? 0)), 2) : 0
+          avgR: thesisClosed.length > 0 ? round(average(thesisClosed.map((idea) => idea.realizedR ?? 0)), 2) : 0,
+          realizedPnl: round(thesisClosed.reduce((sum, idea) => sum + (idea.realizedPnl ?? 0), 0), 2),
+          lastOpenedAt: thesisIdeas[0]?.openedAt
         };
       })
       .filter((entry) => entry.total > 0);
+    const bestThesisStats =
+      [...thesisStats]
+        .filter((entry) => entry.closed > 0)
+        .sort((left, right) =>
+          right.hitRate - left.hitRate
+          || right.avgR - left.avgR
+          || right.closed - left.closed
+        )[0]
+      ?? [...thesisStats].sort((left, right) => right.total - left.total || right.open - left.open)[0]
+      ?? null;
+    const activeTheses = thesisStats
+      .filter((entry) => entry.open > 0)
+      .sort((left, right) => right.open - left.open || right.total - left.total)
+      .map((entry) => ({
+        thesis: entry.thesis,
+        label: entry.label,
+        openIdeas: entry.open,
+        totalIdeas: entry.total,
+        lastOpenedAt: entry.lastOpenedAt
+      }));
+    const symbolStatus = this.config.focusSymbols.map((symbol) => this.buildSymbolStatus(symbol));
 
     return {
       enabled: this.config.enabled,
@@ -873,8 +1482,30 @@ export class PaperAutonomyService {
       openIdeas: openIdeas.length,
       closedIdeas: closedIdeas.length,
       winRate: closedIdeas.length > 0 ? round(wins / closedIdeas.length, 2) : 0,
+      performance: {
+        realizedPnl,
+        realizedR,
+        avgR: closedIdeas.length > 0 ? round(realizedR / closedIdeas.length, 2) : 0,
+        wins,
+        losses,
+        flats,
+        learningSamples: closedIdeas.length
+      },
+      bestThesis: bestThesisStats
+        ? {
+            thesis: bestThesisStats.thesis,
+            label: bestThesisStats.label,
+            hitRate: bestThesisStats.hitRate,
+            avgR: bestThesisStats.avgR,
+            closed: bestThesisStats.closed,
+            realizedPnl: bestThesisStats.realizedPnl
+          }
+        : null,
+      activeTheses,
+      symbolStatus,
       thesisStats,
-      recentIdeas: ideas.slice(0, 12)
+      recentIdeas: ideas.slice(0, 12),
+      recentClosedIdeas: closedIdeas.slice(0, 8)
     };
   }
 }

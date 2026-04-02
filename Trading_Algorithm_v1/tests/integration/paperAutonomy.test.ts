@@ -23,9 +23,13 @@ afterEach(async () => {
   }
 });
 
-const buildAutonomyTrendBars = (symbol: 'NQ' | 'ES' = 'NQ', count = 330) => {
+const buildAutonomyTrendBars = (
+  symbol: 'NQ' | 'ES' = 'NQ',
+  count = 420,
+  startAt = '2026-01-06T09:00:00.000Z'
+) => {
   const bars = [];
-  const startMs = Date.parse('2026-01-06T13:30:00.000Z');
+  const startMs = Date.parse(startAt);
 
   for (let index = 0; index < count; index += 1) {
     const trend = index * 0.18;
@@ -123,6 +127,9 @@ describe('paper autonomy integration', () => {
     expect(paperAutonomy.enabled).toBe(true);
     expect(paperAutonomy.totalIdeas).toBeGreaterThan(0);
     expect(paperAutonomy.recentIdeas[0].thesis).toBeTruthy();
+    expect(typeof paperAutonomy.recentIdeas[0].reason).toBe('string');
+    expect(Array.isArray(paperAutonomy.symbolStatus)).toBe(true);
+    expect(typeof paperAutonomy.symbolStatus[0].reason).toBe('string');
   });
 
   it('learns thesis performance from closed autonomous paper trades', async () => {
@@ -151,7 +158,7 @@ describe('paper autonomy integration', () => {
     });
     contexts.push(ctx);
 
-    const initialBars = buildAutonomyTrendBars('NQ', 300);
+    const initialBars = buildAutonomyTrendBars('NQ', 420);
     const openResponse = await ctx.app.inject({
       method: 'POST',
       path: '/training/ingest-bars',
@@ -191,5 +198,99 @@ describe('paper autonomy integration', () => {
     expect(paperAutonomy.closedIdeas).toBeGreaterThan(0);
     expect(Array.isArray(paperAutonomy.thesisStats)).toBe(true);
     expect(paperAutonomy.thesisStats.some((entry: { closed: number }) => entry.closed > 0)).toBe(true);
+
+    const reviewsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/reviews?status=ALL&limit=20'
+    });
+    expect(reviewsResponse.statusCode).toBe(200);
+    expect(
+      reviewsResponse
+        .json()
+        .reviews.some((review: { autoLabeledBy?: string; autoOutcome?: string }) => (
+          review.autoLabeledBy === 'paper-trading-engine'
+          && (review.autoOutcome === 'WOULD_WIN' || review.autoOutcome === 'WOULD_LOSE')
+        ))
+    ).toBe(true);
+  });
+
+  it('only opens autonomous futures ideas inside the configured desk-session window', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-after-hours-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: false,
+      marketResearchEnabled: false,
+      paperTradingEnabled: true,
+      paperAutonomyEnabled: true,
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        autonomyMode: 'UNRESTRICTED',
+        maxConcurrentTrades: 0,
+        autonomyRiskPct: 0.5
+      },
+      paperAutonomyConfig: {
+        statePath: path.join(tempDir, 'paper-autonomy.json'),
+        archivePath: undefined,
+        bootstrapCsvDir: undefined,
+        minTrendConfidence: 0.55,
+        maxHoldMinutes: 120
+      }
+    });
+    contexts.push(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildAutonomyTrendBars('NQ', 330, '2026-01-06T22:00:00.000Z')
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+    expect(ingest.json().paperAutonomyIngest.ideasOpened).toBe(0);
+
+    const autonomyStatus = ctx.paperAutonomyService?.status();
+    expect(autonomyStatus?.totalIdeas ?? 0).toBe(0);
+  });
+
+  it('inherits the desk window into the paper autonomy session by default', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-window-sync-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: false,
+      marketResearchEnabled: false,
+      paperTradingEnabled: true,
+      paperAutonomyEnabled: true,
+      signalMonitorConfig: {
+        sessionStartHour: 9,
+        sessionStartMinute: 15,
+        sessionEndHour: 11,
+        sessionEndMinute: 5
+      },
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        autonomyMode: 'UNRESTRICTED',
+        maxConcurrentTrades: 0,
+        autonomyRiskPct: 0.5
+      },
+      paperAutonomyConfig: {
+        statePath: path.join(tempDir, 'paper-autonomy.json'),
+        archivePath: undefined,
+        bootstrapCsvDir: undefined
+      }
+    });
+    contexts.push(ctx);
+    await ctx.paperTradingService?.start();
+    await ctx.paperAutonomyService?.start();
+
+    const autonomyStatus = ctx.paperAutonomyService?.status();
+    expect(autonomyStatus?.session.startHour).toBe(9);
+    expect(autonomyStatus?.session.startMinute).toBe(15);
+    expect(autonomyStatus?.session.endHour).toBe(11);
+    expect(autonomyStatus?.session.endMinute).toBe(5);
   });
 });

@@ -1,10 +1,10 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
-import type { SignalReviewOutcome, SymbolCode } from './domain/types.js';
+import type { SignalAlert, SignalReviewOutcome, SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
 import { evaluateRisk } from './services/riskEngine.js';
 import { ExecutionService } from './services/executionService.js';
@@ -302,6 +302,43 @@ const compactText = (value: string | undefined, maxLength = 180): string | undef
     return trimmed;
   }
   return `${trimmed.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+};
+
+const parseHeaderValue = (value: string | string[] | undefined): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return typeof value === 'string' ? value : undefined;
+};
+
+const normalizeOrigin = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    return new URL(value).origin.toLowerCase();
+  } catch {
+    return undefined;
+  }
+};
+
+const originHost = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return undefined;
+  }
+};
+
+const safeErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error) {
+    const trimmed = error.message.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+  }
+  return fallback;
 };
 
 const formatWinRateDelta = (value?: number): string => {
@@ -816,6 +853,7 @@ const resolvePaperTradingConfig = (
 };
 
 const resolvePaperAutonomyConfig = (
+  signalMonitorConfig: SignalMonitorConfigInput,
   overrides: Partial<PaperAutonomyConfig> = {}
 ): PaperAutonomyConfigInput => {
   const knownSymbols = new Set<SymbolCode>(['NQ', 'ES']);
@@ -835,16 +873,16 @@ const resolvePaperAutonomyConfig = (
     ),
     bootstrapCsvDir: parseOptionalPathEnv('PAPER_AUTONOMY_BOOTSTRAP_DIR'),
     bootstrapRecursive: parseBooleanEnv('PAPER_AUTONOMY_BOOTSTRAP_RECURSIVE', true),
-    timezone: process.env.PAPER_AUTONOMY_TIMEZONE ?? 'America/New_York',
-    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', 8, 0, 23),
-    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', 30, 0, 59),
-    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', 15, 0, 23),
-    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', 0, 0, 59),
+    timezone: process.env.PAPER_AUTONOMY_TIMEZONE ?? signalMonitorConfig.timezone,
+    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', signalMonitorConfig.sessionStartHour, 0, 23),
+    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', signalMonitorConfig.sessionStartMinute, 0, 59),
+    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', signalMonitorConfig.sessionEndHour, 0, 23),
+    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', signalMonitorConfig.sessionEndMinute, 0, 59),
     focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
     maxBarsPerSymbol: parseIntEnv('PAPER_AUTONOMY_MAX_BARS_PER_SYMBOL', 6_000, 500),
     maxIdeas: parseIntEnv('PAPER_AUTONOMY_MAX_IDEAS', 300, 25, 5_000),
     maxHoldMinutes: parseIntEnv('PAPER_AUTONOMY_MAX_HOLD_MINUTES', 180, 5, 1_440),
-    minTrendConfidence: parseFloatEnv('PAPER_AUTONOMY_MIN_TREND_CONFIDENCE', 0.58, 0, 1),
+    minTrendConfidence: parseFloatEnv('PAPER_AUTONOMY_MIN_TREND_CONFIDENCE', 0, 0, 1),
     breakoutLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_BREAKOUT_LOOKBACK_BARS_5M', 6, 3, 24),
     pullbackLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_PULLBACK_LOOKBACK_BARS_5M', 8, 3, 24)
   };
@@ -966,6 +1004,101 @@ const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalen
 
 export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const app = Fastify({ logger: false });
+  const trustedClientHeader = 'x-tradeassist-client';
+  const trustedClientValues = new Set(['mobile-web', 'native-app', 'desktop-app']);
+  const publicRoutePrefixes = ['/mobile', '/health'];
+  const configuredOrigins = [
+    process.env.APP_BASE_URL,
+    process.env.TELEGRAM_APP_URL,
+    'https://167-172-252-171.sslip.io'
+  ]
+    .map((value) => normalizeOrigin(value))
+    .filter((value): value is string => Boolean(value));
+  const allowedOrigins = new Set(configuredOrigins);
+  const internalApiKeys = new Map<string, string>();
+  const registerInternalApiKey = (headerName: string | undefined, value: string | undefined): void => {
+    const trimmedValue = value?.trim();
+    const trimmedHeader = headerName?.trim().toLowerCase();
+    if (!trimmedValue || !trimmedHeader) {
+      return;
+    }
+    internalApiKeys.set(trimmedHeader, trimmedValue);
+  };
+
+  registerInternalApiKey(process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key', process.env.TRAINING_API_KEY);
+  registerInternalApiKey(
+    process.env.IBKR_NOTIFY_CONNECTED_API_KEY_HEADER ?? process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key',
+    process.env.IBKR_NOTIFY_CONNECTED_API_KEY ?? process.env.TRAINING_API_KEY
+  );
+  registerInternalApiKey(
+    process.env.IBKR_NOTIFY_LOGIN_REQUIRED_API_KEY_HEADER ?? process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key',
+    process.env.IBKR_NOTIFY_CONNECTED_API_KEY ?? process.env.TRAINING_API_KEY
+  );
+
+  const isTrustedBrowserRequest = (request: FastifyRequest): boolean => {
+    const clientValue = parseHeaderValue(request.headers[trustedClientHeader])?.trim().toLowerCase();
+    if (!clientValue || !trustedClientValues.has(clientValue)) {
+      return false;
+    }
+
+    const secFetchSite = parseHeaderValue(request.headers['sec-fetch-site'])?.trim().toLowerCase();
+    if (secFetchSite && ['same-origin', 'same-site', 'none'].includes(secFetchSite)) {
+      return true;
+    }
+
+    const host = parseHeaderValue(request.headers.host)?.trim().toLowerCase();
+    const requestOrigin = normalizeOrigin(parseHeaderValue(request.headers.origin));
+    if (requestOrigin && (allowedOrigins.has(requestOrigin) || (host && originHost(requestOrigin) === host))) {
+      return true;
+    }
+
+    const refererOrigin = normalizeOrigin(parseHeaderValue(request.headers.referer));
+    if (refererOrigin && (allowedOrigins.has(refererOrigin) || (host && originHost(refererOrigin) === host))) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const hasValidInternalApiKey = (request: FastifyRequest): boolean => {
+    for (const [headerName, expectedValue] of internalApiKeys.entries()) {
+      const received = parseHeaderValue(request.headers[headerName]);
+      if (received && received === expectedValue) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const isPublicRoute = (pathname: string): boolean => publicRoutePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+
+  app.addHook('onRequest', async (request, reply) => {
+    const pathname = new URL(request.raw.url ?? '/', 'http://localhost').pathname;
+    if (isPublicRoute(pathname)) {
+      return;
+    }
+
+    if (isLoopbackIp(request.ip) || hasValidInternalApiKey(request) || isTrustedBrowserRequest(request)) {
+      return;
+    }
+
+    return reply.status(403).send({
+      message: 'Forbidden'
+    });
+  });
+
+  app.addHook('onSend', async (request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    reply.header('Permissions-Policy', 'camera=(), geolocation=(), microphone=()');
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+    reply.header('Cross-Origin-Resource-Policy', 'same-origin');
+    if ((parseHeaderValue(request.headers['x-forwarded-proto']) ?? '').toLowerCase() === 'https') {
+      reply.header('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+    }
+    return payload;
+  });
 
   const journalStore = options.journalStore ?? new JournalStore();
   const riskConfigStore = options.riskConfigStore ?? new RiskConfigStore();
@@ -1581,7 +1714,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   const resolvedSignalMonitorConfig = resolveSignalMonitorConfig(options.signalMonitorConfig);
   const resolvedPaperTradingConfig = resolvePaperTradingConfig(resolvedSignalMonitorConfig, options.paperTradingConfig);
-  const resolvedPaperAutonomyConfig = resolvePaperAutonomyConfig(options.paperAutonomyConfig);
+  const resolvedPaperAutonomyConfig = resolvePaperAutonomyConfig(
+    resolvedSignalMonitorConfig,
+    options.paperAutonomyConfig
+  );
   const paperTradingEnabled = options.paperTradingEnabled ?? resolvedPaperTradingConfig.enabled;
   const paperTradingService =
     options.paperTradingService === undefined
@@ -1673,6 +1809,31 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           })
         : null
       : options.paperTradingService;
+  const submitPaperLearningAlert = async (alert: SignalAlert, source: string) => {
+    if (!paperTradingService) {
+      return null;
+    }
+
+    const trade = await paperTradingService.recordAlert(alert, source);
+    if (!trade) {
+      return null;
+    }
+
+    await signalReviewStore.recordAlert(alert);
+    journalStore.addEvent({
+      type: 'SIGNAL_GENERATED',
+      timestamp: alert.detectedAt,
+      candidateId: alert.candidate.id,
+      symbol: alert.symbol,
+      payload: {
+        paperLearning: true,
+        autonomousSource: source,
+        alertId: alert.alertId,
+        setupType: alert.setupType
+      }
+    });
+    return trade;
+  };
   const paperAutonomyEnabled = options.paperAutonomyEnabled ?? resolvedPaperAutonomyConfig.enabled;
   const paperAutonomyService =
     options.paperAutonomyService === undefined
@@ -1681,7 +1842,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedPaperAutonomyConfig,
             enabled: true,
             getMarketResearchStatus: () => marketResearchService?.status() ?? null,
-            submitAlert: async (alert, source) => paperTradingService.recordAlert(alert, source)
+            getPaperTradingStatus: () => paperTradingService?.status() ?? null,
+            submitAlert: async (alert, source) => submitPaperLearningAlert(alert, source)
           })
         : null
       : options.paperAutonomyService;
@@ -1713,7 +1875,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             signalReviewStore,
             null,
             null,
-            null,
+            paperTradingService
+              ? async ({ alert, source }) => {
+                  await submitPaperLearningAlert(alert, source);
+                }
+              : null,
             nativePushNotificationService,
             webPushNotificationService,
             telegramAlertService
@@ -2106,6 +2272,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
     const research = marketResearchService?.status() ?? null;
     const paper = paperTradingService?.status() ?? null;
+    const paperAutonomy = paperAutonomyService?.status() ?? null;
     const signalConfig = signalMonitorSettingsStore.get();
     const watchlist = signalConfig.enabledSymbols.slice(0, 2).map((symbol) => {
       const symbolResearch = research?.symbols?.find((entry) => entry.symbol === symbol);
@@ -2180,6 +2347,68 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               totalReturnPct: Number((((paper.equity - paper.initialBalance) / Math.max(paper.initialBalance, 1)) * 100).toFixed(2)),
               lastUpdatedAt: paper.lastUpdatedAt ?? null,
               equityHistory: paper.equityHistory.slice(-32)
+            }
+          : null,
+        paperAutonomy: paperAutonomy
+          ? {
+              enabled: paperAutonomy.enabled,
+              started: paperAutonomy.started,
+              lastIdeaAt: paperAutonomy.lastIdeaAt ?? null,
+              lastEvaluatedAt: paperAutonomy.lastEvaluatedAt ?? null,
+              totalIdeas: paperAutonomy.totalIdeas,
+              openIdeas: paperAutonomy.openIdeas,
+              closedIdeas: paperAutonomy.closedIdeas,
+              winRate: Number(paperAutonomy.winRate.toFixed(3)),
+              performance: {
+                realizedPnl: Number(paperAutonomy.performance.realizedPnl.toFixed(2)),
+                realizedR: Number(paperAutonomy.performance.realizedR.toFixed(2)),
+                avgR: Number(paperAutonomy.performance.avgR.toFixed(2)),
+                wins: paperAutonomy.performance.wins,
+                losses: paperAutonomy.performance.losses,
+                flats: paperAutonomy.performance.flats,
+                learningSamples: paperAutonomy.performance.learningSamples
+              },
+              bestThesis: paperAutonomy.bestThesis
+                ? {
+                    thesis: paperAutonomy.bestThesis.thesis,
+                    label: paperAutonomy.bestThesis.label,
+                    hitRate: Number(paperAutonomy.bestThesis.hitRate.toFixed(3)),
+                    avgR: Number(paperAutonomy.bestThesis.avgR.toFixed(2)),
+                    closed: paperAutonomy.bestThesis.closed,
+                    realizedPnl: Number(paperAutonomy.bestThesis.realizedPnl.toFixed(2))
+                  }
+                : null,
+              activeTheses: paperAutonomy.activeTheses.slice(0, 4).map((entry) => ({
+                thesis: entry.thesis,
+                label: entry.label,
+                openIdeas: entry.openIdeas,
+                totalIdeas: entry.totalIdeas,
+                lastOpenedAt: entry.lastOpenedAt ?? null
+              })),
+              symbolStatus: paperAutonomy.symbolStatus.map((entry) => ({
+                symbol: entry.symbol,
+                direction: entry.direction,
+                confidence: Number(entry.confidence.toFixed(2)),
+                exploratory: entry.exploratory,
+                reason: compactText(entry.reason, 120),
+                latestBarTimestamp: entry.latestBarTimestamp ?? null,
+                openIdeas: entry.openIdeas,
+                closedIdeas: entry.closedIdeas,
+                winRate: Number(entry.winRate.toFixed(3)),
+                realizedPnl: Number(entry.realizedPnl.toFixed(2))
+              })),
+              latestIdea: paperAutonomy.recentIdeas[0]
+                ? {
+                    symbol: paperAutonomy.recentIdeas[0].symbol,
+                    side: paperAutonomy.recentIdeas[0].side,
+                    thesis: paperAutonomy.recentIdeas[0].thesis,
+                    thesisLabel: paperAutonomy.thesisStats.find((entry) => entry.thesis === paperAutonomy.recentIdeas[0].thesis)?.label
+                      ?? paperAutonomy.recentIdeas[0].thesis,
+                    score: Number(paperAutonomy.recentIdeas[0].score.toFixed(1)),
+                    openedAt: paperAutonomy.recentIdeas[0].openedAt,
+                    reason: compactText(paperAutonomy.recentIdeas[0].reason, 140)
+                  }
+                : null
             }
           : null,
         researchLab: research
@@ -2266,7 +2495,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
       return reply.status(200).send({ candidates });
     } catch (error) {
-      return reply.status(400).send({ message: 'Invalid signal generation request', error });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Invalid signal generation request') });
     }
   });
 
@@ -2288,7 +2517,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
       return reply.status(200).send({ candidates: ranked, rankingModelId: activeModel.modelId });
     } catch (error) {
-      return reply.status(400).send({ message: 'Invalid signal rank request', error });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Invalid signal rank request') });
     }
   });
 
@@ -2340,7 +2569,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         summary
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Replay export failed') });
     }
   });
 
@@ -2447,7 +2676,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         summary
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Review update failed') });
     }
   });
 
@@ -2464,7 +2693,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       syncRiskTradingWindowToSignalSettings();
       return reply.status(200).send({ config });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Signal monitor settings update failed') });
     }
   });
 
@@ -3293,7 +3522,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         nativePush: nativePushNotificationService.status()
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Native push registration failed') });
     }
   });
 
@@ -3312,7 +3541,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         nativePush: nativePushNotificationService.status()
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Native push unregister failed') });
     }
   });
 
@@ -3350,7 +3579,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         webPush: webPushNotificationService.status()
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Web push subscription failed') });
     }
   });
 
@@ -3369,7 +3598,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         webPush: webPushNotificationService.status()
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Web push unsubscribe failed') });
     }
   });
 
@@ -3400,7 +3629,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
       return reply.status(200).send({ decision });
     } catch (error) {
-      return reply.status(400).send({ message: 'Invalid risk check request', error });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Invalid risk check request') });
     }
   });
 
@@ -3416,7 +3645,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       const updated = riskConfigStore.patch(body);
       return reply.status(200).send({ config: updated });
     } catch (error) {
-      return reply.status(400).send({ message: 'Invalid risk config patch', error: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Invalid risk config patch') });
     }
   });
 
@@ -3426,7 +3655,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       const intent = executionService.propose(body.candidate, body.riskDecision, body.now);
       return reply.status(200).send({ intent });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Execution proposal failed') });
     }
   });
 
@@ -3442,7 +3671,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       );
       return reply.status(200).send({ intent });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Execution approval failed') });
     }
   });
 
@@ -3511,7 +3740,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           : { enabled: false, started: false }
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Training ingest failed') });
     }
   });
 
@@ -3529,7 +3758,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         training: continuousTrainingService.status()
       });
     } catch (error) {
-      return reply.status(400).send({ message: (error as Error).message });
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Manual retrain failed') });
     }
   });
 

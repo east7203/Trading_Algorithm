@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=36" />
+    <link rel="stylesheet" href="styles.css?v=38" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -177,6 +177,36 @@
             </div>
           </button>
 
+          <details id="homePaperAutonomyCard" class="home-fold home-brief-card">
+            <summary class="home-fold-summary">
+              <div>
+                <p class="home-fold-label">Paper Autonomy</p>
+                <p id="homePaperAutonomyHeadline" class="home-fold-title">Independent futures engine is loading.</p>
+              </div>
+              <span id="homePaperAutonomyStamp" class="chip chip-neutral">Updating</span>
+            </summary>
+            <div class="home-fold-body">
+              <div class="home-brief-grid">
+                <article class="home-brief-column">
+                  <p class="card-section-label">Best Thesis</p>
+                  <p id="homePaperAutonomyBestThesis" class="home-why-copy">No autonomy thesis has a track record yet.</p>
+                </article>
+                <article class="home-brief-column">
+                  <p class="card-section-label">Performance</p>
+                  <p id="homePaperAutonomyPerformance" class="home-why-copy">Autonomy performance is loading.</p>
+                </article>
+              </div>
+              <div class="home-brief-watch">
+                <p class="card-section-label">Active Theses</p>
+                <div id="homePaperAutonomyTheses" class="home-research-hypothesis-list"></div>
+              </div>
+              <div class="home-brief-watch">
+                <p class="card-section-label">Futures Bias</p>
+                <div id="homePaperAutonomySymbols" class="home-research-hypothesis-list"></div>
+              </div>
+            </div>
+          </details>
+
           <section class="stats-grid">
             <article class="stat-card">
               <p class="stat-label">Pending</p>
@@ -268,6 +298,11 @@
               <p class="stat-label">Alert Stack</p>
               <p id="homeAlertState" class="home-snapshot-value">--</p>
               <p class="home-snapshot-note">Phone, Telegram, and recovery path.</p>
+            </article>
+            <article class="home-snapshot-card home-snapshot-card-strong">
+              <p class="stat-label">Paper Autonomy</p>
+              <p id="homePaperAutonomyState" class="home-snapshot-value">--</p>
+              <p id="homePaperAutonomyStateNote" class="home-snapshot-note">Independent futures ideas and learning.</p>
             </article>
           </section>
 
@@ -900,6 +935,47 @@
           <section class="training-panel">
             <div class="training-panel-head">
               <div>
+                <p class="stat-label">Paper Autonomy Engine</p>
+              </div>
+            </div>
+            <div class="training-panel-grid">
+              <article class="training-panel-card">
+                <p class="stat-label">Status</p>
+                <p id="diagPaperAutonomyStatus" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Ideas</p>
+                <p id="diagPaperAutonomyIdeas" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Win Rate</p>
+                <p id="diagPaperAutonomyWinRate" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card">
+                <p class="stat-label">Realized PnL</p>
+                <p id="diagPaperAutonomyPnl" class="training-panel-value">--</p>
+              </article>
+              <article class="training-panel-card training-panel-card-wide">
+                <p class="stat-label">Best Thesis</p>
+                <p id="diagPaperAutonomyBestThesis" class="training-panel-value training-panel-value-compact">--</p>
+              </article>
+              <article class="training-panel-card training-panel-card-wide">
+                <p class="stat-label">Latest Idea</p>
+                <p id="diagPaperAutonomyLastIdea" class="training-panel-value training-panel-value-compact">--</p>
+              </article>
+              <article class="training-panel-card training-panel-card-wide">
+                <p class="stat-label">Futures Bias</p>
+                <div id="diagPaperAutonomySymbols" class="training-panel-list"></div>
+              </article>
+              <article class="training-panel-card training-panel-card-wide">
+                <p class="stat-label">Active Theses</p>
+                <div id="diagPaperAutonomyTheses" class="training-panel-list"></div>
+              </article>
+            </div>
+          </section>
+          <section class="training-panel">
+            <div class="training-panel-head">
+              <div>
                 <p class="stat-label">Research Model</p>
               </div>
             </div>
@@ -1347,6 +1423,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=36"></script>
+    <script type="module" src="app.js?v=38"></script>
   </body>
 </html>
