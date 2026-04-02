@@ -23,6 +23,7 @@ import {
   labelCandidateFromFutureCandles5m,
   type OneMinuteBar
 } from '../training/historicalTrainer.js';
+import { streamNdjsonValues } from '../utils/ndjson.js';
 import { rankCandidates } from './ranker.js';
 import type { RankingModelStore } from './rankingModelStore.js';
 import { evaluateNewsContext } from './newsContextService.js';
@@ -970,28 +971,17 @@ export class SignalMonitorService {
         .catch(() => false);
 
       if (archiveExists) {
-        const raw = await fs.readFile(this.config.archivePath, 'utf8');
-        const lines = raw
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0);
-
-        for (const line of lines) {
-          try {
-            const bar = JSON.parse(line) as OneMinuteBar;
-            if (!enabledSymbols.includes(bar.symbol)) {
-              continue;
-            }
-            let bucket = dedupedBySymbol.get(bar.symbol);
-            if (!bucket) {
-              bucket = new Map<string, OneMinuteBar>();
-              dedupedBySymbol.set(bar.symbol, bucket);
-            }
-            bucket.set(bar.timestamp, bar);
-          } catch {
-            // Ignore malformed archive rows.
+        await streamNdjsonValues<OneMinuteBar>(this.config.archivePath, (bar) => {
+          if (!enabledSymbols.includes(bar.symbol)) {
+            return;
           }
-        }
+          let bucket = dedupedBySymbol.get(bar.symbol);
+          if (!bucket) {
+            bucket = new Map<string, OneMinuteBar>();
+            dedupedBySymbol.set(bar.symbol, bucket);
+          }
+          bucket.set(bar.timestamp, bar);
+        });
       }
     }
 
@@ -1041,23 +1031,23 @@ export class SignalMonitorService {
       return;
     }
 
-    const raw = await fs.readFile(this.config.archivePath, 'utf8');
-    const bars: OneMinuteBar[] = [];
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line) as OneMinuteBar;
-        bars.push(parsed);
-      } catch {
-        // Ignore malformed archive rows.
+    const chunk: OneMinuteBar[] = [];
+    const flushChunk = async (): Promise<void> => {
+      if (chunk.length === 0) {
+        return;
       }
-    }
+      const bars = chunk.splice(0, chunk.length);
+      await this.ingestBootstrapBars(bars);
+    };
 
-    await this.ingestBootstrapBars(bars);
+    await streamNdjsonValues<OneMinuteBar>(this.config.archivePath, async (parsed) => {
+      chunk.push(parsed);
+      if (chunk.length >= 2_000) {
+        await flushChunk();
+      }
+    });
+
+    await flushChunk();
   }
 
   private async ingestBootstrapBars(bars: OneMinuteBar[]): Promise<void> {

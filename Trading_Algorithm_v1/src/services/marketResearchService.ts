@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { SymbolCode, Timeframe } from '../domain/types.js';
 import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training/historicalTrainer.js';
+import { streamNdjsonValues } from '../utils/ndjson.js';
 
 export type ResearchTrendDirection = 'BULLISH' | 'BEARISH' | 'BALANCED' | 'STAND_ASIDE';
 
@@ -1234,17 +1235,23 @@ export class MarketResearchService {
       return;
     }
 
-    const raw = await fs.readFile(this.config.archivePath, 'utf8');
-    const bars: OneMinuteBar[] = [];
-    for (const line of raw.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)) {
-      try {
-        bars.push(JSON.parse(line) as OneMinuteBar);
-      } catch {
-        // Ignore malformed archive rows.
+    const chunk: OneMinuteBar[] = [];
+    const flushChunk = (): void => {
+      if (chunk.length === 0) {
+        return;
       }
-    }
+      const bars = chunk.splice(0, chunk.length);
+      this.mergeBars(bars);
+    };
 
-    this.mergeBars(bars);
+    await streamNdjsonValues<OneMinuteBar>(this.config.archivePath, (bar) => {
+      chunk.push(bar);
+      if (chunk.length >= 2_000) {
+        flushChunk();
+      }
+    });
+
+    flushChunk();
   }
 
   private async loadBootstrapCsv(): Promise<void> {

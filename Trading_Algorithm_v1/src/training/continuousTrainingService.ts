@@ -14,6 +14,7 @@ import {
   type TrainingExample
 } from './historicalTrainer.js';
 import { type LearningFeedbackCounts, type LearningFeedbackDataset } from './liveLearning.js';
+import { streamNdjsonValues } from '../utils/ndjson.js';
 
 interface EvaluationSummary {
   baselineTopPick: TopPickWinRate;
@@ -544,24 +545,19 @@ export class ContinuousTrainingService {
     if (!exists) {
       return;
     }
-    const raw = await fs.readFile(this.config.liveArchivePath, 'utf8');
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-
-    const parsed: OneMinuteBar[] = [];
-    for (const line of lines) {
+    let processed = 0;
+    await streamNdjsonValues<unknown>(this.config.liveArchivePath, (value) => {
       try {
-        parsed.push(normalizeBar(JSON.parse(line)));
+        const bar = normalizeBar(value);
+        this.barsByKey.set(`${bar.symbol}|${bar.timestamp}`, bar);
+        processed += 1;
+        if (processed % 5_000 === 0) {
+          this.applyMaxBarsLimit();
+        }
       } catch {
         // Ignore malformed archived rows and continue.
       }
-    }
-
-    for (const bar of dedupeBars(parsed)) {
-      this.barsByKey.set(`${bar.symbol}|${bar.timestamp}`, bar);
-    }
+    });
     this.applyMaxBarsLimit();
   }
 
