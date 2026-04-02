@@ -1283,6 +1283,12 @@ const renderPaperTradeCards = (container, trades, emptyText, mode = 'open') => {
   trades.forEach((trade) => {
     const review = getReviewForAlert(trade.alertId);
     const paperBadge = paperOutcomeBadgeLabel(review);
+    const autonomyLabel = trade.autonomyThesis ? paperAutonomyThesisLabel(trade.autonomyThesis) : null;
+    const autonomyReason = typeof trade.autonomyReason === 'string' ? trade.autonomyReason : null;
+    const researchDirection =
+      typeof trade.researchDirection === 'string' && trade.researchDirection.length > 0
+        ? trade.researchDirection.replaceAll('_', ' ')
+        : null;
     const markPrice = getPaperLatestPrice(trade.symbol);
     const hasMark = typeof markPrice === 'number';
     const hasFill = typeof trade.filledPrice === 'number';
@@ -1308,6 +1314,13 @@ const renderPaperTradeCards = (container, trades, emptyText, mode = 'open') => {
         </div>
       </div>
       ${paperBadge ? `<div class="paper-learning-row"><span class="pill paperLearningPill">${paperBadge}</span></div>` : ''}
+      ${autonomyLabel || researchDirection ? `
+        <div class="paper-learning-row">
+          ${autonomyLabel ? `<span class="pill paperAutonomyPill">${escapeHtml(autonomyLabel)}</span>` : ''}
+          ${researchDirection ? `<span class="pill paperAutonomyDirectionPill">${escapeHtml(researchDirection)}</span>` : ''}
+        </div>
+      ` : ''}
+      ${autonomyReason ? `<p class="paper-position-reason">${escapeHtml(autonomyReason)}</p>` : ''}
       <div class="paper-position-grid">
         <div>
           <span class="paper-position-label">Entry</span>

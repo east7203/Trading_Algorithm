@@ -483,4 +483,46 @@ describe('paper trading service', () => {
     expect(service.status('2026-03-25T13:35:00.000Z').maxConcurrentTrades).toBe(0);
     expect(service.status('2026-03-25T13:35:00.000Z').pendingEntries).toBe(2);
   });
+
+  it('persists autonomy thesis and reason onto paper-autonomy trades for the UI', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const trade = await service.recordAlert(
+      buildAlert('2026-03-25T13:30:00.000Z', {
+        alertId: 'paper-auto-thesis-1',
+        candidate: {
+          ...buildAlert('2026-03-25T13:30:00.000Z').candidate,
+          id: 'paper-auto-candidate-1',
+          metadata: {
+            autonomyThesis: 'VOLATILITY_COMPRESSION_RELEASE',
+            autonomyReason: 'Range compressed for 7 bars before expansion through intraday high',
+            researchDirection: 'BEARISH'
+          }
+        }
+      }),
+      'paper-autonomy'
+    );
+
+    expect(trade?.autonomyThesis).toBe('VOLATILITY_COMPRESSION_RELEASE');
+    expect(trade?.autonomyReason).toContain('Range compressed');
+    expect(trade?.researchDirection).toBe('BEARISH');
+
+    const status = service.status('2026-03-25T13:30:00.000Z');
+    expect(status.recentOpenTrades[0]?.autonomyThesis).toBe('VOLATILITY_COMPRESSION_RELEASE');
+    expect(status.recentOpenTrades[0]?.autonomyReason).toContain('Range compressed');
+    expect(status.recentOpenTrades[0]?.researchDirection).toBe('BEARISH');
+  });
 });
