@@ -214,7 +214,7 @@ describe('paper autonomy integration', () => {
     ).toBe(true);
   });
 
-  it('only opens autonomous futures ideas inside the configured desk-session window', async () => {
+  it('keeps opening autonomous futures ideas even outside the old desk-session window', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-after-hours-'));
     tempDirs.push(tempDir);
 
@@ -249,13 +249,13 @@ describe('paper autonomy integration', () => {
     });
 
     expect(ingest.statusCode).toBe(200);
-    expect(ingest.json().paperAutonomyIngest.ideasOpened).toBe(0);
+    expect(ingest.json().paperAutonomyIngest.ideasOpened).toBeGreaterThan(0);
 
     const autonomyStatus = ctx.paperAutonomyService?.status();
-    expect(autonomyStatus?.totalIdeas ?? 0).toBe(0);
+    expect(autonomyStatus?.totalIdeas ?? 0).toBeGreaterThan(0);
   });
 
-  it('inherits the desk window into the paper autonomy session by default', async () => {
+  it('defaults the paper autonomy session to a full 24 hour futures loop instead of inheriting the desk window', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-window-sync-'));
     tempDirs.push(tempDir);
 
@@ -288,9 +288,9 @@ describe('paper autonomy integration', () => {
     await ctx.paperAutonomyService?.start();
 
     const autonomyStatus = ctx.paperAutonomyService?.status();
-    expect(autonomyStatus?.session.startHour).toBe(9);
-    expect(autonomyStatus?.session.startMinute).toBe(15);
-    expect(autonomyStatus?.session.endHour).toBe(11);
-    expect(autonomyStatus?.session.endMinute).toBe(5);
+    expect(autonomyStatus?.session.startHour).toBe(0);
+    expect(autonomyStatus?.session.startMinute).toBe(0);
+    expect(autonomyStatus?.session.endHour).toBe(23);
+    expect(autonomyStatus?.session.endMinute).toBe(59);
   });
 });

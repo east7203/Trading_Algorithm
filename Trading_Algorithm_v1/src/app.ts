@@ -874,10 +874,11 @@ const resolvePaperAutonomyConfig = (
     bootstrapCsvDir: parseOptionalPathEnv('PAPER_AUTONOMY_BOOTSTRAP_DIR'),
     bootstrapRecursive: parseBooleanEnv('PAPER_AUTONOMY_BOOTSTRAP_RECURSIVE', true),
     timezone: process.env.PAPER_AUTONOMY_TIMEZONE ?? signalMonitorConfig.timezone,
-    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', signalMonitorConfig.sessionStartHour, 0, 23),
-    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', signalMonitorConfig.sessionStartMinute, 0, 59),
-    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', signalMonitorConfig.sessionEndHour, 0, 23),
-    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', signalMonitorConfig.sessionEndMinute, 0, 59),
+    // Paper autonomy now defaults to a full-session research loop instead of inheriting desk hours.
+    sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', 0, 0, 23),
+    sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', 0, 0, 59),
+    sessionEndHour: parseIntEnv('PAPER_AUTONOMY_SESSION_END_HOUR', 23, 0, 23),
+    sessionEndMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_END_MINUTE', 59, 0, 59),
     focusSymbols: envSymbols.length > 0 ? envSymbols : ['NQ', 'ES'],
     maxBarsPerSymbol: parseIntEnv('PAPER_AUTONOMY_MAX_BARS_PER_SYMBOL', 6_000, 500),
     maxIdeas: parseIntEnv('PAPER_AUTONOMY_MAX_IDEAS', 300, 25, 5_000),
@@ -1891,16 +1892,28 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     void nativePushNotificationService.start();
   }
 
+  const paperTradingStartPromise = paperTradingService
+    ? paperTradingService.start().catch((error) => {
+        app.log.error({ err: error }, 'paper trading service failed to start');
+      })
+    : null;
+
   if (paperTradingService) {
-    void paperTradingService.start();
     app.addHook('onClose', async () => {
+      await paperTradingStartPromise;
       paperTradingService.stop();
     });
   }
 
+  const paperAutonomyStartPromise = paperAutonomyService
+    ? paperAutonomyService.start().catch((error) => {
+        app.log.error({ err: error }, 'paper autonomy service failed to start');
+      })
+    : null;
+
   if (paperAutonomyService) {
-    void paperAutonomyService.start();
     app.addHook('onClose', async () => {
+      await paperAutonomyStartPromise;
       paperAutonomyService.stop();
     });
   }
@@ -2888,7 +2901,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       autonomyMode?: unknown;
       autonomyRiskPct?: unknown;
     } | undefined) ?? {};
-    const maxConcurrentTrades = Number(body.maxConcurrentTrades);
+    const maxConcurrentTrades =
+      body.maxConcurrentTrades === undefined ? undefined : Number(body.maxConcurrentTrades);
     const autonomyMode =
       body.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' || body.autonomyMode === 'UNRESTRICTED'
         ? body.autonomyMode
@@ -2900,7 +2914,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       });
     }
 
-    if (!Number.isFinite(maxConcurrentTrades) || maxConcurrentTrades < 0 || maxConcurrentTrades > 50) {
+    if (
+      maxConcurrentTrades !== undefined
+      && (!Number.isFinite(maxConcurrentTrades) || maxConcurrentTrades < 0 || maxConcurrentTrades > 50)
+    ) {
       return reply.status(400).send({
         message: 'maxConcurrentTrades must be a number between 0 and 50'
       });
@@ -2913,7 +2930,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
 
     const paperAccount = await paperTradingService.updateConfig({
-      maxConcurrentTrades,
+      ...(maxConcurrentTrades !== undefined ? { maxConcurrentTrades } : {}),
       ...(autonomyMode ? { autonomyMode } : {}),
       ...(autonomyRiskPct !== undefined ? { autonomyRiskPct } : {})
     });

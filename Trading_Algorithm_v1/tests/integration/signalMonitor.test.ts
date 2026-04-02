@@ -176,7 +176,7 @@ describe('signal monitor integration', () => {
     expect(top.chartSnapshot.referenceLevels.some((level: { key: string }) => level.key === 'entry')).toBe(true);
   });
 
-  it('keeps live alerts separate from the paper account', async () => {
+  it('lets the paper account mirror allowed SMC candidates once the desk policy is confirmed', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-'));
     tempDirs.push(tempDir);
 
@@ -226,10 +226,10 @@ describe('signal monitor integration', () => {
       + (paperAccount.openTrades ?? 0)
       + (paperAccount.closedTrades ?? 0)
       + (paperAccount.canceledTrades ?? 0)
-    ).toBe(0);
+    ).toBeGreaterThan(0);
   });
 
-  it('does not open paper trades from the personal engine when no live alert is published', async () => {
+  it('lets the paper engine act on observed SMC candidates even when no live alert is published', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-autonomous-'));
     tempDirs.push(tempDir);
 
@@ -295,14 +295,14 @@ describe('signal monitor integration', () => {
       + (paperAccount.openTrades ?? 0)
       + (paperAccount.closedTrades ?? 0)
       + (paperAccount.canceledTrades ?? 0)
-    ).toBe(0);
+    ).toBeGreaterThan(0);
 
     const reviewsResponse = await ctx.app.inject({
       method: 'GET',
       path: '/signals/reviews?status=ALL&limit=20'
     });
     expect(reviewsResponse.statusCode).toBe(200);
-    expect(reviewsResponse.json().reviews.length).toBe(0);
+    expect(reviewsResponse.json().reviews.length).toBeGreaterThan(0);
   });
 
   it('updates the paper trade concurrency cap through the API, including unlimited mode', async () => {
@@ -354,7 +354,7 @@ describe('signal monitor integration', () => {
     expect(status.json().paperAccount.autonomyRiskPct).toBe(0.5);
   });
 
-  it('does not auto-label learning reviews from the personal engine once paper autonomy is split out', async () => {
+  it('auto-labels learning reviews from paper-fed SMC candidates so autonomous paper results train the model', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-learning-'));
     tempDirs.push(tempDir);
 
@@ -432,7 +432,7 @@ describe('signal monitor integration', () => {
         && review.autoOutcome === 'WOULD_WIN'
       ));
 
-    expect(paperLabeledReview).toBeFalsy();
+    expect(paperLabeledReview).toBeTruthy();
 
     const learningResponse = await ctx.app.inject({
       method: 'GET',

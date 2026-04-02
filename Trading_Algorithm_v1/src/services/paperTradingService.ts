@@ -25,6 +25,9 @@ export interface PaperTrade {
   riskPct: number;
   riskAmount: number;
   source: string;
+  autonomyThesis?: string;
+  autonomyReason?: string;
+  researchDirection?: string;
   filledAt?: string;
   filledPrice?: number;
   closedAt?: string;
@@ -157,6 +160,8 @@ const normalizeConcurrentTradeCap = (value: number): number => {
   return Math.max(1, Math.round(value));
 };
 
+const normalizeAutonomyRiskPct = (value: number): number => Math.max(0.01, Number(value.toFixed(2)));
+
 const clamp = (value: number, min: number, max: number): number => {
   if (value < min) {
     return min;
@@ -237,6 +242,9 @@ const normalizeTrade = (value: unknown): PaperTrade | null => {
     riskPct: round(candidate.riskPct, 4),
     riskAmount: round(candidate.riskAmount, 4),
     source: candidate.source,
+    autonomyThesis: typeof candidate.autonomyThesis === 'string' ? candidate.autonomyThesis : undefined,
+    autonomyReason: typeof candidate.autonomyReason === 'string' ? candidate.autonomyReason : undefined,
+    researchDirection: typeof candidate.researchDirection === 'string' ? candidate.researchDirection : undefined,
     filledAt: typeof candidate.filledAt === 'string' ? candidate.filledAt : undefined,
     filledPrice: typeof candidate.filledPrice === 'number' ? round(candidate.filledPrice, 4) : undefined,
     closedAt: typeof candidate.closedAt === 'string' ? candidate.closedAt : undefined,
@@ -268,9 +276,10 @@ export class PaperTradingService {
 
   constructor(private readonly config: PaperTradingConfig) {
     this.balance = config.initialBalance;
-    this.maxConcurrentTrades = normalizeConcurrentTradeCap(config.maxConcurrentTrades);
     this.autonomyMode = config.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' ? 'FOLLOW_ALLOWED_ALERTS' : 'UNRESTRICTED';
-    this.autonomyRiskPct = Math.max(0.01, Number((config.autonomyRiskPct ?? 0.35).toFixed(2)));
+    this.maxConcurrentTrades =
+      this.autonomyMode === 'UNRESTRICTED' ? 0 : normalizeConcurrentTradeCap(config.maxConcurrentTrades);
+    this.autonomyRiskPct = normalizeAutonomyRiskPct(config.autonomyRiskPct ?? 0.35);
   }
 
   async start(): Promise<void> {
@@ -324,18 +333,16 @@ export class PaperTradingService {
         .map((point) => normalizeEquityPoint(point))
         .filter((point): point is PaperTradeEquityPoint => point !== null)
         .slice(-this.config.maxEquityHistory);
-      const persistedMaxConcurrentTrades = parsed.settings?.maxConcurrentTrades;
-      if (typeof persistedMaxConcurrentTrades === 'number' && Number.isFinite(persistedMaxConcurrentTrades)) {
-        const normalizedPersistedCap = normalizeConcurrentTradeCap(persistedMaxConcurrentTrades);
-        if (!(this.autonomyMode === 'UNRESTRICTED' && normalizeConcurrentTradeCap(this.config.maxConcurrentTrades) === 0)) {
-          this.maxConcurrentTrades = normalizedPersistedCap;
-        }
-      }
       if (parsed.settings?.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' || parsed.settings?.autonomyMode === 'UNRESTRICTED') {
         this.autonomyMode = parsed.settings.autonomyMode;
       }
+      const persistedMaxConcurrentTrades = parsed.settings?.maxConcurrentTrades;
+      if (typeof persistedMaxConcurrentTrades === 'number' && Number.isFinite(persistedMaxConcurrentTrades)) {
+        const normalizedPersistedCap = normalizeConcurrentTradeCap(persistedMaxConcurrentTrades);
+        this.maxConcurrentTrades = this.autonomyMode === 'UNRESTRICTED' ? 0 : normalizedPersistedCap;
+      }
       if (typeof parsed.settings?.autonomyRiskPct === 'number' && Number.isFinite(parsed.settings.autonomyRiskPct)) {
-        this.autonomyRiskPct = Math.max(0.01, Number(parsed.settings.autonomyRiskPct.toFixed(2)));
+        this.autonomyRiskPct = normalizeAutonomyRiskPct(parsed.settings.autonomyRiskPct);
       }
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
@@ -543,7 +550,15 @@ export class PaperTradingService {
     }
 
     const paperEquity = this.computeEquityBreakdown().equity;
-    const autonomousRiskAmount = round(paperEquity * (this.autonomyRiskPct / 100), 2);
+    const metadataRiskPct =
+      this.autonomyMode === 'UNRESTRICTED' && source === 'paper-autonomy'
+        ? (() => {
+            const raw = alert.candidate.metadata.paperAutonomyRiskPct;
+            return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? normalizeAutonomyRiskPct(raw) : undefined;
+          })()
+        : undefined;
+    const autonomousRiskPct = metadataRiskPct ?? this.autonomyRiskPct;
+    const autonomousRiskAmount = round(paperEquity * (autonomousRiskPct / 100), 2);
     const autonomousQuantity = Number((autonomousRiskAmount / stopDistance).toFixed(4));
     const derivedQuantity =
       this.autonomyMode === 'UNRESTRICTED'
@@ -551,7 +566,7 @@ export class PaperTradingService {
         : round(alert.riskDecision.positionSize, 4);
     const derivedRiskPct =
       this.autonomyMode === 'UNRESTRICTED'
-        ? this.autonomyRiskPct
+        ? autonomousRiskPct
         : round(alert.riskDecision.finalRiskPct, 4);
     const riskAmount = round(stopDistance * derivedQuantity, 2);
 
@@ -562,7 +577,7 @@ export class PaperTradingService {
     const concurrentTrades = [...this.trades.values()].filter(
       (trade) => trade.status === 'PENDING_ENTRY' || trade.status === 'OPEN'
     ).length;
-    if (this.maxConcurrentTrades > 0 && concurrentTrades >= this.maxConcurrentTrades) {
+    if (this.autonomyMode !== 'UNRESTRICTED' && this.maxConcurrentTrades > 0 && concurrentTrades >= this.maxConcurrentTrades) {
       return null;
     }
 
@@ -589,7 +604,13 @@ export class PaperTradingService {
       quantity: derivedQuantity,
       riskPct: derivedRiskPct,
       riskAmount,
-      source
+      source,
+      autonomyThesis:
+        typeof alert.candidate.metadata.autonomyThesis === 'string' ? alert.candidate.metadata.autonomyThesis : undefined,
+      autonomyReason:
+        typeof alert.candidate.metadata.autonomyReason === 'string' ? alert.candidate.metadata.autonomyReason : undefined,
+      researchDirection:
+        typeof alert.candidate.metadata.researchDirection === 'string' ? alert.candidate.metadata.researchDirection : undefined
     };
 
     this.trades.set(alert.alertId, trade);
@@ -661,7 +682,10 @@ export class PaperTradingService {
   private buildAccountSnapshot(now: string): AccountSnapshot {
     const equity = round(this.balance + [...this.trades.values()].reduce((sum, trade) => sum + this.getTradeUnrealizedPnl(trade), 0), 2);
     const localNow = getLocalTimeParts(now, this.config.timezone);
-    const sessionMinute = this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
+    const sessionMinute =
+      this.autonomyMode === 'UNRESTRICTED'
+        ? 0
+        : this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
 
     const closedTrades = [...this.trades.values()]
       .filter((trade) => trade.status === 'CLOSED')
@@ -758,14 +782,17 @@ export class PaperTradingService {
     next: Partial<Pick<PaperTradingConfig, 'maxConcurrentTrades' | 'autonomyMode' | 'autonomyRiskPct'>>
   ): Promise<PaperTradingStatus> {
     await this.start();
-    if (typeof next.maxConcurrentTrades === 'number' && Number.isFinite(next.maxConcurrentTrades)) {
-      this.maxConcurrentTrades = normalizeConcurrentTradeCap(next.maxConcurrentTrades);
-    }
     if (next.autonomyMode === 'FOLLOW_ALLOWED_ALERTS' || next.autonomyMode === 'UNRESTRICTED') {
       this.autonomyMode = next.autonomyMode;
     }
+    if (typeof next.maxConcurrentTrades === 'number' && Number.isFinite(next.maxConcurrentTrades)) {
+      this.maxConcurrentTrades = normalizeConcurrentTradeCap(next.maxConcurrentTrades);
+    }
+    if (this.autonomyMode === 'UNRESTRICTED') {
+      this.maxConcurrentTrades = 0;
+    }
     if (typeof next.autonomyRiskPct === 'number' && Number.isFinite(next.autonomyRiskPct)) {
-      this.autonomyRiskPct = Math.max(0.01, Number(next.autonomyRiskPct.toFixed(2)));
+      this.autonomyRiskPct = normalizeAutonomyRiskPct(next.autonomyRiskPct);
     }
     await this.persist();
     return this.status();

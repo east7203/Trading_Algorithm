@@ -392,6 +392,7 @@ describe('paper trading service', () => {
       initialBalance: 100_000,
       maxHoldMinutes: 60,
       maxConcurrentTrades: 1,
+      autonomyMode: 'FOLLOW_ALLOWED_ALERTS',
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
@@ -443,5 +444,43 @@ describe('paper trading service', () => {
     expect(status.maxConcurrentTrades).toBe(0);
     expect(status.autonomyMode).toBe('UNRESTRICTED');
     expect(status.autonomyRiskPct).toBe(0.5);
+  });
+
+  it('treats unrestricted autonomy as uncapped even if a concurrent trade cap is supplied', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 1,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const firstTrade = await service.recordAlert(buildAlert('2026-03-25T13:30:00.000Z'), 'paper-autonomy');
+    const secondTrade = await service.recordAlert(
+      buildAlert('2026-03-25T13:35:00.000Z', {
+        alertId: 'paper-alert-2',
+        candidate: {
+          ...buildAlert('2026-03-25T13:35:00.000Z').candidate,
+          id: 'paper-candidate-2',
+          generatedAt: '2026-03-25T13:35:00.000Z',
+          metadata: {
+            paperAutonomyRiskPct: 0.65
+          }
+        }
+      }),
+      'paper-autonomy'
+    );
+
+    expect(firstTrade).not.toBeNull();
+    expect(secondTrade).not.toBeNull();
+    expect(service.status('2026-03-25T13:35:00.000Z').maxConcurrentTrades).toBe(0);
+    expect(service.status('2026-03-25T13:35:00.000Z').pendingEntries).toBe(2);
   });
 });

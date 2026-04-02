@@ -223,29 +223,6 @@ const calcAtr = (candles: Candle[], period: number): number => {
   return average(trs);
 };
 
-const getMinuteOfDayInTimezone = (timestamp: string, timezone: string): number => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-  const parts = formatter.formatToParts(new Date(timestamp));
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0');
-  return hour * 60 + minute;
-};
-
-const isMinuteInWindow = (value: number, startMinute: number, endMinute: number): boolean => {
-  if (startMinute === endMinute) {
-    return true;
-  }
-  if (startMinute < endMinute) {
-    return value >= startMinute && value <= endMinute;
-  }
-  return value >= startMinute || value <= endMinute;
-};
-
 const thesisLabel = (thesis: PaperAutonomyThesis): string =>
   thesis === 'TREND_BREAKOUT_EXPANSION'
     ? 'Trend Breakout Expansion'
@@ -449,6 +426,11 @@ export class PaperAutonomyService {
 
   private buildTradeExpiry(timestamp: string): string {
     return new Date(Date.parse(timestamp) + this.config.maxHoldMinutes * 60_000).toISOString();
+  }
+
+  private isSessionWindowEnforced(): boolean {
+    const paperStatus = this.config.getPaperTradingStatus?.() ?? null;
+    return paperStatus?.autonomyMode !== 'UNRESTRICTED';
   }
 
   private buildThesisBias(thesis: PaperAutonomyThesis, symbol: SymbolCode): number {
@@ -1220,12 +1202,6 @@ export class PaperAutonomyService {
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
       return;
     }
-    const minuteOfDay = getMinuteOfDayInTimezone(currentBar.timestamp, this.config.timezone);
-    const sessionStartMinute = this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
-    const sessionEndMinute = this.config.sessionEndHour * 60 + this.config.sessionEndMinute;
-    if (!isMinuteInWindow(minuteOfDay, sessionStartMinute, sessionEndMinute)) {
-      return;
-    }
 
     const barsUntilNow = bars.slice(0, currentIndex + 1);
     const candles5m = completeCandles(barsUntilNow, currentBar.timestamp, 5, 30);
@@ -1410,6 +1386,7 @@ export class PaperAutonomyService {
   }
 
   status(): PaperAutonomyStatus {
+    const unrestrictedSession = !this.isSessionWindowEnforced();
     const ideas = [...this.ideas.values()].sort((left, right) => right.openedAt.localeCompare(left.openedAt));
     const openIdeas = ideas.filter((idea) => idea.status === 'OPEN');
     const closedIdeas = ideas.filter((idea) => idea.status === 'CLOSED');
@@ -1473,10 +1450,10 @@ export class PaperAutonomyService {
       focusSymbols: [...this.config.focusSymbols],
       session: {
         timezone: this.config.timezone,
-        startHour: this.config.sessionStartHour,
-        startMinute: this.config.sessionStartMinute,
-        endHour: this.config.sessionEndHour,
-        endMinute: this.config.sessionEndMinute
+        startHour: unrestrictedSession ? 0 : this.config.sessionStartHour,
+        startMinute: unrestrictedSession ? 0 : this.config.sessionStartMinute,
+        endHour: unrestrictedSession ? 23 : this.config.sessionEndHour,
+        endMinute: unrestrictedSession ? 59 : this.config.sessionEndMinute
       },
       totalIdeas: ideas.length,
       openIdeas: openIdeas.length,
