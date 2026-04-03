@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { getCmeEquitySessionState, type CmeEquitySessionState } from './domain/cmeEquityHours.js';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
 import type { SignalAlert, SignalReviewOutcome, SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
@@ -349,54 +350,6 @@ const formatWinRateDelta = (value?: number): string => {
   const points = value * 100;
   const sign = points > 0 ? '+' : '';
   return `${sign}${points.toFixed(2)} pts`;
-};
-
-type CmeEquitySessionState = 'OPEN' | 'DAILY_BREAK' | 'WEEKEND_CLOSED';
-
-const getTimeZoneClockParts = (
-  value: Date | string,
-  timeZone: string
-): { weekday: string; hour: number; minute: number } => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
-  const parts = formatter.formatToParts(typeof value === 'string' ? new Date(value) : value);
-  return {
-    weekday: parts.find((part) => part.type === 'weekday')?.value ?? 'Mon',
-    hour: Number(parts.find((part) => part.type === 'hour')?.value ?? '0'),
-    minute: Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
-  };
-};
-
-const getCmeEquitySessionState = (now: Date): CmeEquitySessionState => {
-  const { weekday, hour, minute } = getTimeZoneClockParts(now, 'America/Chicago');
-  const minuteOfDay = hour * 60 + minute;
-  const dailyClose = 16 * 60;
-  const dailyReopen = 17 * 60;
-
-  switch (weekday) {
-    case 'Sun':
-      return minuteOfDay >= dailyReopen ? 'OPEN' : 'WEEKEND_CLOSED';
-    case 'Mon':
-    case 'Tue':
-    case 'Wed':
-    case 'Thu':
-      if (minuteOfDay < dailyClose) {
-        return 'OPEN';
-      }
-      if (minuteOfDay < dailyReopen) {
-        return 'DAILY_BREAK';
-      }
-      return 'OPEN';
-    case 'Fri':
-      return minuteOfDay < dailyClose ? 'OPEN' : 'WEEKEND_CLOSED';
-    default:
-      return 'WEEKEND_CLOSED';
-  }
 };
 
 const readRecentArchiveBars = async (archivePath: string | undefined, maxLines = 40): Promise<OneMinuteBar[]> => {
@@ -2099,6 +2052,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
   });
 
+  const syncPaperSessionState = async (now = new Date().toISOString()) => {
+    if (!paperTradingService) {
+      return null;
+    }
+    await paperTradingService.reconcileMarketSession(now);
+    return paperTradingService.status(now);
+  };
+
   const buildCompactAiContext = async () => {
     const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
     const monitorLatestBarTimestamp =
@@ -2131,7 +2092,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const allReviews = await signalReviewStore.listAllReviews();
     const learningPerformance = summarizeLearningPerformance(allReviews);
     const research = marketResearchService ? marketResearchService.status() : null;
-    const paper = paperTradingService ? paperTradingService.status() : null;
+    const paper = await syncPaperSessionState();
     const lastAlert = signalMonitorService?.listAlerts(1)[0];
     const calendarEvents = (await calendarClient.listUpcomingEvents())
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
@@ -2338,7 +2299,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const reviewSummary = await signalReviewStore.summary();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
     const research = marketResearchService?.status() ?? null;
-    const paper = paperTradingService?.status() ?? null;
+    const paper = await syncPaperSessionState();
     const paperAutonomy = paperAutonomyService?.status() ?? null;
     const signalConfig = signalMonitorSettingsStore.get();
     const watchlist = signalConfig.enabledSymbols.slice(0, 2).map((symbol) => {
@@ -2805,9 +2766,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const research: MarketResearchStatus | { enabled: false; started: false } = marketResearchService
       ? marketResearchService.status()
       : { enabled: false, started: false };
-    const paperAccount: PaperTradingStatus | { enabled: false; started: false } = paperTradingService
-      ? paperTradingService.status()
-      : { enabled: false, started: false };
+    const paperAccount: PaperTradingStatus | { enabled: false; started: false } =
+      (await syncPaperSessionState()) ?? { enabled: false, started: false };
     const paperAutonomy: PaperAutonomyStatus | { enabled: false; started: false } = paperAutonomyService
       ? paperAutonomyService.status()
       : { enabled: false, started: false };
@@ -2944,14 +2904,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/paper-autonomy/status', async (_request, reply) => {
+    await syncPaperSessionState();
     return reply.status(200).send({
       paperAutonomy: paperAutonomyService ? paperAutonomyService.status() : { enabled: false, started: false }
     });
   });
 
   app.get('/paper-account/status', async (_request, reply) => {
+    const paperAccount = await syncPaperSessionState();
     return reply.status(200).send({
-      paperAccount: paperTradingService ? paperTradingService.status() : { enabled: false, started: false }
+      paperAccount: paperAccount ?? { enabled: false, started: false }
     });
   });
 

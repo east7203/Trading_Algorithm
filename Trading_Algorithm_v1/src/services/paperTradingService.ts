@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
+import { isCmeEquitySessionOpen } from '../domain/cmeEquityHours.js';
 import type { AccountSnapshot, SetupType, SignalAlert, Side, SymbolCode } from '../domain/types.js';
 import type { OneMinuteBar } from '../training/historicalTrainer.js';
 
@@ -527,6 +528,10 @@ export class PaperTradingService {
     }
     await this.start();
 
+    if (!isCmeEquitySessionOpen(alert.detectedAt)) {
+      return null;
+    }
+
     if (this.trades.has(alert.alertId)) {
       return this.trades.get(alert.alertId) ?? null;
     }
@@ -633,6 +638,9 @@ export class PaperTradingService {
       if (bar.symbol !== 'NQ' && bar.symbol !== 'ES') {
         continue;
       }
+      if (!isCmeEquitySessionOpen(bar.timestamp)) {
+        continue;
+      }
       this.latestPriceBySymbol.set(bar.symbol, bar.close);
       const symbolTrades = [...this.trades.values()].filter(
         (trade) =>
@@ -677,6 +685,62 @@ export class PaperTradingService {
     }
 
     return { accepted: bars.length, settled };
+  }
+
+  async reconcileMarketSession(now = new Date().toISOString()): Promise<{ closed: number; canceled: number }> {
+    if (!this.config.enabled) {
+      return { closed: 0, canceled: 0 };
+    }
+    await this.start();
+
+    if (isCmeEquitySessionOpen(now)) {
+      return { closed: 0, canceled: 0 };
+    }
+
+    let closed = 0;
+    let canceled = 0;
+    const pendingEvents: PaperTradeEvent[] = [];
+    for (const trade of this.listTrades()) {
+      if (trade.status !== 'PENDING_ENTRY' && trade.status !== 'OPEN') {
+        continue;
+      }
+
+      const nextTrade =
+        trade.status === 'PENDING_ENTRY'
+          ? this.closeTrade(trade, now, trade.entry, 'ENTRY_EXPIRED')
+          : this.closeTrade(
+              trade,
+              now,
+              this.latestPriceBySymbol.get(trade.symbol) ?? trade.filledPrice ?? trade.entry,
+              'TIME_EXIT'
+            );
+
+      this.trades.set(trade.alertId, nextTrade);
+      this.lastUpdatedAt = now;
+      if (nextTrade.status === 'CANCELED') {
+        canceled += 1;
+        continue;
+      }
+
+      closed += 1;
+      pendingEvents.push({
+        kind: 'TRADE_CLOSED',
+        at: now,
+        trade: nextTrade,
+        equityPoint: this.pushEquityPoint(now)
+      });
+    }
+
+    if (closed > 0 || canceled > 0) {
+      this.pushEquityPoint(now);
+      await this.persist();
+    }
+
+    for (const event of pendingEvents) {
+      await this.config.onTradeEvent?.(event);
+    }
+
+    return { closed, canceled };
   }
 
   private buildAccountSnapshot(now: string): AccountSnapshot {

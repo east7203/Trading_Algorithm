@@ -255,6 +255,55 @@ describe('paper autonomy integration', () => {
     expect(autonomyStatus?.totalIdeas ?? 0).toBe(0);
   });
 
+  it('does not open autonomous futures ideas on the Good Friday holiday closure', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-good-friday-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: false,
+      marketResearchEnabled: false,
+      paperTradingEnabled: true,
+      paperAutonomyEnabled: true,
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        autonomyMode: 'UNRESTRICTED',
+        maxConcurrentTrades: 0,
+        autonomyRiskPct: 0.5
+      },
+      paperAutonomyConfig: {
+        statePath: path.join(tempDir, 'paper-autonomy.json'),
+        archivePath: undefined,
+        bootstrapCsvDir: undefined,
+        minTrendConfidence: 0.55,
+        maxHoldMinutes: 120
+      }
+    });
+    contexts.push(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildAutonomyTrendBars('NQ', 420, '2026-04-03T12:30:00.000Z')
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+    expect(ingest.json().paperAutonomyIngest.ideasOpened).toBe(0);
+
+    const paperStatus = await ctx.app.inject({
+      method: 'GET',
+      path: '/paper-account/status'
+    });
+    expect(paperStatus.statusCode).toBe(200);
+    expect(paperStatus.json().paperAccount.openTrades).toBe(0);
+    expect(paperStatus.json().paperAccount.pendingEntries).toBe(0);
+
+    const autonomyStatus = ctx.paperAutonomyService?.status();
+    expect(autonomyStatus?.totalIdeas ?? 0).toBe(0);
+  });
+
   it('defaults the paper autonomy session to the desk window', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-window-sync-'));
     tempDirs.push(tempDir);

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { isCmeEquitySessionOpen } from '../domain/cmeEquityHours.js';
 import type {
   Candle,
   SetupCandidate,
@@ -1276,6 +1277,9 @@ export class PaperAutonomyService {
     }
     const currentBar = bars[currentIndex];
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
+      return;
+    }
+    if (!isCmeEquitySessionOpen(currentBar.timestamp)) {
       return;
     }
 

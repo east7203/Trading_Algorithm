@@ -157,6 +157,26 @@ describe('paper trading service', () => {
     expect(service.status().pendingEntries).toBe(0);
   });
 
+  it('does not open new paper trades on the Good Friday holiday closure', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 3,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const trade = await service.recordAlert(buildAlert('2026-04-03T13:30:00.000Z'), 'signal-monitor');
+    expect(trade).toBeNull();
+    expect(service.status('2026-04-03T13:30:00.000Z').openTrades).toBe(0);
+    expect(service.status('2026-04-03T13:30:00.000Z').pendingEntries).toBe(0);
+  });
+
   it('emits open and close events and records equity history as trades progress', async () => {
     const events: Array<{ kind: string; at: string }> = [];
     const service = new PaperTradingService({
@@ -234,6 +254,45 @@ describe('paper trading service', () => {
     expect(firstTrade).not.toBeNull();
     expect(secondTrade).not.toBeNull();
     expect(status.pendingEntries).toBe(2);
+  });
+
+  it('reconciles lingering paper trades when the CME equity session is closed for Good Friday', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 240,
+      maxConcurrentTrades: 3,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    await service.recordAlert(buildAlert('2026-04-02T13:30:00.000Z'), 'signal-monitor');
+    await service.ingestBars([
+      {
+        symbol: 'NQ',
+        timestamp: '2026-04-02T13:31:00.000Z',
+        open: 100.1,
+        high: 100.3,
+        low: 99.9,
+        close: 100.2,
+        volume: 100
+      }
+    ]);
+
+    expect(service.status('2026-04-02T13:31:00.000Z').openTrades).toBe(1);
+
+    const reconciliation = await service.reconcileMarketSession('2026-04-03T13:30:00.000Z');
+    expect(reconciliation.closed).toBe(1);
+    expect(reconciliation.canceled).toBe(0);
+
+    const status = service.status('2026-04-03T13:30:00.000Z');
+    expect(status.openTrades).toBe(0);
+    expect(status.closedTrades).toBe(1);
+    expect(status.recentClosedTrades[0].exitReason).toBe('TIME_EXIT');
   });
 
   it('takes blocked live alerts in unrestricted autonomy mode and sizes them from paper equity', async () => {
