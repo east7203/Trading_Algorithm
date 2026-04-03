@@ -294,6 +294,39 @@ describe('paper autonomy integration', () => {
     expect(autonomyStatus?.session.endMinute).toBe(5);
   });
 
+  it('inherits the default 8:30 to 1:00 desk window when no custom session is provided', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-default-window-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: false,
+      marketResearchEnabled: false,
+      paperTradingEnabled: true,
+      paperAutonomyEnabled: true,
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        autonomyMode: 'UNRESTRICTED',
+        maxConcurrentTrades: 0,
+        autonomyRiskPct: 0.5
+      },
+      paperAutonomyConfig: {
+        statePath: path.join(tempDir, 'paper-autonomy.json'),
+        archivePath: undefined,
+        bootstrapCsvDir: undefined
+      }
+    });
+    contexts.push(ctx);
+    await ctx.paperTradingService?.start();
+    await ctx.paperAutonomyService?.start();
+
+    const autonomyStatus = ctx.paperAutonomyService?.status();
+    expect(autonomyStatus?.session.startHour).toBe(8);
+    expect(autonomyStatus?.session.startMinute).toBe(30);
+    expect(autonomyStatus?.session.endHour).toBe(13);
+    expect(autonomyStatus?.session.endMinute).toBe(0);
+  });
+
   it('resets the paper account back to 100K and clears open autonomy ideas', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-reset-'));
     tempDirs.push(tempDir);
