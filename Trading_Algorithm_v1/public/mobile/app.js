@@ -529,6 +529,7 @@ const buildReplayLearningImpact = (review) => {
 
   return {
     items,
+    engineCount: items.length,
     summary:
       details[0] ??
       'Save a replay review with a directional outcome to feed SMC, Paper Autonomy, and Research.',
@@ -5659,8 +5660,13 @@ const renderReviewCard = (review) => {
   }
   const reviewLearningImpactRowEl = node.querySelector('.reviewLearningImpactRow');
   const reviewLearningSummaryEl = node.querySelector('.reviewLearningSummary');
+  const reviewLearningBadgeEl = node.querySelector('.reviewLearningBadge');
   reviewLearningImpactRowEl.innerHTML = '';
+  reviewLearningBadgeEl.hidden = true;
   if (learningImpact.items.length) {
+    reviewLearningBadgeEl.hidden = false;
+    reviewLearningBadgeEl.textContent = `Learning fed: ${learningImpact.engineCount} ${learningImpact.engineCount === 1 ? 'engine' : 'engines'}`;
+    reviewLearningBadgeEl.className = `pill reviewLearningBadge ${learningImpact.engineCount >= 3 ? 'is-strong' : ''}`;
     learningImpact.items.forEach((item) => {
       const chip = document.createElement('span');
       chip.className = item.className;

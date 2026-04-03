@@ -6285,6 +6285,25 @@ h2, h3 {
   margin-top: 0;
 }
 
+.reviewLearningHeadlineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.reviewLearningBadge {
+  color: #9ae6b4;
+  background: rgba(7, 118, 61, 0.16);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.reviewLearningBadge.is-strong {
+  color: #d7fce6;
+  background: rgba(7, 118, 61, 0.24);
+  border-color: rgba(74, 222, 128, 0.28);
+}
+
 .reviewLearningSummary {
   margin: -4px 0 0;
   color: var(--rh-muted);
