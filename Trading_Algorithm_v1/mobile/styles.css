@@ -3441,6 +3441,7 @@ body.tv-viewer-open {
   flex-direction: column;
   min-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding:
     calc(env(safe-area-inset-top) + 10px)
     14px
@@ -3534,7 +3535,7 @@ body.tv-viewer-open {
 .chart-lightbox-frame.is-replay-compact .chart-lightbox-chart svg,
 .chart-lightbox-frame.is-replay-compact svg {
   height: auto;
-  max-height: min(40vh, 320px);
+  max-height: min(34vh, 280px);
 }
 
 .chart-lightbox-frame .signalChartPlaceholder {
@@ -6536,6 +6537,7 @@ h2, h3 {
 }
 
 .review-card-pending .signal-chart-tools,
+.review-card-pending .review-after-entry-card,
 .review-card-pending .reviewSnapshotLevels {
   margin-top: 0;
 }
@@ -6562,6 +6564,129 @@ h2, h3 {
 
 .review-card-pending .reviewNotes {
   min-height: 84px;
+}
+
+.review-after-entry-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--rh-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.review-after-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reviewAfterEntryHeadline {
+  margin: 0;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.reviewAfterEntryDetail {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.reviewAfterEntryStats {
+  gap: 6px;
+}
+
+.reviewAfterEntryStat {
+  font-size: 0.72rem;
+}
+
+.reviewAfterEntryState.is-positive {
+  background: rgba(0, 200, 5, 0.14);
+  border-color: rgba(0, 200, 5, 0.22);
+  color: #63f28d;
+}
+
+.reviewAfterEntryState.is-negative {
+  background: rgba(255, 95, 86, 0.14);
+  border-color: rgba(255, 95, 86, 0.24);
+  color: #ff9d96;
+}
+
+.reviewAfterEntryState.is-warning {
+  background: rgba(255, 166, 0, 0.14);
+  border-color: rgba(255, 166, 0, 0.24);
+  color: #ffbf4d;
+}
+
+.reviewAfterEntryState.is-neutral {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--rh-border);
+  color: #d6d8db;
+}
+
+@media (max-width: 480px) {
+  .chart-lightbox-sheet {
+    padding:
+      calc(env(safe-area-inset-top) + 8px)
+      10px
+      calc(env(safe-area-inset-bottom) + 12px);
+  }
+
+  .chart-lightbox-head {
+    margin-bottom: 10px;
+  }
+
+  .chart-lightbox-title {
+    font-size: 1.02rem;
+  }
+
+  .chart-lightbox-meta {
+    font-size: 0.72rem;
+  }
+
+  .chart-lightbox-close {
+    padding: 9px 12px;
+  }
+
+  .chart-lightbox-frame {
+    border-radius: 20px;
+  }
+
+  .chart-lightbox-frame.is-replay-compact {
+    width: 100%;
+  }
+
+  .chart-lightbox-frame.is-replay-compact .chart-lightbox-chart svg,
+  .chart-lightbox-frame.is-replay-compact svg {
+    max-height: min(30vh, 240px);
+  }
+
+  .chart-lightbox-detail-grid-compact {
+    gap: 8px;
+    padding: 10px 10px 0;
+  }
+
+  .chart-lightbox-detail-stack-compact {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .chart-lightbox-detail-card,
+  .chart-lightbox-context-card,
+  .chart-lightbox-story-card {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .chart-lightbox-detail-value,
+  .chart-lightbox-context-value {
+    font-size: 0.94rem;
+  }
 }
 
 /* ---- Status pills ---- */

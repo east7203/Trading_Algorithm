@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=46" />
+    <link rel="stylesheet" href="styles.css?v=47" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -1261,6 +1261,15 @@
         <div class="signal-chart-tools">
           <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
         </div>
+        <article class="review-after-entry-card">
+          <div class="review-after-entry-head">
+            <p class="card-section-label">After Entry</p>
+            <span class="pill reviewAfterEntryState">--</span>
+          </div>
+          <p class="reviewAfterEntryHeadline">--</p>
+          <p class="reviewAfterEntryDetail">--</p>
+          <div class="chip-row reviewAfterEntryStats"></div>
+        </article>
         <div class="signal-levels reviewSnapshotLevels">
           <span class="level-chip level-chip-entry">Entry <b class="reviewEntry"></b></span>
           <span class="level-chip level-chip-stop">SL <b class="reviewStopLoss"></b></span>
@@ -1436,6 +1445,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=46"></script>
+    <script type="module" src="app.js?v=47"></script>
   </body>
 </html>

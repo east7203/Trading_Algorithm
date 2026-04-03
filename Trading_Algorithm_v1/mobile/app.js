@@ -3399,6 +3399,19 @@ const summarizeGuardrails = (alertLike) => {
   return reasons.length ? reasons.map(humanizeRiskReason).join(' • ') : 'Blocked by guardrails';
 };
 
+const replayResolutionTone = (outcome) => {
+  if (outcome === 'TARGET_FIRST') {
+    return 'is-positive';
+  }
+  if (outcome === 'STOP_FIRST') {
+    return 'is-negative';
+  }
+  if (outcome === 'AMBIGUOUS') {
+    return 'is-warning';
+  }
+  return 'is-neutral';
+};
+
 const resolveReplayTradeStartIndex = (snapshot, bars) => {
   const focusBarAt = snapshot?.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot?.detectedAt;
   const focusIndexRaw = bars.findIndex((bar) => bar.timestamp === focusBarAt);
@@ -3474,6 +3487,53 @@ const analyzeReplayResolution = (snapshot, candidate) => {
   };
 };
 
+const buildReplayMoveMetrics = (snapshot, candidate) => {
+  const bars = snapshot?.bars ?? [];
+  const side = candidate?.side ?? snapshot?.side;
+  const entry = candidate?.entry ?? snapshot?.levels?.entry;
+  if (!bars.length || typeof entry !== 'number' || !Number.isFinite(entry)) {
+    return null;
+  }
+
+  const tradeStartIndex = resolveReplayTradeStartIndex(snapshot, bars);
+  const postEntryBars = bars.slice(tradeStartIndex);
+  if (!postEntryBars.length) {
+    return null;
+  }
+
+  const lastClose = postEntryBars[postEntryBars.length - 1]?.close ?? entry;
+  const maxAfterEntry = Math.max(...postEntryBars.map((bar) => bar.high));
+  const minAfterEntry = Math.min(...postEntryBars.map((bar) => bar.low));
+  const favorableMove = side === 'LONG' ? maxAfterEntry - entry : entry - minAfterEntry;
+  const adverseMove = side === 'LONG' ? entry - minAfterEntry : maxAfterEntry - entry;
+  const netMove = side === 'LONG' ? lastClose - entry : entry - lastClose;
+  const resolution = analyzeReplayResolution(snapshot, candidate);
+  const lastDirection =
+    netMove >= 0
+      ? side === 'LONG'
+        ? 'above entry'
+        : 'below entry'
+      : side === 'LONG'
+        ? 'below entry'
+        : 'above entry';
+  const favorableLabel = side === 'LONG' ? 'Best push' : 'Best drop';
+  const adverseLabel = side === 'LONG' ? 'Worst pullback' : 'Worst squeeze';
+  const lastLabel = `Last ${fmtNum(Math.abs(netMove), 2)} pts ${lastDirection}`;
+  return {
+    tradeStartIndex,
+    favorableMove,
+    adverseMove,
+    netMove,
+    resolution,
+    favorableLabel,
+    adverseLabel,
+    lastLabel,
+    favorableStat: `${favorableLabel} ${fmtNum(favorableMove, 2)}`,
+    adverseStat: `${adverseLabel} ${fmtNum(adverseMove, 2)}`,
+    lastStat: lastLabel
+  };
+};
+
 const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   if (!snapshot?.bars?.length) {
     return '<div class="signalChartPlaceholder">Chart pending</div>';
@@ -3508,25 +3568,22 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const downFill = '#ff5c5c';
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
   const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
-  const tradeStartIndex = resolveReplayTradeStartIndex(snapshot, bars);
+  const moveMetrics = buildReplayMoveMetrics(snapshot, candidate);
+  const tradeStartIndex = moveMetrics?.tradeStartIndex ?? resolveReplayTradeStartIndex(snapshot, bars);
   const tradeStartX = candleX(tradeStartIndex) - slotWidth / 2;
   const plotRight = width - padding.right;
   const entryY = priceToY(entry);
   const stopY = priceToY(stopLoss);
   const targetY = priceToY(takeProfit);
-  const resolution = analyzeReplayResolution(snapshot, candidate);
+  const resolution = moveMetrics?.resolution ?? analyzeReplayResolution(snapshot, candidate);
   const tradeDirectionGood =
     side === 'LONG'
       ? (bars[bars.length - 1]?.close ?? entry) >= entry
       : (bars[bars.length - 1]?.close ?? entry) <= entry;
   const trailTone = tradeDirectionGood ? '#52de9d' : '#ff6f78';
-  const postEntryBars = bars.slice(tradeStartIndex);
-  const lastClose = postEntryBars[postEntryBars.length - 1]?.close ?? entry;
-  const maxAfterEntry = Math.max(...postEntryBars.map((bar) => bar.high));
-  const minAfterEntry = Math.min(...postEntryBars.map((bar) => bar.low));
-  const favorableMove = side === 'LONG' ? maxAfterEntry - entry : entry - minAfterEntry;
-  const adverseMove = side === 'LONG' ? entry - minAfterEntry : maxAfterEntry - entry;
-  const netMove = side === 'LONG' ? lastClose - entry : entry - lastClose;
+  const favorableMove = moveMetrics?.favorableMove ?? 0;
+  const adverseMove = moveMetrics?.adverseMove ?? 0;
+  const netMove = moveMetrics?.netMove ?? 0;
   const moveHeadline =
     favorableMove >= adverseMove * 1.35
       ? 'AFTER ENTRY PUSHED FAVORABLY'
@@ -3539,8 +3596,8 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
             : 'AFTER ENTRY FELL BACK THROUGH ENTRY';
   const moveDetail =
     netMove >= 0
-      ? `Last ${fmtNum(Math.abs(netMove), 2)} pts above • Best ${fmtNum(favorableMove, 2)}`
-      : `Last ${fmtNum(Math.abs(netMove), 2)} pts below • Worst ${fmtNum(adverseMove, 2)}`;
+      ? `${moveMetrics?.lastLabel ?? `Last ${fmtNum(Math.abs(netMove), 2)} pts favorable`} • Best ${fmtNum(favorableMove, 2)}`
+      : `${moveMetrics?.lastLabel ?? `Last ${fmtNum(Math.abs(netMove), 2)} pts adverse`} • Worst ${fmtNum(adverseMove, 2)}`;
   const resolutionTone =
     resolution.outcome === 'TARGET_FIRST'
       ? '#52de9d'
@@ -3874,31 +3931,20 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
 };
 
 const summarizeReplayMove = (snapshot, candidate) => {
-  const bars = snapshot?.bars ?? [];
-  if (!bars.length) {
+  const moveMetrics = buildReplayMoveMetrics(snapshot, candidate);
+  if (!moveMetrics) {
     return {
       headline: 'Replay path unavailable',
-      detail: 'No chart bars were stored with this setup.'
+      detail: 'No chart bars or entry price were stored with this setup.',
+      stats: [],
+      resolution: {
+        label: 'PATH UNKNOWN',
+        tone: 'is-neutral'
+      }
     };
   }
 
-  const side = candidate?.side ?? snapshot?.side;
-  const entry = candidate?.entry ?? snapshot?.levels?.entry;
-  if (typeof entry !== 'number' || !Number.isFinite(entry)) {
-    return {
-      headline: 'Replay path unavailable',
-      detail: 'Entry price was not captured for this setup.'
-    };
-  }
-
-  const tradeStartIndex = resolveReplayTradeStartIndex(snapshot, bars);
-  const postEntryBars = bars.slice(tradeStartIndex);
-  const lastClose = postEntryBars[postEntryBars.length - 1]?.close ?? entry;
-  const maxAfterEntry = Math.max(...postEntryBars.map((bar) => bar.high));
-  const minAfterEntry = Math.min(...postEntryBars.map((bar) => bar.low));
-  const favorableMove = side === 'LONG' ? maxAfterEntry - entry : entry - minAfterEntry;
-  const adverseMove = side === 'LONG' ? entry - minAfterEntry : maxAfterEntry - entry;
-  const netMove = side === 'LONG' ? lastClose - entry : entry - lastClose;
+  const { favorableMove, adverseMove, netMove, resolution, favorableStat, adverseStat, lastStat } = moveMetrics;
 
   const headline =
     favorableMove >= adverseMove * 1.35
@@ -3911,11 +3957,7 @@ const summarizeReplayMove = (snapshot, candidate) => {
             ? 'Price finished on the favorable side of entry.'
             : 'Price finished back through entry.';
 
-  const detail =
-    side === 'LONG'
-      ? `Best push ${fmtNum(favorableMove, 2)} pts up • Worst pullback ${fmtNum(adverseMove, 2)} pts down • Last close ${fmtNum(Math.abs(netMove), 2)} pts ${netMove >= 0 ? 'above' : 'below'} entry`
-      : `Best push ${fmtNum(favorableMove, 2)} pts down • Worst squeeze ${fmtNum(adverseMove, 2)} pts up • Last close ${fmtNum(Math.abs(netMove), 2)} pts ${netMove >= 0 ? 'below' : 'above'} entry`;
-  const resolution = analyzeReplayResolution(snapshot, candidate);
+  const detail = `${favorableStat} • ${adverseStat} • ${lastStat}`;
   const decoratedHeadline =
     resolution.outcome === 'TARGET_FIRST'
       ? 'Saved bars show target was hit first.'
@@ -3927,7 +3969,15 @@ const summarizeReplayMove = (snapshot, candidate) => {
       ? `${resolution.detail} • ${detail}`
       : detail;
 
-  return { headline: decoratedHeadline, detail: decoratedDetail };
+  return {
+    headline: decoratedHeadline,
+    detail: decoratedDetail,
+    stats: [favorableStat, adverseStat, lastStat],
+    resolution: {
+      label: resolution.label || 'NO TARGET/STOP HIT YET',
+      tone: replayResolutionTone(resolution.outcome)
+    }
+  };
 };
 
 const renderSignalChartMarkup = (snapshot, options = {}) => {
@@ -4592,35 +4642,46 @@ const closeChartLightbox = () => {
 };
 
 const openChartLightbox = (chartEl) => {
-  if (!chartLightboxEl || !chartLightboxFrameEl || !chartEl?.querySelector('svg')) {
+  if (
+    !chartLightboxEl
+    || !chartLightboxFrameEl
+    || !chartLightboxTitleEl
+    || !chartLightboxMetaEl
+    || !chartEl?.querySelector('svg')
+  ) {
     return;
   }
 
-  const context = chartLightboxContext.get(chartEl) ?? {};
-  chartLightboxTitleEl.textContent = context.title || chartEl.dataset.chartLightboxTitle || 'Trigger Snapshot';
-  chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
-  const expandedChartMarkup =
-    context.chartVariant === 'replay-trade-box'
-      ? renderReplayTradeBoxChartMarkup(context.snapshot, context.candidate, { expanded: true })
-      : renderSignalChartMarkup(context.snapshot, { expanded: true });
-  chartLightboxFrameEl.innerHTML = context.snapshot
-    ? `
-        <div class="chart-lightbox-chart">${expandedChartMarkup}</div>
-        ${renderChartLightboxDetails(context)}
-      `
-    : chartEl.innerHTML;
-  chartLightboxFrameEl.classList.toggle('is-replay-compact', context.chartVariant === 'replay-trade-box');
-  chartLightboxEl.hidden = false;
-  chartLightboxEl.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('chart-lightbox-open');
-  chartLightboxGesture.active = false;
-  chartLightboxGesture.startY = 0;
-  chartLightboxGesture.offsetY = 0;
-  chartLightboxGesture.scrollTop = 0;
-  chartLightboxSheetEl?.classList.remove('is-dragging');
-  setChartLightboxOffset(0);
-  if (chartLightboxSheetEl) {
-    chartLightboxSheetEl.scrollTop = 0;
+  try {
+    const context = chartLightboxContext.get(chartEl) ?? {};
+    chartLightboxTitleEl.textContent = context.title || chartEl.dataset.chartLightboxTitle || 'Trigger Snapshot';
+    chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
+    const expandedChartMarkup =
+      context.chartVariant === 'replay-trade-box'
+        ? renderReplayTradeBoxChartMarkup(context.snapshot, context.candidate, { expanded: true })
+        : renderSignalChartMarkup(context.snapshot, { expanded: true });
+    chartLightboxFrameEl.innerHTML = context.snapshot
+      ? `
+          <div class="chart-lightbox-chart">${expandedChartMarkup}</div>
+          ${renderChartLightboxDetails(context)}
+        `
+      : chartEl.innerHTML;
+    chartLightboxFrameEl.classList.toggle('is-replay-compact', context.chartVariant === 'replay-trade-box');
+    chartLightboxEl.hidden = false;
+    chartLightboxEl.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('chart-lightbox-open');
+    chartLightboxGesture.active = false;
+    chartLightboxGesture.startY = 0;
+    chartLightboxGesture.offsetY = 0;
+    chartLightboxGesture.scrollTop = 0;
+    chartLightboxSheetEl?.classList.remove('is-dragging');
+    setChartLightboxOffset(0);
+    if (chartLightboxSheetEl) {
+      chartLightboxSheetEl.scrollTop = 0;
+    }
+  } catch (error) {
+    console.error('Failed to open chart lightbox', error);
+    setStatus('Status: replay preview failed to open', true);
   }
 };
 
@@ -4665,8 +4726,9 @@ const bindChartLightbox = () => {
       return;
     }
 
+    const dragHandle = event.target.closest('.chart-lightbox-grabber, .chart-lightbox-head');
     chartLightboxGesture.scrollTop = chartLightboxSheetEl.scrollTop;
-    chartLightboxGesture.active = chartLightboxSheetEl.scrollTop <= 0;
+    chartLightboxGesture.active = Boolean(dragHandle) && chartLightboxSheetEl.scrollTop <= 0;
     chartLightboxGesture.startY = event.touches[0].clientY;
     chartLightboxGesture.offsetY = 0;
     if (chartLightboxGesture.active) {
@@ -6308,6 +6370,7 @@ const renderReviewCard = (review) => {
     reviewLearningSummaryEl.textContent = 'Save a directional replay review to feed the live ranking and autonomous engines.';
   }
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
+  const replayMove = isPendingReview ? summarizeReplayMove(chartSnapshot, review.alertSnapshot?.candidate) : null;
   reviewChartEl.innerHTML = isPendingReview
     ? renderReplayTradeBoxChartMarkup(chartSnapshot, review.alertSnapshot?.candidate)
     : renderSignalChartMarkup(chartSnapshot);
@@ -6332,6 +6395,25 @@ const renderReviewCard = (review) => {
     setupType: review.setupType,
     side: review.side
   });
+  const reviewAfterEntryStateEl = node.querySelector('.reviewAfterEntryState');
+  const reviewAfterEntryHeadlineEl = node.querySelector('.reviewAfterEntryHeadline');
+  const reviewAfterEntryDetailEl = node.querySelector('.reviewAfterEntryDetail');
+  const reviewAfterEntryStatsEl = node.querySelector('.reviewAfterEntryStats');
+  if (replayMove && reviewAfterEntryStateEl && reviewAfterEntryHeadlineEl && reviewAfterEntryDetailEl && reviewAfterEntryStatsEl) {
+    reviewAfterEntryStateEl.textContent = replayMove.resolution.label;
+    reviewAfterEntryStateEl.className = `pill reviewAfterEntryState ${replayMove.resolution.tone}`;
+    reviewAfterEntryHeadlineEl.textContent = replayMove.headline;
+    reviewAfterEntryDetailEl.textContent = replayMove.detail;
+    reviewAfterEntryStatsEl.innerHTML = '';
+    replayMove.stats.forEach((stat) => {
+      const chip = document.createElement('span');
+      chip.className = 'level-chip reviewAfterEntryStat';
+      chip.textContent = stat;
+      reviewAfterEntryStatsEl.appendChild(chip);
+    });
+  } else {
+    node.querySelector('.review-after-entry-card')?.remove();
+  }
   node.querySelector('.reviewEntry').textContent = fmtNum(review.alertSnapshot?.candidate?.entry, 2);
   node.querySelector('.reviewStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
   node.querySelector('.reviewTakeProfitOne').textContent = fmtNum(review.alertSnapshot?.candidate?.takeProfit?.[0], 2);
