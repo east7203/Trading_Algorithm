@@ -6453,7 +6453,8 @@ h2, h3 {
 .signalChartStack-replay {
   border-radius: 16px;
   overflow: hidden;
-  background: #232935;
+  background: linear-gradient(180deg, #232935 0%, #1d2330 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .signalChartStack-replay svg {
@@ -6493,6 +6494,10 @@ h2, h3 {
   margin-top: 2px;
 }
 
+.review-card-pending .signalChartStack-replay {
+  border-radius: 18px;
+}
+
 .review-card-pending .signal-chart-tools,
 .review-card-pending .reviewSnapshotLevels {
   margin-top: 0;
@@ -6515,7 +6520,7 @@ h2, h3 {
 }
 
 .review-card-pending .review-form {
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .review-card-pending .reviewNotes {

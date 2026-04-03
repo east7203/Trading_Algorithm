@@ -3362,7 +3362,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
 
   const expanded = options.expanded === true;
   const width = expanded ? 440 : 320;
-  const height = expanded ? 286 : 222;
+  const height = expanded ? 304 : 236;
   const padding = expanded
     ? { top: 16, right: 18, bottom: 18, left: 12 }
     : { top: 14, right: 16, bottom: 16, left: 10 };
@@ -3398,6 +3398,11 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const entryY = priceToY(entry);
   const stopY = priceToY(stopLoss);
   const targetY = priceToY(takeProfit);
+  const tradeDirectionGood =
+    side === 'LONG'
+      ? (bars[bars.length - 1]?.close ?? entry) >= entry
+      : (bars[bars.length - 1]?.close ?? entry) <= entry;
+  const trailTone = tradeDirectionGood ? '#52de9d' : '#ff6f78';
   const profitTop = Math.min(entryY, targetY);
   const profitBottom = Math.max(entryY, targetY);
   const riskTop = Math.min(entryY, stopY);
@@ -3409,6 +3414,17 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       width="${Math.max(0, tradeStartX - padding.left)}"
       height="${plotHeight}"
       fill="rgba(13, 18, 28, 0.82)"
+    />
+  `;
+  const tradeBoundary = `
+    <line
+      x1="${tradeStartX}"
+      y1="${padding.top}"
+      x2="${tradeStartX}"
+      y2="${plotBottom}"
+      stroke="rgba(93, 160, 255, 0.76)"
+      stroke-width="1.15"
+      stroke-dasharray="4 6"
     />
   `;
   const profitRect = `
@@ -3460,12 +3476,44 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       const bodyTop = Math.min(openY, closeY);
       const bodyHeight = Math.max(Math.abs(closeY - openY), 2);
       const fill = bar.close >= bar.open ? upFill : downFill;
+      const opacity = index < tradeStartIndex ? 0.62 : 0.98;
       return `
-        <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${wickColor}" stroke-width="1.25" opacity="0.95" />
-        <rect x="${x - bodyWidth / 2}" y="${bodyTop}" width="${bodyWidth}" height="${bodyHeight}" rx="1.4" fill="${fill}" opacity="0.98" />
+        <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${wickColor}" stroke-width="1.25" opacity="${Math.max(0.5, opacity - 0.06)}" />
+        <rect x="${x - bodyWidth / 2}" y="${bodyTop}" width="${bodyWidth}" height="${bodyHeight}" rx="1.4" fill="${fill}" opacity="${opacity}" />
       `;
     })
     .join('');
+
+  const tradeTrailPoints = bars
+    .slice(tradeStartIndex)
+    .map((bar, relativeIndex) => `${candleX(tradeStartIndex + relativeIndex)},${priceToY(bar.close)}`)
+    .join(' ');
+  const trailStartX = candleX(tradeStartIndex);
+  const trailStartY = priceToY(bars[tradeStartIndex]?.close ?? entry);
+  const trailEndX = candleX(bars.length - 1);
+  const trailEndY = priceToY(bars[bars.length - 1]?.close ?? entry);
+  const tradeTrail = `
+    <polyline
+      points="${tradeTrailPoints}"
+      fill="none"
+      stroke="rgba(8, 10, 14, 0.46)"
+      stroke-width="${expanded ? '5.5' : '4.75'}"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      opacity="0.9"
+    />
+    <polyline
+      points="${tradeTrailPoints}"
+      fill="none"
+      stroke="${trailTone}"
+      stroke-width="${expanded ? '2.8' : '2.35'}"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      opacity="0.98"
+    />
+    <circle cx="${trailStartX}" cy="${trailStartY}" r="${expanded ? '4.8' : '4.1'}" fill="${trailTone}" stroke="rgba(8, 10, 14, 0.6)" stroke-width="2.4" />
+    <circle cx="${trailEndX}" cy="${trailEndY}" r="${expanded ? '4.1' : '3.7'}" fill="${trailTone}" stroke="rgba(8, 10, 14, 0.54)" stroke-width="2" />
+  `;
 
   const entryArrowX = candleX(tradeStartIndex);
   const entryArrowY = entryY;
@@ -3488,19 +3536,33 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
     />
   `;
   const entryLabel = `
-    <text
-      x="${Math.max(padding.left + 18, tradeStartX - 18)}"
-      y="${entryDirectionUp ? entryY - 18 : entryY + 28}"
-      fill="rgba(244, 248, 251, 0.72)"
-      font-size="${expanded ? '10' : '8.8'}"
-      font-weight="700"
-      text-anchor="start"
-    >${escapeHtml(`Enter ${side === 'LONG' ? 'Long' : 'Short'}`)}</text>
+    <g>
+      <rect
+        x="${Math.max(padding.left + 12, tradeStartX - 46)}"
+        y="${entryDirectionUp ? entryY - 30 : entryY + 14}"
+        width="${expanded ? 86 : 78}"
+        height="${expanded ? 18 : 16}"
+        rx="8"
+        fill="rgba(8, 12, 20, 0.84)"
+        stroke="rgba(122, 170, 255, 0.38)"
+        stroke-width="0.9"
+      />
+      <text
+        x="${Math.max(padding.left + 12, tradeStartX - 46) + (expanded ? 43 : 39)}"
+        y="${entryDirectionUp ? entryY - 18 : entryY + 25}"
+        fill="rgba(244, 248, 251, 0.86)"
+        font-size="${expanded ? '9.2' : '8.2'}"
+        font-weight="700"
+        text-anchor="middle"
+      >${escapeHtml(`ENTER ${side === 'LONG' ? 'LONG' : 'SHORT'}`)}</text>
+    </g>
   `;
 
   const priceTag = (label, price, y, tone) => {
-    const widthPx = expanded ? 46 : 40;
-    const heightPx = expanded ? 18 : 16;
+    const formattedPrice = fmtNum(price, 2);
+    const labelText = `${label} ${formattedPrice}`;
+    const widthPx = expanded ? 74 : 64;
+    const heightPx = expanded ? 19 : 17;
     const x = plotRight - widthPx;
     const fill =
       tone === 'target'
@@ -3516,27 +3578,52 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
           : 'rgba(230, 236, 244, 0.42)';
     return `
       <g>
-        <rect
-          x="${x}"
-          y="${y - heightPx / 2}"
-          width="${widthPx}"
-          height="${heightPx}"
-          rx="7"
+        <path
+          d="M ${x + 8} ${y - heightPx / 2}
+             L ${x + widthPx} ${y - heightPx / 2}
+             L ${x + widthPx} ${y + heightPx / 2}
+             L ${x + 8} ${y + heightPx / 2}
+             L ${x} ${y}
+             Z"
           fill="${fill}"
           stroke="${stroke}"
-          stroke-width="0.9"
+          stroke-width="0.95"
         />
         <text
-          x="${x + widthPx / 2}"
+          x="${x + widthPx / 2 + 4}"
           y="${y + 3}"
           fill="#f8fbff"
-          font-size="${expanded ? '8.8' : '8'}"
+          font-size="${expanded ? '8.1' : '7.4'}"
           font-weight="700"
           text-anchor="middle"
-        >${escapeHtml(label)}</text>
+        >${escapeHtml(labelText)}</text>
       </g>
     `;
   };
+
+  const trailHeadline = `
+    <g>
+      <rect
+        x="${Math.max(padding.left + 14, tradeStartX + 10)}"
+        y="${padding.top + 22}"
+        width="${expanded ? 116 : 104}"
+        height="${expanded ? 18 : 16}"
+        rx="8"
+        fill="rgba(8, 12, 20, 0.78)"
+        stroke="rgba(255, 255, 255, 0.08)"
+        stroke-width="0.8"
+      />
+      <text
+        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 58 : 52)}"
+        y="${padding.top + (expanded ? 34 : 33)}"
+        fill="${trailTone}"
+        font-size="${expanded ? '8.8' : '8'}"
+        font-weight="700"
+        text-anchor="middle"
+        letter-spacing="0.03em"
+      >${escapeHtml(tradeDirectionGood ? 'POST-ENTRY HELD' : 'POST-ENTRY FAILED')}</text>
+    </g>
+  `;
 
   const headlineBadge = `
     <g>
@@ -3552,15 +3639,18 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
         <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="#232935" />
         ${previewShade}
+        ${tradeBoundary}
         ${profitRect}
         ${riskRect}
         ${grid}
         ${candles}
+        ${tradeTrail}
         ${entryGuide}
         ${entryDot}
         ${entryArrow}
         ${entryLabel}
         ${headlineBadge}
+        ${trailHeadline}
         ${priceTag('TP', takeProfit, targetY, 'target')}
         ${priceTag('IN', entry, entryY, 'entry')}
         ${priceTag('SL', stopLoss, stopY, 'stop')}
