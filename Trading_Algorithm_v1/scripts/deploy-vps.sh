@@ -2,13 +2,30 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "${PROJECT_ROOT}/.." && pwd)"
 REMOTE_HOST="${DEPLOY_HOST:-root@167.172.252.171}"
 REMOTE_PATH="${DEPLOY_PATH:-/opt/trading-algorithm}"
 SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
 SSH_PORT="${DEPLOY_PORT:-22}"
 PM2_APPS="${DEPLOY_PM2_APPS:-trading-api ibkr-bridge yahoo-bridge ibkr-fallback-watchdog}"
 
+if git -C "${REPO_ROOT}" rev-parse --verify HEAD^ >/dev/null 2>&1; then
+  CHANGED_FILES="$(git -C "${REPO_ROOT}" diff --name-only HEAD^ HEAD)"
+else
+  CHANGED_FILES="$(git -C "${REPO_ROOT}" ls-files)"
+fi
+
+UI_ONLY_DEPLOY=false
+if [[ -n "${CHANGED_FILES}" ]] \
+  && printf '%s\n' "${CHANGED_FILES}" | grep -Eq '^Trading_Algorithm_v1/(mobile/|public/mobile/)' \
+  && ! printf '%s\n' "${CHANGED_FILES}" | grep -Eq '^Trading_Algorithm_v1/(src/|scripts/|package(-lock)?\\.json$|tsconfig\\.json$|requirements-ibkr\\.txt$)'; then
+  UI_ONLY_DEPLOY=true
+fi
+
 echo "Deploying ${PROJECT_ROOT} -> ${REMOTE_HOST}:${REMOTE_PATH}"
+if [[ "${UI_ONLY_DEPLOY}" == "true" ]]; then
+  echo "Detected UI-only deploy. Skipping PM2 restarts so the live IBKR session is left alone."
+fi
 
 rsync -az --delete \
   -e "ssh -i ${SSH_KEY} -p ${SSH_PORT}" \
@@ -85,15 +102,17 @@ for raw_line in Path('.pm2.env').read_text().splitlines():
 PY
     )\"
   fi
-  for app in ${PM2_APPS}; do
-    if pm2 describe \"\${app}\" >/dev/null 2>&1; then
-      if [ \"\${app}\" = \"trading-api\" ]; then
-        pm2 restart \"\${app}\" --update-env --node-args='--max-old-space-size=1536'
-      else
-        pm2 restart \"\${app}\" --update-env
+  if [ '${UI_ONLY_DEPLOY}' != 'true' ]; then
+    for app in ${PM2_APPS}; do
+      if pm2 describe \"\${app}\" >/dev/null 2>&1; then
+        if [ \"\${app}\" = \"trading-api\" ]; then
+          pm2 restart \"\${app}\" --update-env --node-args='--max-old-space-size=1536'
+        else
+          pm2 restart \"\${app}\" --update-env
+        fi
       fi
-    fi
-  done
+    done
+  fi
   python3 - <<'PY'
 import json
 import subprocess
@@ -113,7 +132,9 @@ for _ in range(20):
         pass
     time.sleep(3)
 PY
-  pm2 save
+  if [ '${UI_ONLY_DEPLOY}' != 'true' ]; then
+    pm2 save
+  fi
 "
 
 echo "Deploy complete. Runtime state under ${REMOTE_PATH}/data was preserved."

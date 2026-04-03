@@ -3399,6 +3399,81 @@ const summarizeGuardrails = (alertLike) => {
   return reasons.length ? reasons.map(humanizeRiskReason).join(' • ') : 'Blocked by guardrails';
 };
 
+const resolveReplayTradeStartIndex = (snapshot, bars) => {
+  const focusBarAt = snapshot?.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot?.detectedAt;
+  const focusIndexRaw = bars.findIndex((bar) => bar.timestamp === focusBarAt);
+  return Math.max(1, Math.min(focusIndexRaw >= 0 ? focusIndexRaw : bars.length - 4, bars.length - 2));
+};
+
+const analyzeReplayResolution = (snapshot, candidate) => {
+  const bars = snapshot?.bars ?? [];
+  const side = candidate?.side ?? snapshot?.side;
+  const entry = candidate?.entry ?? snapshot?.levels?.entry;
+  const stopLoss = candidate?.stopLoss ?? snapshot?.levels?.stopLoss;
+  const takeProfit = candidate?.takeProfit?.[0] ?? snapshot?.levels?.takeProfit;
+
+  if (
+    bars.length === 0
+    || ![entry, stopLoss, takeProfit].every((value) => typeof value === 'number' && Number.isFinite(value))
+  ) {
+    return {
+      outcome: 'NONE',
+      label: '',
+      detail: '',
+      hitIndex: -1,
+      hitTimestamp: null,
+      hitPrice: null
+    };
+  }
+
+  const tradeStartIndex = resolveReplayTradeStartIndex(snapshot, bars);
+  for (let index = tradeStartIndex; index < bars.length; index += 1) {
+    const bar = bars[index];
+    const targetHit = side === 'LONG' ? bar.high >= takeProfit : bar.low <= takeProfit;
+    const stopHit = side === 'LONG' ? bar.low <= stopLoss : bar.high >= stopLoss;
+
+    if (targetHit && stopHit) {
+      return {
+        outcome: 'AMBIGUOUS',
+        label: 'HIT BOTH SAME BAR',
+        detail: 'Saved bar touched both target and stop in the same candle.',
+        hitIndex: index,
+        hitTimestamp: bar.timestamp,
+        hitPrice: entry
+      };
+    }
+    if (targetHit) {
+      return {
+        outcome: 'TARGET_FIRST',
+        label: 'HIT TARGET FIRST',
+        detail: 'Saved bars show price reached the target before the stop.',
+        hitIndex: index,
+        hitTimestamp: bar.timestamp,
+        hitPrice: takeProfit
+      };
+    }
+    if (stopHit) {
+      return {
+        outcome: 'STOP_FIRST',
+        label: 'HIT STOP FIRST',
+        detail: 'Saved bars show price touched the stop before the target.',
+        hitIndex: index,
+        hitTimestamp: bar.timestamp,
+        hitPrice: stopLoss
+      };
+    }
+  }
+
+  return {
+    outcome: 'NONE',
+    label: 'NO TARGET/STOP HIT YET',
+    detail: 'Saved bars do not clearly show either level being hit first.',
+    hitIndex: -1,
+    hitTimestamp: null,
+    hitPrice: null
+  };
+};
+
 const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   if (!snapshot?.bars?.length) {
     return '<div class="signalChartPlaceholder">Chart pending</div>';
@@ -3433,15 +3508,13 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const downFill = '#ff5c5c';
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
   const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
-  const focusBarAt = snapshot.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot.detectedAt;
-  const focusIndexRaw = bars.findIndex((bar) => bar.timestamp === focusBarAt);
-  const focusIndex = focusIndexRaw >= 0 ? focusIndexRaw : Math.max(1, bars.length - 4);
-  const tradeStartIndex = Math.max(1, Math.min(focusIndex, bars.length - 2));
+  const tradeStartIndex = resolveReplayTradeStartIndex(snapshot, bars);
   const tradeStartX = candleX(tradeStartIndex) - slotWidth / 2;
   const plotRight = width - padding.right;
   const entryY = priceToY(entry);
   const stopY = priceToY(stopLoss);
   const targetY = priceToY(takeProfit);
+  const resolution = analyzeReplayResolution(snapshot, candidate);
   const tradeDirectionGood =
     side === 'LONG'
       ? (bars[bars.length - 1]?.close ?? entry) >= entry
@@ -3468,6 +3541,20 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
     netMove >= 0
       ? `Last ${fmtNum(Math.abs(netMove), 2)} pts above • Best ${fmtNum(favorableMove, 2)}`
       : `Last ${fmtNum(Math.abs(netMove), 2)} pts below • Worst ${fmtNum(adverseMove, 2)}`;
+  const resolutionTone =
+    resolution.outcome === 'TARGET_FIRST'
+      ? '#52de9d'
+      : resolution.outcome === 'STOP_FIRST'
+        ? '#ff7c86'
+        : 'rgba(244, 248, 251, 0.78)';
+  const resolutionX =
+    resolution.hitIndex >= tradeStartIndex ? candleX(resolution.hitIndex) : null;
+  const resolutionY =
+    resolution.outcome === 'TARGET_FIRST'
+      ? targetY
+      : resolution.outcome === 'STOP_FIRST'
+        ? stopY
+        : entryY;
   const profitTop = Math.min(entryY, targetY);
   const profitBottom = Math.max(entryY, targetY);
   const riskTop = Math.min(entryY, stopY);
@@ -3671,8 +3758,8 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       <rect
         x="${Math.max(padding.left + 14, tradeStartX + 10)}"
         y="${padding.top + 22}"
-        width="${expanded ? 154 : 142}"
-        height="${expanded ? 30 : 26}"
+        width="${expanded ? 170 : 152}"
+        height="${expanded ? 42 : 36}"
         rx="8"
         fill="rgba(8, 12, 20, 0.78)"
         stroke="rgba(255, 255, 255, 0.08)"
@@ -3688,15 +3775,68 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
         letter-spacing="0.03em"
       >${escapeHtml(moveHeadline)}</text>
       <text
-        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 77 : 71)}"
+        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 85 : 76)}"
         y="${padding.top + (expanded ? 44 : 41)}"
         fill="rgba(244, 248, 251, 0.7)"
         font-size="${expanded ? '7.2' : '6.6'}"
         font-weight="600"
         text-anchor="middle"
       >${escapeHtml(moveDetail)}</text>
+      <text
+        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 85 : 76)}"
+        y="${padding.top + (expanded ? 55 : 50)}"
+        fill="${resolutionTone}"
+        font-size="${expanded ? '7.2' : '6.4'}"
+        font-weight="700"
+        text-anchor="middle"
+      >${escapeHtml(resolution.label)}</text>
     </g>
   `;
+
+  const resolutionMarker =
+    resolutionX !== null
+      ? `
+        <g>
+          <circle
+            cx="${resolutionX}"
+            cy="${resolutionY}"
+            r="${expanded ? '4.8' : '4.2'}"
+            fill="${resolutionTone}"
+            stroke="rgba(8, 12, 20, 0.84)"
+            stroke-width="2"
+          />
+          <path
+            d="M ${resolutionX} ${resolutionY}
+               L ${Math.min(plotRight - 110, resolutionX + 18)} ${Math.max(padding.top + 18, resolutionY - 18)}
+               L ${plotRight - 92} ${Math.max(padding.top + 18, resolutionY - 18)}"
+            fill="none"
+            stroke="${resolutionTone}"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            opacity="0.92"
+          />
+          <rect
+            x="${plotRight - 92}"
+            y="${Math.max(padding.top + 10, resolutionY - 26)}"
+            width="${expanded ? 88 : 82}"
+            height="${expanded ? 18 : 16}"
+            rx="8"
+            fill="rgba(8, 12, 20, 0.88)"
+            stroke="${resolutionTone}"
+            stroke-width="0.9"
+          />
+          <text
+            x="${plotRight - 48}"
+            y="${Math.max(padding.top + 10, resolutionY - 26) + (expanded ? 12 : 11)}"
+            fill="${resolutionTone}"
+            font-size="${expanded ? '7.5' : '6.8'}"
+            font-weight="800"
+            text-anchor="middle"
+          >${escapeHtml(resolution.outcome === 'TARGET_FIRST' ? 'TARGET FIRST' : resolution.outcome === 'STOP_FIRST' ? 'STOP FIRST' : resolution.outcome === 'AMBIGUOUS' ? 'BOTH SAME BAR' : 'UNRESOLVED')}</text>
+        </g>
+      `
+      : '';
 
   const headlineBadge = `
     <g>
@@ -3724,6 +3864,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
         ${entryLabel}
         ${headlineBadge}
         ${trailHeadline}
+        ${resolutionMarker}
         ${priceTag('TP', takeProfit, targetY, 'target')}
         ${priceTag('IN', entry, entryY, 'entry')}
         ${priceTag('SL', stopLoss, stopY, 'stop')}
@@ -3750,9 +3891,7 @@ const summarizeReplayMove = (snapshot, candidate) => {
     };
   }
 
-  const focusBarAt = snapshot?.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot?.detectedAt;
-  const focusIndexRaw = bars.findIndex((bar) => bar.timestamp === focusBarAt);
-  const tradeStartIndex = Math.max(1, Math.min(focusIndexRaw >= 0 ? focusIndexRaw : bars.length - 4, bars.length - 2));
+  const tradeStartIndex = resolveReplayTradeStartIndex(snapshot, bars);
   const postEntryBars = bars.slice(tradeStartIndex);
   const lastClose = postEntryBars[postEntryBars.length - 1]?.close ?? entry;
   const maxAfterEntry = Math.max(...postEntryBars.map((bar) => bar.high));
@@ -3776,8 +3915,19 @@ const summarizeReplayMove = (snapshot, candidate) => {
     side === 'LONG'
       ? `Best push ${fmtNum(favorableMove, 2)} pts up • Worst pullback ${fmtNum(adverseMove, 2)} pts down • Last close ${fmtNum(Math.abs(netMove), 2)} pts ${netMove >= 0 ? 'above' : 'below'} entry`
       : `Best push ${fmtNum(favorableMove, 2)} pts down • Worst squeeze ${fmtNum(adverseMove, 2)} pts up • Last close ${fmtNum(Math.abs(netMove), 2)} pts ${netMove >= 0 ? 'below' : 'above'} entry`;
+  const resolution = analyzeReplayResolution(snapshot, candidate);
+  const decoratedHeadline =
+    resolution.outcome === 'TARGET_FIRST'
+      ? 'Saved bars show target was hit first.'
+      : resolution.outcome === 'STOP_FIRST'
+        ? 'Saved bars show stop was hit first.'
+        : headline;
+  const decoratedDetail =
+    resolution.outcome === 'TARGET_FIRST' || resolution.outcome === 'STOP_FIRST'
+      ? `${resolution.detail} • ${detail}`
+      : detail;
 
-  return { headline, detail };
+  return { headline: decoratedHeadline, detail: decoratedDetail };
 };
 
 const renderSignalChartMarkup = (snapshot, options = {}) => {
