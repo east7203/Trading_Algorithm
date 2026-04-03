@@ -1189,15 +1189,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const minutes = roundedMinutes % 60;
     return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   };
-  const buildPaperTradeDeliveryStatus = (
-    event: Pick<PaperTradeEvent, 'kind' | 'at' | 'trade'>
+  const buildDeliveryFreshness = (
+    deliveredAt: string,
+    sourceAt: string,
+    label: string
   ): { badge: 'LIVE' | 'DELAYED'; line: string; summary: string } => {
-    const tradePhase = event.kind === 'TRADE_CLOSED' ? 'close' : 'entry';
-    const sourceAt =
-      event.kind === 'TRADE_CLOSED'
-        ? event.trade.closedAt ?? event.at
-        : event.trade.filledAt ?? event.trade.submittedAt ?? event.at;
-    const emittedAtMs = Date.parse(event.at);
+    const emittedAtMs = Date.parse(deliveredAt);
     const sourceAtMs = Date.parse(sourceAt);
     const delayMs =
       Number.isFinite(emittedAtMs) && Number.isFinite(sourceAtMs)
@@ -1208,12 +1205,22 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     return {
       badge: delayed ? 'DELAYED' : 'LIVE',
       line: delayed
-        ? `Delivery: DELAYED • ${lagLabel} after trade ${tradePhase}`
-        : `Delivery: LIVE • ${lagLabel} after trade ${tradePhase}`,
+        ? `Delivery: DELAYED • ${lagLabel} after ${label}`
+        : `Delivery: LIVE • ${lagLabel} after ${label}`,
       summary: delayed
         ? `DELAYED ${lagLabel}`
         : 'LIVE'
     };
+  };
+  const buildPaperTradeDeliveryStatus = (
+    event: Pick<PaperTradeEvent, 'kind' | 'at' | 'trade'>
+  ): { badge: 'LIVE' | 'DELAYED'; line: string; summary: string } => {
+    const tradePhase = event.kind === 'TRADE_CLOSED' ? 'trade close' : 'trade entry';
+    const sourceAt =
+      event.kind === 'TRADE_CLOSED'
+        ? event.trade.closedAt ?? event.at
+        : event.trade.filledAt ?? event.trade.submittedAt ?? event.at;
+    return buildDeliveryFreshness(event.at, sourceAt, tradePhase);
   };
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
@@ -1430,16 +1437,18 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               const directionLabel = event.nextTrend.direction === 'BULLISH' ? 'bullish' : 'bearish';
               const confidenceLabel = `${Math.round(event.nextTrend.confidence * 100)}%`;
               const leadSymbol = event.nextTrend.leadSymbol ?? 'NQ/ES';
+              const deliveryStatus = buildDeliveryFreshness(event.changedAt, event.changedAt, 'research flip');
 
               await notifyTradeAssistChannels(
                 {
                   title: `Research trend flipped ${directionLabel}`,
-                  body: `${leadSymbol} leading • ${confidenceLabel} confidence • ${event.nextTrend.reason}`,
+                  body: `${deliveryStatus.summary} • ${leadSymbol} leading • ${confidenceLabel} confidence • ${event.nextTrend.reason}`,
                   url: '/mobile/?tab=home&focus=research-trend'
                 },
                 {
                   title: `Research trend flipped ${directionLabel}`,
                   lines: [
+                    deliveryStatus.line,
                     `Previous: ${event.previousDirection}`,
                     `Now: ${event.nextTrend.direction}`,
                     `Lead: ${leadSymbol}`,
@@ -1456,24 +1465,27 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               const confidenceLabel = `${Math.round(event.experiment.confidence * 100)}%`;
               const directionLabel = event.experiment.direction === 'BULLISH' ? 'bullish' : 'bearish';
               const leadSymbol = event.experiment.leadSymbol ?? event.experiment.symbol ?? event.overallTrend.leadSymbol ?? 'NQ/ES';
-              const evidence = event.experiment.evidence.slice(0, 2);
+              const deliveryStatus = buildDeliveryFreshness(event.changedAt, event.changedAt, 'research experiment');
+              const summary =
+                event.experiment.evidence[0]
+                ?? event.experiment.thesisSummary;
 
               await notifyTradeAssistChannels(
                 {
                   title: `Research experiment opened ${directionLabel}`,
-                  body: `${event.experiment.thesisSummary} • ${leadSymbol} leading • ${confidenceLabel}`,
+                  body: `${deliveryStatus.summary} • Thinking ${directionLabel} because ${summary}`,
                   url: '/mobile/?tab=home&focus=research-lab',
                   tag: 'research-experiment-opened'
                 },
                 {
                   title: `Research experiment opened ${directionLabel}`,
                   lines: [
-                    `Thesis: ${event.experiment.thesisSummary}`,
+                    deliveryStatus.line,
+                    `Thinking: ${summary}`,
                     `Lead: ${leadSymbol}`,
                     `Confidence: ${confidenceLabel}`,
                     `Horizon: ${event.experiment.horizonMinutes}m`,
-                    `Opened: ${event.changedAt}`,
-                    evidence.length > 0 ? `Evidence: ${evidence.join(' • ')}` : 'Evidence is still building.'
+                    `Opened: ${event.changedAt}`
                   ]
                 }
               );
@@ -1548,16 +1560,18 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const bodyText = `${title}${symbolText}. The server is actively trying to restore the IBKR session.`;
+    const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), new Date().toISOString(), 'IBKR recovery step');
     await notifyTradeAssistChannels(
       {
         title,
-        body: bodyText,
+        body: `${deliveryStatus.summary} • ${bodyText}`,
         url: ibkrStatusUrl,
         tag: 'ibkr-recovery-progress'
       },
       {
         title,
         lines: [
+          deliveryStatus.line,
           bodyText,
           describeIbkrLoginAttempt(loginAttempt),
           describeIbkrResendAttempt(resendAttempt),
@@ -1584,16 +1598,18 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const bodyText = `${title}${symbolText}. The server received your request and is starting the recovery flow now.`;
+    const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), new Date().toISOString(), 'IBKR recovery request');
     await notifyTradeAssistChannels(
       {
         title,
-        body: bodyText,
+        body: `${deliveryStatus.summary} • ${bodyText}`,
         url: ibkrStatusUrl,
         tag: 'ibkr-recovery-requested'
       },
       {
         title,
         lines: [
+          deliveryStatus.line,
           bodyText,
           detail,
           `Source: ${source}`,
@@ -1619,6 +1635,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const title = 'IBKR still not connected';
     const bodyText = `The server-side IBKR bridge still is not connected${symbolText}. The server is still waiting for IBKR approval.`;
+    const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), new Date(requestedAtMs).toISOString(), 'IBKR login required');
     const { loginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(`${source}-reminder`);
     const triggerLine = describeIbkrLoginAttempt(loginAttempt);
     const resendLine = describeIbkrResendAttempt(resendAttempt);
@@ -1628,13 +1645,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       await notifyTradeAssistChannels(
         {
           title,
-          body: bodyText,
+          body: `${deliveryStatus.summary} • ${bodyText}`,
           url: ibkrStatusUrl,
           tag: 'ibkr-login-fallback'
         },
         {
           title,
           lines: [
+            deliveryStatus.line,
             bodyText,
             triggerLine,
             resendLine,
@@ -3121,6 +3139,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       confidence?: number;
       thesis?: string;
       horizonMinutes?: number;
+      delayMinutes?: number;
     } | undefined) ?? {};
 
     const symbol = body.symbol?.toUpperCase() === 'ES' ? 'ES' : 'NQ';
@@ -3137,18 +3156,25 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         : 60;
     const confidenceLabel = `${Math.round(confidence * 100)}%`;
     const directionLabel = direction === 'BULLISH' ? 'bullish' : 'bearish';
+    const delayMinutes = typeof body.delayMinutes === 'number' && Number.isFinite(body.delayMinutes)
+      ? Math.max(0, body.delayMinutes)
+      : 0;
+    const changedAt = new Date(Date.now() - delayMinutes * 60_000).toISOString();
+    const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), changedAt, 'research experiment');
+    const summary = `${symbol} ${directionLabel} because ${thesis}`;
 
     const deliveries = await notifyTradeAssistChannels(
       {
         title: `Research experiment opened ${directionLabel}`,
-        body: `${thesis} • ${symbol} leading • ${confidenceLabel}`,
+        body: `${deliveryStatus.summary} • Thinking ${directionLabel} because ${thesis}`,
         url: '/mobile/?tab=home&focus=research-lab',
         tag: 'research-experiment-opened-test'
       },
       {
         title: `Research experiment opened ${directionLabel}`,
         lines: [
-          `Thesis: ${thesis}`,
+          deliveryStatus.line,
+          `Thinking: ${summary}`,
           `Lead: ${symbol}`,
           `Confidence: ${confidenceLabel}`,
           `Horizon: ${horizonMinutes}m`,
@@ -3164,7 +3190,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         direction,
         confidence,
         thesis,
-        horizonMinutes
+        horizonMinutes,
+        deliveryStatus: deliveryStatus.badge
       },
       deliveries
     });
@@ -3328,6 +3355,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const bodyText = yahooCutover.stopped
       ? `The server-side IBKR bridge is connected and receiving live bars${symbolText}. Yahoo fallback has been stopped automatically.`
       : `The server-side IBKR bridge is connected and receiving live bars${symbolText}.`;
+    const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), connectedAt, 'IBKR reconnect');
     await appendIbkrReconnectHistory({
       kind: 'CONNECTED',
       atMs: ibkrReconnectState.lastConnectedAtMs,
@@ -3345,13 +3373,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           await notifyTradeAssistChannels(
             {
               title,
-              body: bodyText,
+              body: `${deliveryStatus.summary} • ${bodyText}`,
               url: ibkrStatusUrl,
               tag: 'ibkr-connected'
             },
             {
               title,
               lines: [
+                deliveryStatus.line,
                 bodyText,
                 `Source: ${source}`,
                 `Connected at: ${connectedAt}`,
@@ -3392,6 +3421,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const title = 'IBKR login required';
     const bodyText = `The server-side IBKR bridge needs a login${symbolText}.`;
+    const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), detectedAt, 'IBKR login required');
     const requestedAtMs = Date.parse(detectedAt) || Date.now();
     ibkrReconnectState.lastLoginRequiredAtMs = requestedAtMs;
     ibkrReconnectState.lastFallbackAtMs = 0;
@@ -3415,13 +3445,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           await notifyTradeAssistChannels(
             {
               title,
-              body: bodyText,
+              body: `${deliveryStatus.summary} • ${bodyText}`,
               url: ibkrStatusUrl,
               tag: 'ibkr-login-required'
             },
             {
               title,
               lines: [
+                deliveryStatus.line,
                 bodyText,
                 triggerLine,
                 resendLine,

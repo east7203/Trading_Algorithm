@@ -148,4 +148,27 @@ describe('mobile app endpoints', () => {
     expect(payload.test.deliveryStatus).toBe('DELAYED');
     expect(payload.deliveries).toBeTruthy();
   });
+
+  it('sends a controlled research experiment notification with a short summary', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/research-experiment',
+      payload: {
+        symbol: 'NQ',
+        direction: 'BEARISH',
+        confidence: 0.81,
+        thesis: 'momentum is failing under the prior high',
+        delayMinutes: 9
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.test.symbol).toBe('NQ');
+    expect(payload.test.deliveryStatus).toBe('DELAYED');
+    expect(payload.deliveries).toBeTruthy();
+  });
 });
