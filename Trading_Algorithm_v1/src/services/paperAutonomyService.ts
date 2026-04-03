@@ -1,6 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Candle, SetupCandidate, SignalAlert, SignalChartSnapshot, Side, SymbolCode } from '../domain/types.js';
+import type {
+  Candle,
+  SetupCandidate,
+  SignalAlert,
+  SignalChartSnapshot,
+  Side,
+  SignalReviewEntry,
+  SignalReviewOutcome,
+  SignalReviewValidity,
+  SymbolCode
+} from '../domain/types.js';
 import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training/historicalTrainer.js';
 import { streamNdjsonValues } from '../utils/ndjson.js';
 import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
@@ -269,7 +279,34 @@ const thesisLabel = (thesis: PaperAutonomyThesis): string =>
         ? 'Range Fade Reversion'
         : thesis === 'FAILED_BREAKOUT_REVERSAL'
           ? 'Failed Breakout Reversal'
-          : 'Volatility Compression Release';
+        : 'Volatility Compression Release';
+
+const mapReplayReviewToPaperOutcome = (
+  outcome: SignalReviewOutcome | undefined,
+  validity: SignalReviewValidity | undefined
+): 'WIN' | 'LOSS' | 'FLAT' | null => {
+  if (outcome === 'WOULD_WIN') {
+    return 'WIN';
+  }
+  if (outcome === 'WOULD_LOSE') {
+    return 'LOSS';
+  }
+  if (outcome === 'BREAKEVEN') {
+    return 'FLAT';
+  }
+  if (validity === 'VALID') {
+    return 'WIN';
+  }
+  if (validity === 'INVALID') {
+    return 'LOSS';
+  }
+  return null;
+};
+
+const normalizeAutonomyThesis = (value: unknown): PaperAutonomyThesis | null =>
+  typeof value === 'string' && PAPER_AUTONOMY_THESES.includes(value as PaperAutonomyThesis)
+    ? (value as PaperAutonomyThesis)
+    : null;
 
 const summarizeCandidate = (candidate: SetupCandidate): string => {
   const score = typeof candidate.finalScore === 'number' ? `score ${candidate.finalScore.toFixed(1)}` : 'unscored';
@@ -1439,6 +1476,82 @@ export class PaperAutonomyService {
       side: idea.side,
       outcome,
       reason: idea.reason,
+      learningSamples: nextStatus.performance.learningSamples,
+      thesisClosed: thesisStats?.closed ?? 0,
+      thesisHitRate: thesisStats?.hitRate ?? 0,
+      thesisAvgR: thesisStats?.avgR ?? 0,
+      thesisRealizedPnl: thesisStats?.realizedPnl ?? 0,
+      bestThesisLabel: nextStatus.bestThesis?.label,
+      previousBestThesisLabel: previousStatus.bestThesis?.label,
+      bestThesisChanged: previousStatus.bestThesis?.thesis !== nextStatus.bestThesis?.thesis
+    };
+  }
+
+  async recordReplayReview(review: SignalReviewEntry): Promise<PaperAutonomyLearningUpdate | null> {
+    const candidateMetadata = review.alertSnapshot?.candidate?.metadata ?? {};
+    const thesis = normalizeAutonomyThesis(candidateMetadata.autonomyThesis);
+    const outcome = mapReplayReviewToPaperOutcome(review.outcome, review.validity);
+    if (!thesis || !outcome) {
+      return null;
+    }
+
+    await this.start();
+
+    const existing = this.ideas.get(review.alertId);
+    if (existing?.paperTradeId) {
+      return null;
+    }
+
+    const previousStatus = this.status();
+    const reviewedAt = review.reviewedAt ?? review.updatedAt;
+    const realizedR = outcome === 'WIN' ? 1 : outcome === 'LOSS' ? -1 : 0;
+    const nextIdea: PaperAutonomyIdeaRecord = {
+      alertId: review.alertId,
+      candidateId: review.candidateId,
+      symbol: review.symbol,
+      side: review.side,
+      thesis,
+      score: round(
+        Number(review.alertSnapshot?.candidate?.finalScore ?? review.alertSnapshot?.candidate?.baseScore ?? 0),
+        2
+      ),
+      reason:
+        typeof candidateMetadata.autonomyReason === 'string' && candidateMetadata.autonomyReason.trim().length > 0
+          ? candidateMetadata.autonomyReason.trim()
+          : review.alertSnapshot?.summary ?? `${review.setupType} replay review`,
+      researchDirection:
+        candidateMetadata.researchDirection === 'BULLISH'
+        || candidateMetadata.researchDirection === 'BEARISH'
+        || candidateMetadata.researchDirection === 'BALANCED'
+        || candidateMetadata.researchDirection === 'STAND_ASIDE'
+          ? candidateMetadata.researchDirection
+          : existing?.researchDirection ?? 'BALANCED',
+      researchConfidence:
+        typeof candidateMetadata.researchConfidence === 'number' && Number.isFinite(candidateMetadata.researchConfidence)
+          ? round(candidateMetadata.researchConfidence, 2)
+          : existing?.researchConfidence ?? 0,
+      openedAt: existing?.openedAt ?? review.detectedAt,
+      status: 'CLOSED',
+      paperTradeId: existing?.paperTradeId,
+      closedAt: reviewedAt,
+      realizedPnl: existing?.realizedPnl ?? 0,
+      realizedR,
+      outcome
+    };
+
+    this.ideas.set(review.alertId, nextIdea);
+    this.lastEvaluatedAt = reviewedAt;
+    await this.persistState();
+
+    const nextStatus = this.status();
+    const thesisStats = nextStatus.thesisStats.find((entry) => entry.thesis === thesis);
+    return {
+      thesis,
+      thesisLabel: thesisLabel(thesis),
+      symbol: review.symbol,
+      side: review.side,
+      outcome,
+      reason: nextIdea.reason,
       learningSamples: nextStatus.performance.learningSamples,
       thesisClosed: thesisStats?.closed ?? 0,
       thesisHitRate: thesisStats?.hitRate ?? 0,

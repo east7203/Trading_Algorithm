@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type AppContext } from '../../src/app.js';
+import type { SignalAlert } from '../../src/domain/types.js';
 
 const contexts: AppContext[] = [];
 const tempDirs: string[] = [];
@@ -106,6 +107,88 @@ const withApp = (signalReviewStorePath: string, signalMonitorSettingsStorePath: 
   return ctx;
 };
 
+const withReplayLearningApp = (tempDir: string): AppContext => {
+  const ctx = buildApp({
+    signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+    signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor-settings.json'),
+    continuousTrainingEnabled: false,
+    signalMonitorEnabled: false,
+    marketResearchEnabled: true,
+    marketResearchConfig: {
+      archivePath: undefined,
+      bootstrapCsvDir: undefined,
+      statePath: path.join(tempDir, 'market-research-state.json'),
+      maxBarsPerSymbol: 200
+    },
+    paperTradingEnabled: true,
+    paperTradingConfig: {
+      statePath: path.join(tempDir, 'paper-account.json')
+    },
+    paperAutonomyEnabled: true,
+    paperAutonomyConfig: {
+      archivePath: undefined,
+      bootstrapCsvDir: undefined,
+      statePath: path.join(tempDir, 'paper-autonomy-state.json'),
+      maxBarsPerSymbol: 200
+    }
+  });
+  contexts.push(ctx);
+  return ctx;
+};
+
+const buildReplayLearningAlert = (): SignalAlert => ({
+  alertId: 'replay-autonomy-learning-alert',
+  symbol: 'NQ',
+  setupType: 'AUTONOMOUS_FUTURES_DAYTRADER',
+  side: 'LONG',
+  detectedAt: '2026-01-06T14:35:00.000Z',
+  rankingModelId: 'ranking-model-test',
+  title: 'NQ autonomous replay test',
+  summary: 'Autonomous breakout aligned with research trend.',
+  candidate: {
+    id: 'candidate-replay-autonomy-learning',
+    setupType: 'AUTONOMOUS_FUTURES_DAYTRADER',
+    symbol: 'NQ',
+    session: 'NY',
+    detectionTimeframe: '5m',
+    executionTimeframe: '5m',
+    side: 'LONG',
+    entry: 100,
+    stopLoss: 99,
+    takeProfit: [102],
+    baseScore: 88,
+    oneMinuteConfidence: 0.67,
+    finalScore: 91,
+    eligibility: {
+      passed: true,
+      passReasons: ['REPLAY_TEST'],
+      failReasons: []
+    },
+    metadata: {
+      autonomyThesis: 'TREND_BREAKOUT_EXPANSION',
+      autonomyReason: 'Momentum expansion out of replay review',
+      researchDirection: 'BULLISH',
+      researchConfidence: 0.74,
+      researchTrendDirection: 'BULLISH',
+      researchTrendConfidence: 0.74,
+      researchTrendLeadSymbol: 'NQ',
+      researchTrendAligned: true,
+      researchTrendSummary: 'NQ and ES remained aligned bullish through the replay window.'
+    },
+    generatedAt: '2026-01-06T14:35:00.000Z'
+  },
+  riskDecision: {
+    allowed: true,
+    finalRiskPct: 0.25,
+    positionSize: 1,
+    reasonCodes: ['REPLAY_TEST'],
+    blockedByNewsWindow: false,
+    blockedByTradingWindow: false,
+    blockedByPolicy: false,
+    checkedAt: '2026-01-06T14:35:00.000Z'
+  }
+});
+
 const relaxSignalSettings = async (ctx: AppContext) => {
   const response = await ctx.app.inject({
     method: 'PATCH',
@@ -203,5 +286,37 @@ describe('signal review loop integration', () => {
     expect(completedResponse.statusCode).toBe(200);
     expect(completedResponse.json().reviews[0].outcome).toBe('WOULD_WIN');
     expect(completedResponse.json().reviews[0].reviewedBy).toBe('qa-reviewer');
+  });
+
+  it('feeds replay reviews into paper autonomy and market research', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-review-replay-learning-'));
+    tempDirs.push(tempDir);
+
+    const ctx = withReplayLearningApp(tempDir);
+    await ctx.signalReviewStore.recordAlert(buildReplayLearningAlert());
+
+    const saveResponse = await ctx.app.inject({
+      method: 'POST',
+      path: '/signals/reviews',
+      payload: {
+        alertId: 'replay-autonomy-learning-alert',
+        validity: 'VALID',
+        outcome: 'WOULD_WIN',
+        notes: 'Replay confirms the aligned breakout thesis.',
+        reviewedBy: 'qa-reviewer'
+      }
+    });
+
+    expect(saveResponse.statusCode).toBe(200);
+    expect(saveResponse.json().learning.paperAutonomy?.thesis).toBe('TREND_BREAKOUT_EXPANSION');
+    expect(saveResponse.json().learning.marketResearch?.thesis).toBe('ALIGNED_CONTINUATION');
+
+    const paperAutonomyStatus = ctx.paperAutonomyService?.status();
+    expect(paperAutonomyStatus?.closedIdeas).toBeGreaterThan(0);
+    expect(paperAutonomyStatus?.bestThesis?.thesis).toBe('TREND_BREAKOUT_EXPANSION');
+
+    const researchStatus = ctx.marketResearchService?.status();
+    expect(researchStatus?.performance.evaluatedPredictions).toBeGreaterThan(0);
+    expect(researchStatus?.knowledgeBase.bestThesis?.thesis).toBe('ALIGNED_CONTINUATION');
   });
 });

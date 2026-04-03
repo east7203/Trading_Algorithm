@@ -2721,6 +2721,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       const body = parseOrThrow(signalReviewUpsertBodySchema.safeParse(request.body));
       const review = await signalReviewStore.upsertReview(body);
       const summary = await signalReviewStore.summary();
+      const paperAutonomyLearning = await paperAutonomyService?.recordReplayReview(review);
+      const marketResearchLearning = await marketResearchService?.recordReplayReview(review);
 
       journalStore.addEvent({
         type: 'SIGNAL_REVIEWED',
@@ -2740,7 +2742,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
       return reply.status(200).send({
         review,
-        summary
+        summary,
+        learning: {
+          paperAutonomy: paperAutonomyLearning ?? null,
+          marketResearch: marketResearchLearning ?? null
+        }
       });
     } catch (error) {
       return reply.status(400).send({ message: safeErrorMessage(error, 'Review update failed') });

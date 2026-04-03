@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { SymbolCode, Timeframe } from '../domain/types.js';
+import type { SignalReviewEntry, SignalReviewOutcome, SignalReviewValidity, SymbolCode, Timeframe } from '../domain/types.js';
 import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training/historicalTrainer.js';
 import { streamNdjsonValues } from '../utils/ndjson.js';
 
@@ -54,7 +54,7 @@ export type MarketResearchExperimentThesis =
   | 'LEADERSHIP_BREAKOUT'
   | 'DIVERGENCE_RESOLUTION';
 
-export type MarketResearchExperimentSource = 'TREND_FLIP' | 'PROACTIVE';
+export type MarketResearchExperimentSource = 'TREND_FLIP' | 'PROACTIVE' | 'REPLAY_REVIEW';
 
 export interface MarketResearchExperiment extends MarketResearchPredictionEpisode {
   id: string;
@@ -159,6 +159,19 @@ export interface MarketResearchExperimentOpenedEvent {
   symbolStatuses: MarketResearchSymbolStatus[];
 }
 
+export interface MarketResearchReplayLearningUpdate {
+  experimentId: string;
+  thesis: MarketResearchExperimentThesis;
+  thesisLabel: string;
+  direction: Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'>;
+  symbol: SymbolCode;
+  outcome: 'WIN' | 'LOSS';
+  confidence: number;
+  evaluatedPredictions: number;
+  hitRate: number;
+  bestThesisLabel?: string;
+}
+
 export interface MarketResearchConfig {
   enabled: boolean;
   archivePath?: string;
@@ -253,6 +266,25 @@ const normalizeSymbol = (value: unknown): SymbolCode | undefined => (value === '
 const normalizeDirectionalOutcome = (value: unknown): 'WIN' | 'LOSS' | undefined =>
   value === 'WIN' || value === 'LOSS' ? value : undefined;
 
+const mapReplayReviewToResearchOutcome = (
+  outcome: SignalReviewOutcome | undefined,
+  validity: SignalReviewValidity | undefined
+): 'WIN' | 'LOSS' | undefined => {
+  if (outcome === 'WOULD_WIN') {
+    return 'WIN';
+  }
+  if (outcome === 'WOULD_LOSE') {
+    return 'LOSS';
+  }
+  if (validity === 'VALID') {
+    return 'WIN';
+  }
+  if (validity === 'INVALID') {
+    return 'LOSS';
+  }
+  return undefined;
+};
+
 const normalizeDirectionalTrend = (
   value: unknown
 ): Extract<ResearchTrendDirection, 'BULLISH' | 'BEARISH'> | undefined => (value === 'BULLISH' || value === 'BEARISH' ? value : undefined);
@@ -287,7 +319,10 @@ const normalizeExperiment = (value: unknown): MarketResearchExperiment | null =>
       || candidate.thesis === 'DIVERGENCE_RESOLUTION'
       ? candidate.thesis
       : undefined;
-  const source = candidate.source === 'TREND_FLIP' || candidate.source === 'PROACTIVE' ? candidate.source : undefined;
+  const source =
+    candidate.source === 'TREND_FLIP' || candidate.source === 'PROACTIVE' || candidate.source === 'REPLAY_REVIEW'
+      ? candidate.source
+      : undefined;
   const direction = normalizeDirectionalTrend(candidate.direction);
   const openedAt = normalizeIsoTimestamp(candidate.openedAt);
   if (!id || !thesis || !source || !direction || !openedAt) {
@@ -1304,6 +1339,96 @@ export class MarketResearchService {
     this.mergeBars(rawBars);
     await this.recompute();
     return { accepted: this.barKeys.size - beforeCount };
+  }
+
+  async recordReplayReview(review: SignalReviewEntry): Promise<MarketResearchReplayLearningUpdate | null> {
+    const candidateMetadata = review.alertSnapshot?.candidate?.metadata ?? {};
+    const direction = normalizeDirectionalTrend(
+      candidateMetadata.researchTrendDirection ?? candidateMetadata.researchDirection
+    );
+    const outcome = mapReplayReviewToResearchOutcome(review.outcome, review.validity);
+    if (!direction || !outcome) {
+      return null;
+    }
+
+    await this.start();
+
+    const aligned =
+      typeof candidateMetadata.researchTrendAligned === 'boolean' ? candidateMetadata.researchTrendAligned : undefined;
+    const leadSymbol = normalizeSymbol(candidateMetadata.researchTrendLeadSymbol) ?? review.symbol;
+    const thesis: MarketResearchExperimentThesis =
+      aligned === true
+        ? 'ALIGNED_CONTINUATION'
+        : aligned === false
+          ? 'DIVERGENCE_RESOLUTION'
+          : leadSymbol === review.symbol
+            ? 'LEADERSHIP_BREAKOUT'
+            : 'TREND_FLIP_DIRECTIONAL';
+    const rawConfidence = Number(candidateMetadata.researchTrendConfidence ?? candidateMetadata.researchConfidence ?? 0);
+    const confidence = Number.isFinite(rawConfidence) ? clamp(rawConfidence, 0, 1) : 0;
+    const thesisSummary =
+      typeof candidateMetadata.researchTrendSummary === 'string' && candidateMetadata.researchTrendSummary.trim().length > 0
+        ? candidateMetadata.researchTrendSummary.trim()
+        : review.alertSnapshot?.summary ?? `${thesisLabel(thesis)} replay review`;
+    const evaluatedAt = review.reviewedAt ?? review.updatedAt;
+    const experimentId = `replay-review:${review.alertId}`;
+    const experiment: MarketResearchExperiment = {
+      id: experimentId,
+      thesis,
+      thesisSummary,
+      source: 'REPLAY_REVIEW',
+      direction,
+      openedAt: review.detectedAt,
+      evaluatedAt,
+      leadSymbol,
+      symbol: review.symbol,
+      confidence: round(confidence, 2),
+      outcome,
+      moveBySymbol: {
+        [review.symbol]: outcome === 'WIN' ? 1 : -1
+      },
+      horizonMinutes: thesisHorizonMinutes(thesis, this.evaluationMinutes),
+      evidence: [
+        review.setupType,
+        thesisSummary,
+        typeof review.notes === 'string' && review.notes.trim().length > 0 ? review.notes.trim() : undefined
+      ].filter((value): value is string => Boolean(value)).slice(0, 4),
+      evaluationMode: leadSymbol === review.symbol ? 'PRIMARY_SYMBOL' : 'ALL_SYMBOLS'
+    };
+
+    const existingIndex = this.experiments.findIndex((entry) => entry.id === experimentId);
+    if (existingIndex >= 0) {
+      this.experiments.splice(existingIndex, 1, experiment);
+    } else {
+      this.experiments.push(experiment);
+      this.trimExperimentHistory();
+    }
+
+    this.appendInsight({
+      kind: 'EXPERIMENT_EVALUATED',
+      at: evaluatedAt,
+      thesis,
+      direction,
+      symbol: review.symbol,
+      outcome,
+      headline: `${thesisLabel(thesis)} ${outcome === 'WIN' ? 'worked' : 'failed'} from replay review.`,
+      detail: `${thesisSummary} Replay review marked the setup ${outcome === 'WIN' ? 'valid/profitable' : 'invalid/unprofitable'}.`
+    });
+    await this.persistState();
+
+    const status = this.status();
+    return {
+      experimentId,
+      thesis,
+      thesisLabel: thesisLabel(thesis),
+      direction,
+      symbol: review.symbol,
+      outcome,
+      confidence: experiment.confidence,
+      evaluatedPredictions: status.performance.evaluatedPredictions,
+      hitRate: status.performance.hitRate,
+      bestThesisLabel: status.knowledgeBase.bestThesis?.label
+    };
   }
 
   status(): MarketResearchStatus {
