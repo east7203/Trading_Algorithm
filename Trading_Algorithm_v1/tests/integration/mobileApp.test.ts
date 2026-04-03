@@ -134,6 +134,7 @@ describe('mobile app endpoints', () => {
         symbol: 'ES',
         side: 'BUY',
         stage: 'CLOSED',
+        delayMinutes: 12,
         pnl: 250,
         equity: 100250
       }
@@ -144,6 +145,7 @@ describe('mobile app endpoints', () => {
     expect(payload.ok).toBe(true);
     expect(payload.test.symbol).toBe('ES');
     expect(payload.test.stage).toBe('CLOSED');
+    expect(payload.test.deliveryStatus).toBe('DELAYED');
     expect(payload.deliveries).toBeTruthy();
   });
 });

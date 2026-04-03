@@ -1177,6 +1177,44 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       maximumFractionDigits: 2
     });
   const formatSignedUsd = (value: number): string => `${value >= 0 ? '+' : '-'}${formatUsd(Math.abs(value))}`;
+  const formatElapsedTradeDelay = (delayMs: number): string => {
+    if (!Number.isFinite(delayMs) || delayMs <= 0) {
+      return '<1m';
+    }
+    const roundedMinutes = Math.max(1, Math.round(delayMs / 60_000));
+    if (roundedMinutes < 60) {
+      return `${roundedMinutes}m`;
+    }
+    const hours = Math.floor(roundedMinutes / 60);
+    const minutes = roundedMinutes % 60;
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  };
+  const buildPaperTradeDeliveryStatus = (
+    event: Pick<PaperTradeEvent, 'kind' | 'at' | 'trade'>
+  ): { badge: 'LIVE' | 'DELAYED'; line: string; summary: string } => {
+    const tradePhase = event.kind === 'TRADE_CLOSED' ? 'close' : 'entry';
+    const sourceAt =
+      event.kind === 'TRADE_CLOSED'
+        ? event.trade.closedAt ?? event.at
+        : event.trade.filledAt ?? event.trade.submittedAt ?? event.at;
+    const emittedAtMs = Date.parse(event.at);
+    const sourceAtMs = Date.parse(sourceAt);
+    const delayMs =
+      Number.isFinite(emittedAtMs) && Number.isFinite(sourceAtMs)
+        ? Math.max(0, emittedAtMs - sourceAtMs)
+        : 0;
+    const lagLabel = formatElapsedTradeDelay(delayMs);
+    const delayed = delayMs >= 2 * 60_000;
+    return {
+      badge: delayed ? 'DELAYED' : 'LIVE',
+      line: delayed
+        ? `Delivery: DELAYED • ${lagLabel} after trade ${tradePhase}`
+        : `Delivery: LIVE • ${lagLabel} after trade ${tradePhase}`,
+      summary: delayed
+        ? `DELAYED ${lagLabel}`
+        : 'LIVE'
+    };
+  };
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
@@ -1713,19 +1751,21 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               if (event.kind === 'TRADE_OPENED') {
                 const autonomyThesisLabel = formatPaperAutonomyThesisLabel(event.trade.autonomyThesis);
                 const autonomyReason = event.trade.autonomyReason;
+                const deliveryStatus = buildPaperTradeDeliveryStatus(event);
                 await notifyTradeAssistChannels(
                   {
                     title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
                     body:
                       event.trade.source === 'paper-autonomy'
-                        ? `${autonomyThesisLabel} • ${autonomyReason ?? event.trade.setupType} • Risk ${event.trade.riskPct.toFixed(2)}%`
-                        : `${event.trade.setupType} • Entry ${event.trade.entry.toFixed(2)} • Risk ${event.trade.riskPct.toFixed(2)}%`,
+                        ? `${deliveryStatus.summary} • ${autonomyThesisLabel} • ${autonomyReason ?? event.trade.setupType} • Risk ${event.trade.riskPct.toFixed(2)}%`
+                        : `${deliveryStatus.summary} • ${event.trade.setupType} • Entry ${event.trade.entry.toFixed(2)} • Risk ${event.trade.riskPct.toFixed(2)}%`,
                     url: '/mobile/?tab=trades',
                     tag: `paper-open-${event.trade.paperTradeId}`
                   },
                   {
                     title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
                     lines: [
+                      deliveryStatus.line,
                       `Setup: ${event.trade.source === 'paper-autonomy' ? autonomyThesisLabel : event.trade.setupType}`,
                       `Entry: ${event.trade.entry.toFixed(2)}`,
                       `Stop: ${event.trade.stopLoss.toFixed(2)}`,
@@ -1767,6 +1807,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               }
 
               const realizedPnl = event.trade.realizedPnl ?? 0;
+              const deliveryStatus = buildPaperTradeDeliveryStatus(event);
               const outcomeLabel =
                 realizedPnl > 0
                   ? 'winner'
@@ -1779,10 +1820,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   : `Paper trade closed ${event.trade.symbol} ${outcomeLabel}`;
               const body =
                 autonomyLearningUpdate
-                  ? `${autonomyLearningUpdate.thesisLabel} • ${formatSignedUsd(realizedPnl)} • hit rate ${Math.round(autonomyLearningUpdate.thesisHitRate * 100)}% over ${autonomyLearningUpdate.thesisClosed} trades`
-                  : `${formatSignedUsd(realizedPnl)} • ${event.trade.exitReason ?? 'closed'} • Equity ${formatUsd(event.equityPoint.equity)}`;
+                  ? `${deliveryStatus.summary} • ${autonomyLearningUpdate.thesisLabel} • ${formatSignedUsd(realizedPnl)} • hit rate ${Math.round(autonomyLearningUpdate.thesisHitRate * 100)}% over ${autonomyLearningUpdate.thesisClosed} trades`
+                  : `${deliveryStatus.summary} • ${formatSignedUsd(realizedPnl)} • ${event.trade.exitReason ?? 'closed'} • Equity ${formatUsd(event.equityPoint.equity)}`;
               const lines = autonomyLearningUpdate
                 ? [
+                    deliveryStatus.line,
                     `Trade: ${autonomyLearningUpdate.symbol} ${autonomyLearningUpdate.side} • ${autonomyLearningUpdate.outcome}`,
                     `Thesis: ${autonomyLearningUpdate.thesisLabel}`,
                     `Why it traded: ${autonomyLearningUpdate.reason}`,
@@ -1795,6 +1837,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                     `Equity: ${formatUsd(event.equityPoint.equity)}`
                   ]
                 : [
+                    deliveryStatus.line,
                     `P&L: ${formatSignedUsd(realizedPnl)}`,
                     `Exit: ${event.trade.exitReason ?? 'closed'}`,
                     `Equity: ${formatUsd(event.equityPoint.equity)}`,
@@ -3137,6 +3180,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       takeProfit?: number;
       pnl?: number;
       equity?: number;
+      delayMinutes?: number;
     } | undefined) ?? {};
 
     const symbol = body.symbol?.toUpperCase() === 'ES' ? 'ES' : 'NQ';
@@ -3169,14 +3213,27 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const reward = Math.abs(takeProfit - entry);
     const riskReward = (reward / rrBase).toFixed(2);
     const directionLabel = side === 'BUY' ? 'long' : 'short';
+    const delayMinutes = typeof body.delayMinutes === 'number' && Number.isFinite(body.delayMinutes)
+      ? Math.max(0, body.delayMinutes)
+      : 0;
+    const occurredAt = new Date(Date.now() - delayMinutes * 60_000).toISOString();
+    const deliveryStatus = buildPaperTradeDeliveryStatus({
+      kind: stage === 'OPENED' ? 'TRADE_OPENED' : 'TRADE_CLOSED',
+      at: new Date().toISOString(),
+      trade: {
+        submittedAt: occurredAt,
+        filledAt: stage === 'OPENED' ? occurredAt : undefined,
+        closedAt: stage === 'CLOSED' ? occurredAt : undefined
+      } as PaperTradeEvent['trade']
+    });
 
     const deliveries = await notifyTradeAssistChannels(
       {
         title: stage === 'OPENED' ? 'Paper trade opened' : 'Paper trade closed',
         body:
           stage === 'OPENED'
-            ? `${symbol} ${directionLabel} • entry ${entry.toFixed(2)} • RR ${riskReward}`
-            : `${symbol} ${directionLabel} • ${formatSignedUsd(pnl)} • equity ${formatUsd(equity)}`,
+            ? `${deliveryStatus.summary} • ${symbol} ${directionLabel} • entry ${entry.toFixed(2)} • RR ${riskReward}`
+            : `${deliveryStatus.summary} • ${symbol} ${directionLabel} • ${formatSignedUsd(pnl)} • equity ${formatUsd(equity)}`,
         url: '/mobile/?tab=paper',
         tag: `paper-trade-test-${stage.toLowerCase()}`
       },
@@ -3185,6 +3242,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         lines:
           stage === 'OPENED'
             ? [
+                deliveryStatus.line,
                 `Symbol: ${symbol}`,
                 `Side: ${directionLabel}`,
                 `Entry: ${entry.toFixed(2)}`,
@@ -3194,6 +3252,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 'Source: Controlled paper-trade notification test'
               ]
             : [
+                deliveryStatus.line,
                 `Symbol: ${symbol}`,
                 `Side: ${directionLabel}`,
                 `Realized PnL: ${formatSignedUsd(pnl)}`,
@@ -3213,7 +3272,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         stop,
         takeProfit,
         pnl,
-        equity
+        equity,
+        deliveryStatus: deliveryStatus.badge
       },
       deliveries
     });
