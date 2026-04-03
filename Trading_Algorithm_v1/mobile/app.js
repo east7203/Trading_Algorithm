@@ -3403,6 +3403,27 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       ? (bars[bars.length - 1]?.close ?? entry) >= entry
       : (bars[bars.length - 1]?.close ?? entry) <= entry;
   const trailTone = tradeDirectionGood ? '#52de9d' : '#ff6f78';
+  const postEntryBars = bars.slice(tradeStartIndex);
+  const lastClose = postEntryBars[postEntryBars.length - 1]?.close ?? entry;
+  const maxAfterEntry = Math.max(...postEntryBars.map((bar) => bar.high));
+  const minAfterEntry = Math.min(...postEntryBars.map((bar) => bar.low));
+  const favorableMove = side === 'LONG' ? maxAfterEntry - entry : entry - minAfterEntry;
+  const adverseMove = side === 'LONG' ? entry - minAfterEntry : maxAfterEntry - entry;
+  const netMove = side === 'LONG' ? lastClose - entry : entry - lastClose;
+  const moveHeadline =
+    favorableMove >= adverseMove * 1.35
+      ? 'AFTER ENTRY PUSHED FAVORABLY'
+      : adverseMove >= favorableMove * 1.35
+        ? 'AFTER ENTRY REJECTED HARD'
+        : Math.abs(netMove) <= Math.max(Math.abs(favorableMove), Math.abs(adverseMove)) * 0.2
+          ? 'AFTER ENTRY CHOPPED SIDEWAYS'
+          : netMove >= 0
+            ? 'AFTER ENTRY HELD ABOVE ENTRY'
+            : 'AFTER ENTRY FELL BACK THROUGH ENTRY';
+  const moveDetail =
+    netMove >= 0
+      ? `Last ${fmtNum(Math.abs(netMove), 2)} pts above • Best ${fmtNum(favorableMove, 2)}`
+      : `Last ${fmtNum(Math.abs(netMove), 2)} pts below • Worst ${fmtNum(adverseMove, 2)}`;
   const profitTop = Math.min(entryY, targetY);
   const profitBottom = Math.max(entryY, targetY);
   const riskTop = Math.min(entryY, stopY);
@@ -3606,22 +3627,30 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       <rect
         x="${Math.max(padding.left + 14, tradeStartX + 10)}"
         y="${padding.top + 22}"
-        width="${expanded ? 116 : 104}"
-        height="${expanded ? 18 : 16}"
+        width="${expanded ? 154 : 142}"
+        height="${expanded ? 30 : 26}"
         rx="8"
         fill="rgba(8, 12, 20, 0.78)"
         stroke="rgba(255, 255, 255, 0.08)"
         stroke-width="0.8"
       />
       <text
-        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 58 : 52)}"
-        y="${padding.top + (expanded ? 34 : 33)}"
+        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 77 : 71)}"
+        y="${padding.top + (expanded ? 32 : 31)}"
         fill="${trailTone}"
-        font-size="${expanded ? '8.8' : '8'}"
+        font-size="${expanded ? '8' : '7.2'}"
         font-weight="700"
         text-anchor="middle"
         letter-spacing="0.03em"
-      >${escapeHtml(tradeDirectionGood ? 'POST-ENTRY HELD' : 'POST-ENTRY FAILED')}</text>
+      >${escapeHtml(moveHeadline)}</text>
+      <text
+        x="${Math.max(padding.left + 14, tradeStartX + 10) + (expanded ? 77 : 71)}"
+        y="${padding.top + (expanded ? 44 : 41)}"
+        fill="rgba(244, 248, 251, 0.7)"
+        font-size="${expanded ? '7.2' : '6.6'}"
+        font-weight="600"
+        text-anchor="middle"
+      >${escapeHtml(moveDetail)}</text>
     </g>
   `;
 
@@ -3657,6 +3686,54 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       </svg>
     </div>
   `;
+};
+
+const summarizeReplayMove = (snapshot, candidate) => {
+  const bars = snapshot?.bars ?? [];
+  if (!bars.length) {
+    return {
+      headline: 'Replay path unavailable',
+      detail: 'No chart bars were stored with this setup.'
+    };
+  }
+
+  const side = candidate?.side ?? snapshot?.side;
+  const entry = candidate?.entry ?? snapshot?.levels?.entry;
+  if (typeof entry !== 'number' || !Number.isFinite(entry)) {
+    return {
+      headline: 'Replay path unavailable',
+      detail: 'Entry price was not captured for this setup.'
+    };
+  }
+
+  const focusBarAt = snapshot?.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot?.detectedAt;
+  const focusIndexRaw = bars.findIndex((bar) => bar.timestamp === focusBarAt);
+  const tradeStartIndex = Math.max(1, Math.min(focusIndexRaw >= 0 ? focusIndexRaw : bars.length - 4, bars.length - 2));
+  const postEntryBars = bars.slice(tradeStartIndex);
+  const lastClose = postEntryBars[postEntryBars.length - 1]?.close ?? entry;
+  const maxAfterEntry = Math.max(...postEntryBars.map((bar) => bar.high));
+  const minAfterEntry = Math.min(...postEntryBars.map((bar) => bar.low));
+  const favorableMove = side === 'LONG' ? maxAfterEntry - entry : entry - minAfterEntry;
+  const adverseMove = side === 'LONG' ? entry - minAfterEntry : maxAfterEntry - entry;
+  const netMove = side === 'LONG' ? lastClose - entry : entry - lastClose;
+
+  const headline =
+    favorableMove >= adverseMove * 1.35
+      ? 'Price expanded in the trade direction after entry.'
+      : adverseMove >= favorableMove * 1.35
+        ? 'Price moved against the trade quickly after entry.'
+        : Math.abs(netMove) <= Math.max(Math.abs(favorableMove), Math.abs(adverseMove), 1e-6) * 0.2
+          ? 'Price mostly chopped around entry after the fill.'
+          : netMove >= 0
+            ? 'Price finished on the favorable side of entry.'
+            : 'Price finished back through entry.';
+
+  const detail =
+    side === 'LONG'
+      ? `Best push ${fmtNum(favorableMove, 2)} pts up • Worst pullback ${fmtNum(adverseMove, 2)} pts down • Last close ${fmtNum(Math.abs(netMove), 2)} pts ${netMove >= 0 ? 'above' : 'below'} entry`
+      : `Best push ${fmtNum(favorableMove, 2)} pts down • Worst squeeze ${fmtNum(adverseMove, 2)} pts up • Last close ${fmtNum(Math.abs(netMove), 2)} pts ${netMove >= 0 ? 'below' : 'above'} entry`;
+
+  return { headline, detail };
 };
 
 const renderSignalChartMarkup = (snapshot, options = {}) => {
@@ -4113,6 +4190,48 @@ const renderChartLightboxDetails = (context) => {
       : alertLike?.riskDecision?.allowed
         ? 'Ready on desk'
         : 'Blocked on desk';
+  const replayMove = context?.chartVariant === 'replay-trade-box' ? summarizeReplayMove(snapshot, candidate) : null;
+
+  if (context?.chartVariant === 'replay-trade-box') {
+    return `
+      <div class="chart-lightbox-detail-stack chart-lightbox-detail-stack-compact">
+        <div class="chart-lightbox-detail-grid chart-lightbox-detail-grid-compact">
+          <article class="chart-lightbox-detail-card">
+            <p class="chart-lightbox-detail-label">Entry</p>
+            <p class="chart-lightbox-detail-value">${escapeHtml(fmtNum(entry, 2))}</p>
+          </article>
+          <article class="chart-lightbox-detail-card chart-lightbox-detail-card-stop">
+            <p class="chart-lightbox-detail-label">Stop</p>
+            <p class="chart-lightbox-detail-value">${escapeHtml(fmtNum(stopLoss, 2))}</p>
+          </article>
+          <article class="chart-lightbox-detail-card chart-lightbox-detail-card-target">
+            <p class="chart-lightbox-detail-label">Target</p>
+            <p class="chart-lightbox-detail-value">${escapeHtml(fmtNum(takeProfit, 2))}</p>
+          </article>
+          <article class="chart-lightbox-detail-card">
+            <p class="chart-lightbox-detail-label">R / R</p>
+            <p class="chart-lightbox-detail-value">${escapeHtml(calcRr(entry, stopLoss, takeProfit))}</p>
+          </article>
+        </div>
+        <article class="chart-lightbox-story-card chart-lightbox-story-card-compact">
+          <p class="chart-lightbox-detail-label">After Entry</p>
+          <p class="chart-lightbox-story-copy">${escapeHtml(replayMove?.headline ?? 'Replay move unavailable')}</p>
+          <p class="chart-lightbox-detail-note">${escapeHtml(replayMove?.detail ?? '')}</p>
+        </article>
+        <div class="chart-lightbox-context-grid chart-lightbox-context-grid-compact">
+          <article class="chart-lightbox-context-card">
+            <p class="chart-lightbox-detail-label">Seen</p>
+            <p class="chart-lightbox-context-value">${escapeHtml(fmtDateTimeCompact(seenAt))}</p>
+          </article>
+          <article class="chart-lightbox-context-card">
+            <p class="chart-lightbox-detail-label">Review State</p>
+            <p class="chart-lightbox-context-value">${escapeHtml(reviewStateSummary)}</p>
+          </article>
+        </div>
+        ${reviewNote ? `<article class="chart-lightbox-story-card chart-lightbox-story-card-compact"><p class="chart-lightbox-detail-label">Review Note</p><p class="chart-lightbox-story-copy">${escapeHtml(reviewNote)}</p></article>` : ''}
+      </div>
+    `;
+  }
 
   return `
     <div class="chart-lightbox-detail-stack">
@@ -4273,6 +4392,7 @@ const closeChartLightbox = () => {
   chartLightboxEl.setAttribute('aria-hidden', 'true');
   if (chartLightboxFrameEl) {
     chartLightboxFrameEl.innerHTML = '';
+    chartLightboxFrameEl.classList.remove('is-replay-compact');
   }
   document.body.classList.remove('chart-lightbox-open');
 };
@@ -4295,6 +4415,7 @@ const openChartLightbox = (chartEl) => {
         ${renderChartLightboxDetails(context)}
       `
     : chartEl.innerHTML;
+  chartLightboxFrameEl.classList.toggle('is-replay-compact', context.chartVariant === 'replay-trade-box');
   chartLightboxEl.hidden = false;
   chartLightboxEl.setAttribute('aria-hidden', 'false');
   document.body.classList.add('chart-lightbox-open');
@@ -4375,6 +4496,8 @@ const bindChartLightbox = () => {
 
       const deltaY = event.touches[0].clientY - chartLightboxGesture.startY;
       if (deltaY <= 0) {
+        chartLightboxGesture.active = false;
+        chartLightboxSheetEl.classList.remove('is-dragging');
         setChartLightboxOffset(0);
         return;
       }

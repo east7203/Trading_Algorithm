@@ -3527,6 +3527,16 @@ body.tv-viewer-open {
   height: min(76vh, 560px);
 }
 
+.chart-lightbox-frame.is-replay-compact {
+  width: min(100%, 430px);
+}
+
+.chart-lightbox-frame.is-replay-compact .chart-lightbox-chart svg,
+.chart-lightbox-frame.is-replay-compact svg {
+  height: auto;
+  max-height: min(40vh, 320px);
+}
+
 .chart-lightbox-frame .signalChartPlaceholder {
   min-height: min(76vh, 560px);
 }
@@ -3546,11 +3556,20 @@ body.tv-viewer-open {
   border-top: 1px solid rgba(231, 240, 250, 0.08);
 }
 
+.chart-lightbox-detail-stack-compact {
+  gap: 10px;
+  padding: 12px;
+}
+
 .chart-lightbox-detail-card {
   padding: 12px;
   border-radius: 18px;
   border: 1px solid rgba(231, 240, 250, 0.08);
   background: rgba(10, 20, 32, 0.76);
+}
+
+.chart-lightbox-detail-grid-compact {
+  padding: 12px 12px 0;
 }
 
 .chart-lightbox-detail-card-stop {
@@ -3589,6 +3608,10 @@ body.tv-viewer-open {
   gap: 10px;
 }
 
+.chart-lightbox-context-grid-compact {
+  gap: 8px;
+}
+
 .chart-lightbox-context-card,
 .chart-lightbox-story-card {
   padding: 12px;
@@ -3601,6 +3624,10 @@ body.tv-viewer-open {
   margin: 0;
   color: var(--text);
   line-height: 1.45;
+}
+
+.chart-lightbox-story-card-compact {
+  padding: 10px 12px;
 }
 
 .chart-lightbox-chip-row {
@@ -6461,6 +6488,10 @@ h2, h3 {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.signalChartStack-replay.is-expanded svg {
+  max-height: min(40vh, 320px);
 }
 
 .review-card-pending {
