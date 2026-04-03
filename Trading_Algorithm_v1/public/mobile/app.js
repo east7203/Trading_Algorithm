@@ -6311,6 +6311,21 @@ const saveReview = async (review, buttonEl) => {
   }
 };
 
+const syncReviewQuickPickState = (card) => {
+  if (!card) {
+    return;
+  }
+
+  const validity = card.querySelector('.reviewValidity')?.value ?? '';
+  const outcome = card.querySelector('.reviewOutcome')?.value ?? '';
+  card.querySelectorAll('.reviewQuickPickBtn').forEach((button) => {
+    const isActive =
+      button.dataset.validity === validity
+      && button.dataset.outcome === outcome;
+    button.classList.toggle('is-active', isActive);
+  });
+};
+
 const renderReviewCard = (review) => {
   const node = reviewTemplate.content.firstElementChild.cloneNode(true);
   const chartSnapshot = review.alertSnapshot?.chartSnapshot;
@@ -6348,6 +6363,8 @@ const renderReviewCard = (review) => {
   }
   if (isPendingReview) {
     node.classList.add('review-card-pending');
+  } else {
+    node.classList.add('review-card-completed');
   }
   const reviewLearningImpactRowEl = node.querySelector('.reviewLearningImpactRow');
   const reviewLearningSummaryEl = node.querySelector('.reviewLearningSummary');
@@ -6399,6 +6416,22 @@ const renderReviewCard = (review) => {
   const reviewAfterEntryHeadlineEl = node.querySelector('.reviewAfterEntryHeadline');
   const reviewAfterEntryDetailEl = node.querySelector('.reviewAfterEntryDetail');
   const reviewAfterEntryStatsEl = node.querySelector('.reviewAfterEntryStats');
+  const reviewSeenMetaEl = node.querySelector('.reviewSeenMeta');
+  const reviewRrMetaEl = node.querySelector('.reviewRrMeta');
+  const reviewPriceMetaEl = node.querySelector('.reviewPriceMeta');
+  if (reviewSeenMetaEl) {
+    reviewSeenMetaEl.textContent = `Seen ${fmtRelativeMinutes(review.detectedAt)}`;
+  }
+  if (reviewRrMetaEl) {
+    reviewRrMetaEl.textContent = `R:R ${calcRr(
+      review.alertSnapshot?.candidate?.entry,
+      review.alertSnapshot?.candidate?.stopLoss,
+      review.alertSnapshot?.candidate?.takeProfit?.[0]
+    )}`;
+  }
+  if (reviewPriceMetaEl) {
+    reviewPriceMetaEl.textContent = `Entry ${fmtNum(review.alertSnapshot?.candidate?.entry, 2)}`;
+  }
   if (replayMove && reviewAfterEntryStateEl && reviewAfterEntryHeadlineEl && reviewAfterEntryDetailEl && reviewAfterEntryStatsEl) {
     reviewAfterEntryStateEl.textContent = replayMove.resolution.label;
     reviewAfterEntryStateEl.className = `pill reviewAfterEntryState ${replayMove.resolution.tone}`;
@@ -6492,6 +6525,24 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewValidity').value = review.validity ?? '';
   node.querySelector('.reviewOutcome').value = review.outcome ?? '';
   node.querySelector('.reviewNotes').value = review.notes ?? '';
+  const reviewValidityEl = node.querySelector('.reviewValidity');
+  const reviewOutcomeEl = node.querySelector('.reviewOutcome');
+  const reviewQuickPickButtons = node.querySelectorAll('.reviewQuickPickBtn');
+  reviewQuickPickButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (reviewValidityEl) {
+        reviewValidityEl.value = button.dataset.validity ?? '';
+      }
+      if (reviewOutcomeEl) {
+        reviewOutcomeEl.value = button.dataset.outcome ?? '';
+      }
+      syncReviewQuickPickState(node);
+      setStatus(`Status: replay labeled ${button.textContent?.trim().toLowerCase()} • save to confirm`);
+    });
+  });
+  reviewValidityEl?.addEventListener('change', () => syncReviewQuickPickState(node));
+  reviewOutcomeEl?.addEventListener('change', () => syncReviewQuickPickState(node));
+  syncReviewQuickPickState(node);
   node.querySelector('.reviewUpdatedAt').textContent = review.reviewedAt
     ? `Reviewed ${fmtDateTime(review.reviewedAt)}`
     : review.autoLabeledAt

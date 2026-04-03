@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=47" />
+    <link rel="stylesheet" href="styles.css?v=48" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -540,17 +540,20 @@
 
         <section id="view-reviews" class="view view-reviews">
           <div class="section-head">
-            <h2>Review Loop</h2>
+            <div>
+              <h2>Replay Desk</h2>
+              <p class="section-kicker">Read the chart, tag what happened, and feed the engines without fighting the UI.</p>
+            </div>
             <span id="reviewSummaryChip" class="chip chip-neutral">0 pending</span>
           </div>
 
-          <section class="session-summary-card">
+          <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
-              <h3>Session Summary</h3>
+              <h3>What The Queue Is Telling Us</h3>
               <span id="sessionSummaryChip" class="chip chip-neutral">Waiting on reviews</span>
             </div>
             <p id="sessionSummaryHeadline" class="session-summary-headline">--</p>
-            <p id="sessionSummaryContext" class="session-summary-copy">The app will summarize the latest trading session here once enough reviews are available.</p>
+            <p id="sessionSummaryContext" class="session-summary-copy">Use the pending queue below to label how price behaved after entry. The archive stays below as reference, not the main workflow.</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
                 <p class="stat-label">Strongest Pattern</p>
@@ -600,7 +603,7 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Archive</h3>
+              <h3>Reviewed Archive</h3>
               <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 completed</span>
             </div>
             <div id="reviewsCompletedList" class="stack"></div>
@@ -1224,6 +1227,11 @@
           <strong class="symbol"></strong>
           <span class="pill reviewStatus"></span>
         </div>
+        <div class="chip-row reviewHeroMetaRow">
+          <span class="chip reviewQueueMeta reviewSeenMeta">Seen --</span>
+          <span class="chip reviewQueueMeta reviewRrMeta">R:R --</span>
+          <span class="chip reviewQueueMeta reviewPriceMeta">Entry --</span>
+        </div>
         <div class="reviewLearningHeadlineRow">
           <span class="pill reviewLearningBadge" hidden>Learning fed</span>
         </div>
@@ -1316,6 +1324,12 @@
         </div>
         <p class="review-section-label">Mark Your Review</p>
         <p class="review-section-copy">Validity = was the setup actually clean? Outcome = what price likely did if you followed the plan.</p>
+        <div class="reviewQuickPickRow">
+          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="WOULD_WIN">Target First</button>
+          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="WOULD_LOSE">Stop First</button>
+          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="BREAKEVEN">Chop / B.E.</button>
+          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="INVALID" data-outcome="WOULD_LOSE">Bad Setup</button>
+        </div>
         <div class="review-form">
           <label>
             Was The Setup Valid?
@@ -1445,6 +1459,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=47"></script>
+    <script type="module" src="app.js?v=48"></script>
   </body>
 </html>

@@ -6501,8 +6501,48 @@ h2, h3 {
   max-height: min(40vh, 320px);
 }
 
-.review-card-pending {
+.view-reviews {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.replay-command-card {
+  border: 1px solid var(--rh-border);
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.08), transparent 32%),
+    var(--rh-surface);
+}
+
+.review-insights-grid {
   gap: 10px;
+}
+
+.review-card {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewHeroMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reviewQueueMeta {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--rh-border);
+  color: var(--rh-muted);
+  font-size: 0.72rem;
+}
+
+.review-card-pending {
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 148, 0, 0.08), transparent 34%),
+    var(--rh-surface);
 }
 
 .review-card-pending .reviewLearningHeadlineRow,
@@ -6548,18 +6588,50 @@ h2, h3 {
   gap: 8px;
 }
 
+.review-card-pending .reviewHeroMetaRow {
+  margin-top: -2px;
+}
+
 .review-card-pending .level-chip {
   justify-content: center;
   min-width: 0;
 }
 
-.review-card-pending .openTradingViewBtn {
-  width: 100%;
+.review-card-pending .reviewQuickPickRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.review-card-pending .reviewQuickPickBtn {
+  min-height: 42px;
   justify-content: center;
+  font-size: 0.8rem;
 }
 
 .review-card-pending .review-form {
-  margin-top: 4px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--rh-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.review-card-pending .review-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.reviewQuickPickBtn.is-active {
+  background: rgba(0, 200, 5, 0.14);
+  border-color: rgba(0, 200, 5, 0.22);
+  color: #73f49a;
+}
+
+.review-card-pending .openTradingViewBtn {
+  width: 100%;
+  justify-content: center;
 }
 
 .review-card-pending .reviewNotes {
@@ -6629,7 +6701,20 @@ h2, h3 {
   color: #d6d8db;
 }
 
+.review-card-completed .reviewQuickPickRow {
+  display: none;
+}
+
+.review-card-completed .reviewHeroMetaRow {
+  margin-top: -2px;
+}
+
 @media (max-width: 480px) {
+  .review-card-pending .reviewQuickPickRow,
+  .review-card-pending .reviewSnapshotLevels {
+    grid-template-columns: 1fr;
+  }
+
   .chart-lightbox-sheet {
     padding:
       calc(env(safe-area-inset-top) + 8px)
