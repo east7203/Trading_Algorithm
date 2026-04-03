@@ -110,6 +110,7 @@ export interface PaperAutonomyStatus {
   enabled: boolean;
   started: boolean;
   statePath?: string;
+  maxLiveDelayMinutes: number;
   lastIdeaAt?: string;
   lastEvaluatedAt?: string;
   lastError?: string;
@@ -161,6 +162,7 @@ export interface PaperAutonomyConfig {
   archivePath?: string;
   bootstrapCsvDir?: string;
   bootstrapRecursive: boolean;
+  maxLiveDelayMinutes: number;
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
@@ -197,6 +199,15 @@ const clamp = (value: number, min: number, max: number): number => {
     return max;
   }
   return value;
+};
+
+const isFreshEnough = (timestamp: string, maxDelayMinutes: number, nowIso = new Date().toISOString()): boolean => {
+  const barMs = Date.parse(timestamp);
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(barMs) || !Number.isFinite(nowMs)) {
+    return false;
+  }
+  return Math.max(0, nowMs - barMs) <= maxDelayMinutes * 60_000;
 };
 
 const isIntervalClosed = (timestamp: string, intervalMinutes: number): boolean => {
@@ -1276,6 +1287,9 @@ export class PaperAutonomyService {
       return;
     }
     const currentBar = bars[currentIndex];
+    if (!isFreshEnough(currentBar.timestamp, this.config.maxLiveDelayMinutes)) {
+      return;
+    }
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
       return;
     }
@@ -1637,6 +1651,7 @@ export class PaperAutonomyService {
       enabled: this.config.enabled,
       started: this.started,
       statePath: this.config.statePath,
+      maxLiveDelayMinutes: this.config.maxLiveDelayMinutes,
       lastIdeaAt: this.lastIdeaAt,
       lastEvaluatedAt: this.lastEvaluatedAt,
       lastError: this.lastError,

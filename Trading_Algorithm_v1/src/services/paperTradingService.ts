@@ -43,6 +43,7 @@ export interface PaperTradingConfig {
   statePath?: string;
   initialBalance: number;
   maxHoldMinutes: number;
+  maxLiveDelayMinutes: number;
   maxConcurrentTrades: number;
   autonomyMode?: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
   autonomyRiskPct?: number;
@@ -74,6 +75,7 @@ export interface PaperTradingStatus {
   started: boolean;
   statePath?: string;
   initialBalance: number;
+  maxLiveDelayMinutes: number;
   maxConcurrentTrades: number;
   autonomyMode: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
   autonomyRiskPct: number;
@@ -171,6 +173,15 @@ const clamp = (value: number, min: number, max: number): number => {
     return max;
   }
   return value;
+};
+
+const isFreshEnough = (timestamp: string, maxDelayMinutes: number, nowIso = new Date().toISOString()): boolean => {
+  const eventMs = Date.parse(timestamp);
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(eventMs) || !Number.isFinite(nowMs)) {
+    return false;
+  }
+  return Math.max(0, nowMs - eventMs) <= maxDelayMinutes * 60_000;
 };
 
 const getLocalTimeParts = (
@@ -531,6 +542,9 @@ export class PaperTradingService {
     if (!isCmeEquitySessionOpen(alert.detectedAt)) {
       return null;
     }
+    if (!isFreshEnough(alert.detectedAt, this.config.maxLiveDelayMinutes)) {
+      return null;
+    }
 
     if (this.trades.has(alert.alertId)) {
       return this.trades.get(alert.alertId) ?? null;
@@ -634,11 +648,15 @@ export class PaperTradingService {
     let settled = 0;
     const pendingEvents: PaperTradeEvent[] = [];
     const bars = [...rawBars].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    const nowIso = new Date().toISOString();
     for (const bar of bars) {
       if (bar.symbol !== 'NQ' && bar.symbol !== 'ES') {
         continue;
       }
       if (!isCmeEquitySessionOpen(bar.timestamp)) {
+        continue;
+      }
+      if (!isFreshEnough(bar.timestamp, this.config.maxLiveDelayMinutes, nowIso)) {
         continue;
       }
       this.latestPriceBySymbol.set(bar.symbol, bar.close);
@@ -800,6 +818,7 @@ export class PaperTradingService {
       started: this.started,
       statePath: this.config.statePath,
       initialBalance: round(this.config.initialBalance, 2),
+      maxLiveDelayMinutes: this.config.maxLiveDelayMinutes,
       maxConcurrentTrades: this.maxConcurrentTrades,
       autonomyMode: this.autonomyMode,
       autonomyRiskPct: this.autonomyRiskPct,

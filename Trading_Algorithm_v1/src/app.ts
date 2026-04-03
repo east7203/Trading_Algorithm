@@ -202,6 +202,7 @@ interface PaperTradingConfigInput {
   statePath?: string;
   initialBalance: number;
   maxHoldMinutes: number;
+  maxLiveDelayMinutes: number;
   maxConcurrentTrades: number;
   autonomyMode: 'FOLLOW_ALLOWED_ALERTS' | 'UNRESTRICTED';
   autonomyRiskPct: number;
@@ -218,6 +219,7 @@ interface PaperAutonomyConfigInput {
   archivePath?: string;
   bootstrapCsvDir?: string;
   bootstrapRecursive: boolean;
+  maxLiveDelayMinutes: number;
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
@@ -777,6 +779,7 @@ const resolvePaperTradingConfig = (
       15,
       1440
     ),
+    maxLiveDelayMinutes: parseIntEnv('PAPER_TRADING_MAX_LIVE_DELAY_MINUTES', 3, 0, 120),
     maxConcurrentTrades: parseIntEnv('PAPER_TRADING_MAX_CONCURRENT_TRADES', 0, 0, 50),
     autonomyMode:
       (process.env.PAPER_TRADING_AUTONOMY_MODE ?? 'UNRESTRICTED').trim().toUpperCase() === 'FOLLOW_ALLOWED_ALERTS'
@@ -827,6 +830,7 @@ const resolvePaperAutonomyConfig = (
     ),
     bootstrapCsvDir: parseOptionalPathEnv('PAPER_AUTONOMY_BOOTSTRAP_DIR'),
     bootstrapRecursive: parseBooleanEnv('PAPER_AUTONOMY_BOOTSTRAP_RECURSIVE', true),
+    maxLiveDelayMinutes: parseIntEnv('PAPER_AUTONOMY_MAX_LIVE_DELAY_MINUTES', 3, 0, 120),
     timezone: process.env.PAPER_AUTONOMY_TIMEZONE ?? signalMonitorConfig.timezone,
     sessionStartHour: parseIntEnv('PAPER_AUTONOMY_SESSION_START_HOUR', signalMonitorConfig.sessionStartHour, 0, 23),
     sessionStartMinute: parseIntEnv('PAPER_AUTONOMY_SESSION_START_MINUTE', signalMonitorConfig.sessionStartMinute, 0, 59),
