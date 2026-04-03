@@ -1447,6 +1447,7 @@ export class PaperAutonomyService {
     if (event.trade.source !== 'paper-autonomy') {
       return null;
     }
+    await this.start();
     const previousStatus = this.status();
     const idea = this.ideas.get(event.trade.alertId);
     if (!idea || event.kind !== 'TRADE_CLOSED' || idea.status === 'CLOSED') {
