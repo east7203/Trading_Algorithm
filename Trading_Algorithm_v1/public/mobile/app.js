@@ -302,6 +302,7 @@ let latestHomeDeck = null;
 let latestRiskConfig = null;
 let latestHealth = null;
 let lastSyncAt = null;
+const latestReplayLearningByAlertId = new Map();
 let serviceWorkerRegistrationPromise = null;
 let serviceWorkerMessageListenerBound = false;
 let nativePushListenersBound = false;
@@ -406,6 +407,133 @@ const paperOutcomeBadgeLabel = (review) => {
     return 'Paper result • Breakeven';
   }
   return 'Paper result';
+};
+
+const replayLearningOutcome = (review) => {
+  if (review?.outcome === 'WOULD_WIN') {
+    return 'WIN';
+  }
+  if (review?.outcome === 'WOULD_LOSE') {
+    return 'LOSS';
+  }
+  if (review?.outcome === 'BREAKEVEN') {
+    return 'FLAT';
+  }
+  if (review?.validity === 'VALID') {
+    return 'WIN';
+  }
+  if (review?.validity === 'INVALID') {
+    return 'LOSS';
+  }
+  return null;
+};
+
+const researchThesisLabel = (thesis) => {
+  switch (thesis) {
+    case 'TREND_FLIP_DIRECTIONAL':
+      return 'Trend Flip';
+    case 'ALIGNED_CONTINUATION':
+      return 'Aligned Continuation';
+    case 'LEADERSHIP_BREAKOUT':
+      return 'Leadership Breakout';
+    case 'DIVERGENCE_RESOLUTION':
+      return 'Divergence Resolution';
+    default:
+      return thesis ?? 'Research';
+  }
+};
+
+const inferReplayResearchThesis = (review) => {
+  const metadata = review?.alertSnapshot?.candidate?.metadata ?? {};
+  const aligned = typeof metadata.researchTrendAligned === 'boolean' ? metadata.researchTrendAligned : undefined;
+  const leadSymbol = metadata.researchTrendLeadSymbol;
+  if (aligned === true) {
+    return 'ALIGNED_CONTINUATION';
+  }
+  if (aligned === false) {
+    return 'DIVERGENCE_RESOLUTION';
+  }
+  if (leadSymbol === review?.symbol) {
+    return 'LEADERSHIP_BREAKOUT';
+  }
+  return 'TREND_FLIP_DIRECTIONAL';
+};
+
+const buildReplayLearningImpact = (review) => {
+  const metadata = review?.alertSnapshot?.candidate?.metadata ?? {};
+  const persisted = latestReplayLearningByAlertId.get(review?.alertId) ?? null;
+  const outcome = replayLearningOutcome(review);
+  const items = [];
+  const details = [];
+
+  if (review?.reviewStatus === 'COMPLETED') {
+    const smcTone = outcome === 'WIN' ? 'is-positive' : outcome === 'LOSS' ? 'is-negative' : 'is-neutral';
+    const smcLabel =
+      outcome === 'WIN'
+        ? 'SMC learned win'
+        : outcome === 'LOSS'
+          ? 'SMC learned loss'
+          : outcome === 'FLAT'
+            ? 'SMC learned breakeven'
+            : 'SMC note captured';
+    items.push({
+      label: smcLabel,
+      className: `pill replayLearningPill ${smcTone}`
+    });
+    details.push(
+      outcome
+        ? `SMC feedback updated from ${reviewValidityLabel(review.validity)} / ${reviewOutcomeLabel(review.outcome)}`
+        : 'SMC captured your replay notes for future learning context'
+    );
+  }
+
+  const autonomyOutcome = persisted?.paperAutonomy?.outcome ?? outcome;
+  const autonomyThesis = persisted?.paperAutonomy?.thesis ?? metadata.autonomyThesis;
+  if (review?.reviewStatus === 'COMPLETED' && autonomyThesis && autonomyOutcome) {
+    items.push({
+      label: `Paper ${persisted?.paperAutonomy?.thesisLabel ?? paperAutonomyThesisLabel(autonomyThesis)} ${autonomyOutcome.toLowerCase()}`,
+      className: `pill replayLearningPill ${autonomyOutcome === 'WIN' ? 'is-positive' : autonomyOutcome === 'LOSS' ? 'is-negative' : 'is-neutral'}`
+    });
+    if (persisted?.paperAutonomy) {
+      details.push(
+        `Paper autonomy updated ${persisted.paperAutonomy.thesisLabel} • ${Math.round((persisted.paperAutonomy.thesisHitRate ?? 0) * 100)}% hit over ${persisted.paperAutonomy.thesisClosed ?? 0} closed ideas`
+      );
+    } else {
+      details.push(`Paper autonomy logged ${paperAutonomyThesisLabel(autonomyThesis)} from this replay review`);
+    }
+  }
+
+  const researchDirection =
+    metadata.researchTrendDirection === 'BULLISH' || metadata.researchTrendDirection === 'BEARISH'
+      ? metadata.researchTrendDirection
+      : metadata.researchDirection === 'BULLISH' || metadata.researchDirection === 'BEARISH'
+        ? metadata.researchDirection
+        : null;
+  const researchOutcome = persisted?.marketResearch?.outcome ?? (outcome === 'WIN' || outcome === 'LOSS' ? outcome : null);
+  const researchThesis = persisted?.marketResearch?.thesis ?? inferReplayResearchThesis(review);
+  if (review?.reviewStatus === 'COMPLETED' && researchDirection && researchOutcome) {
+    items.push({
+      label: `Research ${persisted?.marketResearch?.thesisLabel ?? researchThesisLabel(researchThesis)} ${researchOutcome.toLowerCase()}`,
+      className: `pill replayLearningPill ${researchOutcome === 'WIN' ? 'is-positive' : 'is-negative'}`
+    });
+    if (persisted?.marketResearch) {
+      details.push(
+        `Research evaluated ${persisted.marketResearch.thesisLabel} • ${Math.round((persisted.marketResearch.hitRate ?? 0) * 100)}% hit across ${persisted.marketResearch.evaluatedPredictions ?? 0} episodes`
+      );
+    } else {
+      details.push(
+        `Research logged a ${researchDirectionLabel(researchDirection).toLowerCase()} ${researchThesisLabel(researchThesis).toLowerCase()} replay outcome`
+      );
+    }
+  }
+
+  return {
+    items,
+    summary:
+      details[0] ??
+      'Save a replay review with a directional outcome to feed SMC, Paper Autonomy, and Research.',
+    details
+  };
 };
 
 const setupLabel = (code) => setupLabels[code] ?? code;
@@ -3658,6 +3786,7 @@ const renderChartLightboxDetails = (context) => {
   const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Guardrail context unavailable';
   const researchAgreement = alertLike ? researchAgreementMeta(alertLike) : null;
   const evidence = alertLike ? signalEvidenceTags(alertLike) : [];
+  const learningImpact = review ? buildReplayLearningImpact(review) : { items: [], summary: '', details: [] };
   const hiddenContextLevels = (snapshot?.referenceLevels ?? []).filter(
     (level) => level.role === 'context' || level.onChart === false
   );
@@ -3742,6 +3871,17 @@ const renderChartLightboxDetails = (context) => {
                 ${researchAgreement.chips.map((chip) => `<span class="${chip.className}">${chip.label}</span>`).join('')}
               </div>
               <p class="chart-lightbox-story-copy">${escapeHtml(researchAgreement.note)}</p>
+            </article>`
+          : ''
+      }
+      ${
+        learningImpact.items.length
+          ? `<article class="chart-lightbox-story-card">
+              <p class="chart-lightbox-detail-label">Learning Impact</p>
+              <div class="chart-lightbox-chip-row">
+                ${learningImpact.items.map((item) => `<span class="${item.className}">${escapeHtml(item.label)}</span>`).join('')}
+              </div>
+              <p class="chart-lightbox-story-copy">${escapeHtml(learningImpact.summary)}</p>
             </article>`
           : ''
       }
@@ -5454,7 +5594,7 @@ const saveReview = async (review, buttonEl) => {
   buttonEl.textContent = 'Saving...';
 
   try {
-    await apiFetch('/signals/reviews', {
+    const response = await apiFetch('/signals/reviews', {
       method: 'POST',
       body: JSON.stringify({
         alertId: review.alertId,
@@ -5465,9 +5605,16 @@ const saveReview = async (review, buttonEl) => {
       })
     });
 
+    latestReplayLearningByAlertId.set(review.alertId, response?.learning ?? null);
+    const learningImpact = buildReplayLearningImpact({
+      ...review,
+      ...response?.review
+    });
+    const impactLabels = learningImpact.items.map((item) => item.label).slice(0, 3).join(' • ');
+
     vibrateLight();
     await Promise.all([loadReviews(), loadTrades(), loadDiagnostics()]);
-    setStatus('Status: review saved');
+    setStatus(impactLabels ? `Status: review saved • ${impactLabels}` : 'Status: review saved');
   } catch (error) {
     setStatus(`Status: review save failed (${error.message})`, true);
   } finally {
@@ -5483,6 +5630,7 @@ const renderReviewCard = (review) => {
   const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Rule-qualified signal';
   const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Risk state unavailable';
   const evidence = alertLike ? signalEvidenceTags(alertLike) : [];
+  const learningImpact = buildReplayLearningImpact(review);
   const riskPoints =
     typeof review.alertSnapshot?.candidate?.entry === 'number' && typeof review.alertSnapshot?.candidate?.stopLoss === 'number'
       ? Math.abs(review.alertSnapshot.candidate.entry - review.alertSnapshot.candidate.stopLoss)
@@ -5508,6 +5656,21 @@ const renderReviewCard = (review) => {
     outcomeSourceRowEl.appendChild(chip);
   } else {
     outcomeSourceRowEl.remove();
+  }
+  const reviewLearningImpactRowEl = node.querySelector('.reviewLearningImpactRow');
+  const reviewLearningSummaryEl = node.querySelector('.reviewLearningSummary');
+  reviewLearningImpactRowEl.innerHTML = '';
+  if (learningImpact.items.length) {
+    learningImpact.items.forEach((item) => {
+      const chip = document.createElement('span');
+      chip.className = item.className;
+      chip.textContent = item.label;
+      reviewLearningImpactRowEl.appendChild(chip);
+    });
+    reviewLearningSummaryEl.textContent = learningImpact.summary;
+  } else {
+    reviewLearningImpactRowEl.remove();
+    reviewLearningSummaryEl.textContent = 'Save a directional replay review to feed the live ranking and autonomous engines.';
   }
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
   reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
@@ -5642,6 +5805,12 @@ const loadReviews = async () => {
     const { reviews, summary } = await apiFetch('/signals/reviews?status=ALL&limit=80');
     latestReviews = reviews ?? [];
     reviewSummary = summary ?? { pending: 0, completed: 0, total: 0 };
+    const activeIds = new Set(latestReviews.map((review) => review.alertId));
+    [...latestReplayLearningByAlertId.keys()].forEach((alertId) => {
+      if (!activeIds.has(alertId)) {
+        latestReplayLearningByAlertId.delete(alertId);
+      }
+    });
 
     reviewsPendingListEl.innerHTML = '';
     reviewsCompletedListEl.innerHTML = '';
