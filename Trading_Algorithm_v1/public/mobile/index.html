@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=44" />
+    <link rel="stylesheet" href="styles.css?v=45" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -170,6 +170,10 @@
                 <p id="homePaperBalance" class="home-paper-balance">--</p>
               </div>
               <span id="homePaperChip" class="chip chip-neutral">Paper --</span>
+            </div>
+            <div class="paper-state-row">
+              <span id="homePaperMarketChip" class="chip chip-neutral">Paper --</span>
+              <span id="homePaperSymbolsChip" class="chip chip-neutral">Symbols --</span>
             </div>
             <div class="home-paper-body">
               <p id="homePaperPnl" class="home-paper-pnl">--</p>
@@ -459,6 +463,10 @@
                 <span id="paperHeroUpdated" class="chip chip-neutral">Updated --</span>
                 <span id="paperHeroWindow" class="chip chip-neutral">Paper Live</span>
               </div>
+            </div>
+            <div class="paper-state-row">
+              <span id="paperMarketStateChip" class="chip chip-neutral">Paper --</span>
+              <span id="paperSymbolsChip" class="chip chip-neutral">Symbols --</span>
             </div>
             <div id="paperHeroSparkline" class="paper-hero-sparkline" aria-label="Paper account equity trend"></div>
             <div class="paper-hero-grid">

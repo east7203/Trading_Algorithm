@@ -2361,6 +2361,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         paperAccount: paper
           ? {
               initialBalance: Number(paper.initialBalance.toFixed(2)),
+              marketSessionState: context.desk.marketSessionState,
+              tradableSymbols: ['NQ', 'ES'],
               maxConcurrentTrades: paper.maxConcurrentTrades,
               autonomyMode: paper.autonomyMode,
               autonomyRiskPct: Number(paper.autonomyRiskPct.toFixed(2)),

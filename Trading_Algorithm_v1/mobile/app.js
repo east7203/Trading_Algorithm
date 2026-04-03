@@ -85,6 +85,8 @@ const rhPortfolioValueEl = document.getElementById('rhPortfolioValue');
 const rhPortfolioPnlEl = document.getElementById('rhPortfolioPnl');
 const homePaperMetaEl = document.getElementById('homePaperMeta');
 const homePaperChipEl = document.getElementById('homePaperChip');
+const homePaperMarketChipEl = document.getElementById('homePaperMarketChip');
+const homePaperSymbolsChipEl = document.getElementById('homePaperSymbolsChip');
 const homePaperAutonomyStampEl = document.getElementById('homePaperAutonomyStamp');
 const homePaperAutonomyHeadlineEl = document.getElementById('homePaperAutonomyHeadline');
 const homePaperAutonomyBestThesisEl = document.getElementById('homePaperAutonomyBestThesis');
@@ -140,6 +142,8 @@ const paperHeroEquityEl = document.getElementById('paperHeroEquity');
 const paperHeroPnlEl = document.getElementById('paperHeroPnl');
 const paperHeroUpdatedEl = document.getElementById('paperHeroUpdated');
 const paperHeroWindowEl = document.getElementById('paperHeroWindow');
+const paperMarketStateChipEl = document.getElementById('paperMarketStateChip');
+const paperSymbolsChipEl = document.getElementById('paperSymbolsChip');
 const paperHeroSparklineEl = document.getElementById('paperHeroSparkline');
 const paperBalanceEl = document.getElementById('paperBalance');
 const paperUnrealizedEl = document.getElementById('paperUnrealized');
@@ -1150,6 +1154,28 @@ const renderHomeResearchLab = () => {
 const getPaperAccountStatus = () => latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
 const getPaperAutonomyStatus = () => latestDiagnostics?.diagnostics?.paperAutonomy ?? latestHomeDeck?.deck?.paperAutonomy ?? null;
 
+const buildPaperRuntimeState = () => {
+  const paper = latestDiagnostics?.diagnostics?.paperAccount ?? latestHomeDeck?.deck?.paperAccount ?? null;
+  const marketSessionState =
+    paper?.marketSessionState
+      ?? latestDiagnostics?.diagnostics?.marketSessionState
+      ?? latestHomeDeck?.deck?.paperAccount?.marketSessionState
+      ?? null;
+  const tradableSymbols = Array.isArray(paper?.tradableSymbols) && paper.tradableSymbols.length > 0
+    ? paper.tradableSymbols
+    : ['NQ', 'ES'];
+  const marketOpen = marketSessionState === 'OPEN';
+
+  return {
+    marketSessionState,
+    tradableSymbols,
+    marketOpen,
+    chipText: marketOpen ? 'Paper live: market open' : 'Paper paused: market closed',
+    chipClass: `chip ${marketOpen ? 'chip-online' : 'chip-offline'}`,
+    symbolText: `${tradableSymbols.join(' + ')} only`
+  };
+};
+
 const formatDeskWindow = (session) => {
   if (!session) {
     return 'Window --';
@@ -1482,6 +1508,7 @@ const renderPaperAccount = () => {
   const paper = latestDiagnostics?.diagnostics?.paperAccount ?? null;
   const homePaper = latestHomeDeck?.deck?.paperAccount ?? null;
   const paperEnabled = Boolean(paper?.enabled || homePaper);
+  const runtime = buildPaperRuntimeState();
 
   const summary = {
     initialBalance:
@@ -1553,12 +1580,20 @@ const renderPaperAccount = () => {
   }
   if (homePaperMetaEl) {
     homePaperMetaEl.textContent = paperEnabled
-      ? `${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • cap ${formatPaperTradeCap(paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades)}`
+      ? `${runtime.marketOpen ? 'Market open for paper execution' : 'Paper engine is paused until the futures session reopens'} • ${summary.openTrades ?? 0} open • ${summary.closedTrades ?? 0} closed • cap ${formatPaperTradeCap(paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades)}`
       : 'The paper account is not enabled on this desk yet.';
   }
   if (homePaperChipEl) {
     homePaperChipEl.textContent = paperEnabled ? (paper?.started ? 'Paper live' : 'Paper loading') : 'Paper off';
     homePaperChipEl.className = `chip ${paperEnabled ? 'chip-online' : 'chip-neutral'}`;
+  }
+  if (homePaperMarketChipEl) {
+    homePaperMarketChipEl.textContent = paperEnabled ? runtime.chipText : 'Paper off';
+    homePaperMarketChipEl.className = paperEnabled ? runtime.chipClass : 'chip chip-neutral';
+  }
+  if (homePaperSymbolsChipEl) {
+    homePaperSymbolsChipEl.textContent = paperEnabled ? runtime.symbolText : 'Symbols --';
+    homePaperSymbolsChipEl.className = `chip ${paperEnabled ? 'chip-neutral' : 'chip-neutral'}`;
   }
 
   if (paperAccountChipEl) {
@@ -1582,7 +1617,16 @@ const renderPaperAccount = () => {
     paperHeroUpdatedEl.textContent = summary.lastUpdatedAt ? `Updated ${fmtRelativeMinutes(summary.lastUpdatedAt)}` : 'Updated --';
   }
   if (paperHeroWindowEl) {
-    paperHeroWindowEl.textContent = `${summary.openTrades ?? 0} open • ${summary.pendingEntries ?? 0} pending`;
+    paperHeroWindowEl.textContent = paperEnabled ? runtime.chipText : 'Paper off';
+    paperHeroWindowEl.className = paperEnabled ? runtime.chipClass : 'chip chip-neutral';
+  }
+  if (paperMarketStateChipEl) {
+    paperMarketStateChipEl.textContent = paperEnabled ? `${summary.openTrades ?? 0} open • ${summary.pendingEntries ?? 0} pending` : 'Positions --';
+    paperMarketStateChipEl.className = 'chip chip-neutral';
+  }
+  if (paperSymbolsChipEl) {
+    paperSymbolsChipEl.textContent = paperEnabled ? runtime.symbolText : 'Symbols --';
+    paperSymbolsChipEl.className = 'chip chip-neutral';
   }
   if (paperBalanceEl) {
     paperBalanceEl.textContent = paperEnabled && typeof summary.balance === 'number' ? fmtUsd(summary.balance) : '--';
@@ -1604,7 +1648,7 @@ const renderPaperAccount = () => {
   }
   if (paperHeroMetaEl) {
     paperHeroMetaEl.textContent = paperEnabled
-      ? `Started with ${fmtUsd(summary.initialBalance)} • ${formatPaperTradeCap(paper?.maxConcurrentTrades ?? homePaper?.maxConcurrentTrades)} live-trade cap • ${summary.closedTrades ?? 0} resolved paper trades`
+      ? `Started with ${fmtUsd(summary.initialBalance)} • ${runtime.marketOpen ? 'Paper engine can place live NQ/ES ideas right now' : 'No new paper trades while the futures market is closed'} • ${summary.closedTrades ?? 0} resolved paper trades`
       : 'Paper account diagnostics are not available.';
   }
   if (paperOpenChipEl) {
