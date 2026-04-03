@@ -6450,6 +6450,78 @@ h2, h3 {
   color: #cccccc;
 }
 
+.signalChartStack-replay {
+  border-radius: 16px;
+  overflow: hidden;
+  background: #232935;
+}
+
+.signalChartStack-replay svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.review-card-pending {
+  gap: 10px;
+}
+
+.review-card-pending .reviewLearningHeadlineRow,
+.review-card-pending .reviewOutcomeSourceRow,
+.review-card-pending .reviewLearningImpactRow,
+.review-card-pending .reviewLearningSummary,
+.review-card-pending .review-casefile-grid,
+.review-card-pending .projection-grid,
+.review-card-pending .review-reading-grid,
+.review-card-pending .signalEvidence,
+.review-card-pending .review-chart-legend,
+.review-card-pending .reviewTimelineMeta,
+.review-card-pending .reviewSignalMeta,
+.review-card-pending .item-meta,
+.review-card-pending .review-section-label,
+.review-card-pending .review-section-copy {
+  display: none;
+}
+
+.review-card-pending .signalChart {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.review-card-pending .reviewSnapshotChart {
+  margin-top: 2px;
+}
+
+.review-card-pending .signal-chart-tools,
+.review-card-pending .reviewSnapshotLevels {
+  margin-top: 0;
+}
+
+.review-card-pending .reviewSnapshotLevels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.review-card-pending .level-chip {
+  justify-content: center;
+  min-width: 0;
+}
+
+.review-card-pending .openTradingViewBtn {
+  width: 100%;
+  justify-content: center;
+}
+
+.review-card-pending .review-form {
+  margin-top: 2px;
+}
+
+.review-card-pending .reviewNotes {
+  min-height: 84px;
+}
+
 /* ---- Status pills ---- */
 .tradeStatus.APPROVED {
   color: #7dd3fc;

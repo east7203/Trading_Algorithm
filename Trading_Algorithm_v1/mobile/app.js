@@ -3355,6 +3355,220 @@ const summarizeGuardrails = (alertLike) => {
   return reasons.length ? reasons.map(humanizeRiskReason).join(' • ') : 'Blocked by guardrails';
 };
 
+const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
+  if (!snapshot?.bars?.length) {
+    return '<div class="signalChartPlaceholder">Chart pending</div>';
+  }
+
+  const expanded = options.expanded === true;
+  const width = expanded ? 440 : 320;
+  const height = expanded ? 286 : 222;
+  const padding = expanded
+    ? { top: 16, right: 18, bottom: 18, left: 12 }
+    : { top: 14, right: 16, bottom: 16, left: 10 };
+  const bars = snapshot.bars;
+  const side = candidate?.side ?? snapshot.side;
+  const entry = candidate?.entry ?? snapshot.levels?.entry;
+  const stopLoss = candidate?.stopLoss ?? snapshot.levels?.stopLoss;
+  const takeProfit = candidate?.takeProfit?.[0] ?? snapshot.levels?.takeProfit;
+  if (![entry, stopLoss, takeProfit].every((value) => typeof value === 'number' && Number.isFinite(value))) {
+    return renderSignalChartMarkup(snapshot, options);
+  }
+
+  const allPrices = [...bars.flatMap((bar) => [bar.high, bar.low]), entry, stopLoss, takeProfit];
+  const maxPrice = Math.max(...allPrices);
+  const minPrice = Math.min(...allPrices);
+  const range = Math.max(maxPrice - minPrice, 1e-6);
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const plotBottom = padding.top + plotHeight;
+  const slotWidth = plotWidth / bars.length;
+  const bodyWidth = Math.max(5, slotWidth * 0.72);
+  const wickColor = '#d7d55b';
+  const upFill = '#25c3b0';
+  const downFill = '#ff5c5c';
+  const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
+  const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
+  const focusBarAt = snapshot.focusBarAt ?? bars[bars.length - 1]?.timestamp ?? snapshot.detectedAt;
+  const focusIndexRaw = bars.findIndex((bar) => bar.timestamp === focusBarAt);
+  const focusIndex = focusIndexRaw >= 0 ? focusIndexRaw : Math.max(1, bars.length - 4);
+  const tradeStartIndex = Math.max(1, Math.min(focusIndex, bars.length - 2));
+  const tradeStartX = candleX(tradeStartIndex) - slotWidth / 2;
+  const plotRight = width - padding.right;
+  const entryY = priceToY(entry);
+  const stopY = priceToY(stopLoss);
+  const targetY = priceToY(takeProfit);
+  const profitTop = Math.min(entryY, targetY);
+  const profitBottom = Math.max(entryY, targetY);
+  const riskTop = Math.min(entryY, stopY);
+  const riskBottom = Math.max(entryY, stopY);
+  const previewShade = `
+    <rect
+      x="${padding.left}"
+      y="${padding.top}"
+      width="${Math.max(0, tradeStartX - padding.left)}"
+      height="${plotHeight}"
+      fill="rgba(13, 18, 28, 0.82)"
+    />
+  `;
+  const profitRect = `
+    <rect
+      x="${tradeStartX}"
+      y="${profitTop}"
+      width="${Math.max(0, plotRight - tradeStartX)}"
+      height="${Math.max(2, profitBottom - profitTop)}"
+      fill="rgba(38, 131, 123, 0.32)"
+      stroke="rgba(62, 181, 168, 0.18)"
+      stroke-width="1"
+    />
+  `;
+  const riskRect = `
+    <rect
+      x="${tradeStartX}"
+      y="${riskTop}"
+      width="${Math.max(0, plotRight - tradeStartX)}"
+      height="${Math.max(2, riskBottom - riskTop)}"
+      fill="rgba(118, 53, 61, 0.44)"
+      stroke="rgba(255, 107, 120, 0.14)"
+      stroke-width="1"
+    />
+  `;
+
+  const grid = [takeProfit, entry, stopLoss]
+    .map(
+      (price, index) => `
+        <line
+          x1="${padding.left}"
+          y1="${priceToY(price)}"
+          x2="${plotRight}"
+          y2="${priceToY(price)}"
+          stroke="${index === 1 ? 'rgba(230, 236, 244, 0.36)' : 'rgba(190, 204, 219, 0.22)'}"
+          stroke-dasharray="${index === 1 ? '0' : '3 4'}"
+          stroke-width="${index === 1 ? '1.1' : '1'}"
+        />
+      `
+    )
+    .join('');
+
+  const candles = bars
+    .map((bar, index) => {
+      const x = candleX(index);
+      const openY = priceToY(bar.open);
+      const closeY = priceToY(bar.close);
+      const highY = priceToY(bar.high);
+      const lowY = priceToY(bar.low);
+      const bodyTop = Math.min(openY, closeY);
+      const bodyHeight = Math.max(Math.abs(closeY - openY), 2);
+      const fill = bar.close >= bar.open ? upFill : downFill;
+      return `
+        <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${wickColor}" stroke-width="1.25" opacity="0.95" />
+        <rect x="${x - bodyWidth / 2}" y="${bodyTop}" width="${bodyWidth}" height="${bodyHeight}" rx="1.4" fill="${fill}" opacity="0.98" />
+      `;
+    })
+    .join('');
+
+  const entryArrowX = candleX(tradeStartIndex);
+  const entryArrowY = entryY;
+  const entryDirectionUp = side === 'LONG';
+  const entryArrow = entryDirectionUp
+    ? `<path d="M ${entryArrowX} ${entryArrowY + 13} L ${entryArrowX - 7} ${entryArrowY + 25} L ${entryArrowX + 7} ${entryArrowY + 25} Z" fill="#3378ff" />`
+    : `<path d="M ${entryArrowX} ${entryArrowY - 13} L ${entryArrowX - 7} ${entryArrowY - 25} L ${entryArrowX + 7} ${entryArrowY - 25} Z" fill="#3378ff" />`;
+  const entryDot = `<circle cx="${tradeStartX}" cy="${entryY}" r="4.8" fill="#3ad16a" stroke="rgba(58, 209, 106, 0.22)" stroke-width="5" />`;
+  const entryGuide = `
+    <path
+      d="M ${Math.max(padding.left + 4, tradeStartX - 36)} ${entryDirectionUp ? plotBottom - 10 : padding.top + 10}
+         L ${Math.max(padding.left + 16, tradeStartX - 12)} ${entryDirectionUp ? entryY + 18 : entryY - 18}
+         L ${tradeStartX} ${entryY}"
+      fill="none"
+      stroke="${entryDirectionUp ? '#3ad16a' : '#ff6f6f'}"
+      stroke-width="2.1"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      opacity="0.82"
+    />
+  `;
+  const entryLabel = `
+    <text
+      x="${Math.max(padding.left + 18, tradeStartX - 18)}"
+      y="${entryDirectionUp ? entryY - 18 : entryY + 28}"
+      fill="rgba(244, 248, 251, 0.72)"
+      font-size="${expanded ? '10' : '8.8'}"
+      font-weight="700"
+      text-anchor="start"
+    >${escapeHtml(`Enter ${side === 'LONG' ? 'Long' : 'Short'}`)}</text>
+  `;
+
+  const priceTag = (label, price, y, tone) => {
+    const widthPx = expanded ? 46 : 40;
+    const heightPx = expanded ? 18 : 16;
+    const x = plotRight - widthPx;
+    const fill =
+      tone === 'target'
+        ? 'rgba(38, 131, 123, 0.94)'
+        : tone === 'stop'
+          ? 'rgba(118, 53, 61, 0.96)'
+          : 'rgba(62, 70, 82, 0.96)';
+    const stroke =
+      tone === 'target'
+        ? '#46d9ba'
+        : tone === 'stop'
+          ? '#ff7c86'
+          : 'rgba(230, 236, 244, 0.42)';
+    return `
+      <g>
+        <rect
+          x="${x}"
+          y="${y - heightPx / 2}"
+          width="${widthPx}"
+          height="${heightPx}"
+          rx="7"
+          fill="${fill}"
+          stroke="${stroke}"
+          stroke-width="0.9"
+        />
+        <text
+          x="${x + widthPx / 2}"
+          y="${y + 3}"
+          fill="#f8fbff"
+          font-size="${expanded ? '8.8' : '8'}"
+          font-weight="700"
+          text-anchor="middle"
+        >${escapeHtml(label)}</text>
+      </g>
+    `;
+  };
+
+  const headlineBadge = `
+    <g>
+      <rect x="${padding.left}" y="${padding.top}" width="${expanded ? 112 : 92}" height="${expanded ? 18 : 16}" rx="8" fill="rgba(8, 12, 20, 0.82)" />
+      <text x="${padding.left + (expanded ? 56 : 46)}" y="${padding.top + (expanded ? 12 : 11)}" fill="rgba(236, 242, 248, 0.82)" font-size="${expanded ? '9' : '8'}" font-weight="700" text-anchor="middle">
+        ${escapeHtml(`${snapshot.symbol} ${snapshot.timeframe ?? '5m'} replay`)}
+      </text>
+    </g>
+  `;
+
+  return `
+    <div class="signalChartStack signalChartStack-replay${expanded ? ' is-expanded' : ''}">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="${expanded ? 'xMidYMid meet' : 'none'}" aria-hidden="true">
+        <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="#232935" />
+        ${previewShade}
+        ${profitRect}
+        ${riskRect}
+        ${grid}
+        ${candles}
+        ${entryGuide}
+        ${entryDot}
+        ${entryArrow}
+        ${entryLabel}
+        ${headlineBadge}
+        ${priceTag('TP', takeProfit, targetY, 'target')}
+        ${priceTag('IN', entry, entryY, 'entry')}
+        ${priceTag('SL', stopLoss, stopY, 'stop')}
+      </svg>
+    </div>
+  `;
+};
+
 const renderSignalChartMarkup = (snapshot, options = {}) => {
   if (!snapshot?.bars?.length) {
     return '<div class="signalChartPlaceholder">Chart pending</div>';
@@ -3981,9 +4195,13 @@ const openChartLightbox = (chartEl) => {
   const context = chartLightboxContext.get(chartEl) ?? {};
   chartLightboxTitleEl.textContent = context.title || chartEl.dataset.chartLightboxTitle || 'Trigger Snapshot';
   chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
+  const expandedChartMarkup =
+    context.chartVariant === 'replay-trade-box'
+      ? renderReplayTradeBoxChartMarkup(context.snapshot, context.candidate, { expanded: true })
+      : renderSignalChartMarkup(context.snapshot, { expanded: true });
   chartLightboxFrameEl.innerHTML = context.snapshot
     ? `
-        <div class="chart-lightbox-chart">${renderSignalChartMarkup(context.snapshot, { expanded: true })}</div>
+        <div class="chart-lightbox-chart">${expandedChartMarkup}</div>
         ${renderChartLightboxDetails(context)}
       `
     : chartEl.innerHTML;
@@ -5627,6 +5845,7 @@ const saveReview = async (review, buttonEl) => {
 const renderReviewCard = (review) => {
   const node = reviewTemplate.content.firstElementChild.cloneNode(true);
   const chartSnapshot = review.alertSnapshot?.chartSnapshot;
+  const isPendingReview = review.reviewStatus !== 'COMPLETED';
   const alertLike = buildAlertLikeContext(review);
   const signalSummary = alertLike ? formatSignalWhy(alertLike) : 'Rule-qualified signal';
   const guardrailSummary = alertLike ? summarizeGuardrails(alertLike) : 'Risk state unavailable';
@@ -5658,6 +5877,9 @@ const renderReviewCard = (review) => {
   } else {
     outcomeSourceRowEl.remove();
   }
+  if (isPendingReview) {
+    node.classList.add('review-card-pending');
+  }
   const reviewLearningImpactRowEl = node.querySelector('.reviewLearningImpactRow');
   const reviewLearningSummaryEl = node.querySelector('.reviewLearningSummary');
   const reviewLearningBadgeEl = node.querySelector('.reviewLearningBadge');
@@ -5679,7 +5901,9 @@ const renderReviewCard = (review) => {
     reviewLearningSummaryEl.textContent = 'Save a directional replay review to feed the live ranking and autonomous engines.';
   }
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
-  reviewChartEl.innerHTML = renderSignalChartMarkup(chartSnapshot);
+  reviewChartEl.innerHTML = isPendingReview
+    ? renderReplayTradeBoxChartMarkup(chartSnapshot, review.alertSnapshot?.candidate)
+    : renderSignalChartMarkup(chartSnapshot);
   configureExpandableChart(
     reviewChartEl,
     {
@@ -5687,7 +5911,8 @@ const renderReviewCard = (review) => {
       meta: `${chartSnapshot?.timeframe ?? '5m'} replay case at ${fmtTime(review.detectedAt)} • swipe down to return`,
       snapshot: chartSnapshot,
       candidate: review.alertSnapshot?.candidate,
-      review
+      review,
+      chartVariant: isPendingReview ? 'replay-trade-box' : 'signal'
     }
   );
   hydrateTradingViewChecklist(node, {
