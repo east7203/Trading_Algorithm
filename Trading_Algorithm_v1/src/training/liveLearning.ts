@@ -5,6 +5,7 @@ import type {
   SignalReviewOutcomeSource,
   SymbolCode
 } from '../domain/types.js';
+import type { TradeLearningRecord } from '../stores/tradeLearningStore.js';
 import type { TrainingExample, TrainingOutcome } from './historicalTrainer.js';
 
 export interface LearningFeedbackCounts {
@@ -354,3 +355,55 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
     }
   };
 };
+
+const toReviewLikeFromTradeRecord = (record: TradeLearningRecord): SignalReviewEntry | null => {
+  if (!record.alertSnapshot) {
+    return null;
+  }
+
+  return {
+    reviewId: record.review.reviewId ?? record.recordId,
+    alertId: record.alertId,
+    candidateId: record.candidateId,
+    symbol: record.symbol,
+    setupType: record.setupType,
+    side: record.side,
+    detectedAt: record.detectedAt,
+    reviewStatus: record.review.reviewStatus,
+    validity: record.review.validity,
+    outcome: record.review.outcome,
+    notes: record.review.notes,
+    reviewedBy: record.review.reviewedBy,
+    reviewedAt: record.review.reviewedAt,
+    autoOutcome: record.review.autoOutcome,
+    autoLabeledAt: record.review.autoLabeledAt,
+    autoLabeledBy: record.review.autoLabeledBy,
+    effectiveOutcome: record.review.effectiveOutcome,
+    effectiveOutcomeSource: record.review.effectiveOutcomeSource,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    acknowledgedAt: undefined,
+    acknowledgedBy: undefined,
+    escalationCount: 0,
+    lastEscalatedAt: undefined,
+    alertSnapshot: record.alertSnapshot
+  };
+};
+
+export const buildLearningFeedbackDatasetFromTradeRecords = (
+  records: TradeLearningRecord[]
+): LearningFeedbackDataset =>
+  buildLearningFeedbackDataset(
+    records
+      .map((record) => toReviewLikeFromTradeRecord(record))
+      .filter((record): record is SignalReviewEntry => record !== null)
+  );
+
+export const summarizeLearningPerformanceFromTradeRecords = (
+  records: TradeLearningRecord[]
+): LearningPerformanceSummary =>
+  summarizeLearningPerformance(
+    records
+      .map((record) => toReviewLikeFromTradeRecord(record))
+      .filter((record): record is SignalReviewEntry => record !== null)
+  );

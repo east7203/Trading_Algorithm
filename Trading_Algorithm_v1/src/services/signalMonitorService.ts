@@ -486,6 +486,7 @@ export class SignalMonitorService {
     private readonly getSettings: () => SignalMonitorSettings,
     private readonly getMarketResearchStatus: () => MarketResearchStatus | null,
     private readonly signalReviewStore: SignalReviewStore,
+    private readonly onReviewUpdated?: ((review: SignalReviewEntry) => Promise<void> | void) | null,
     private readonly getAccountSnapshot?: ((now: string) => AccountSnapshot) | null,
     private readonly onAlertPublished?: ((context: PublishedAlertContext) => Promise<void> | void) | null,
     private readonly onCandidateObserved?: ((context: ObservedCandidateContext) => Promise<void> | void) | null,
@@ -864,6 +865,7 @@ export class SignalMonitorService {
         resolved.outcome,
         resolved.labeledAt
       );
+      await this.onReviewUpdated?.(updated);
 
       this.journalStore.addEvent({
         type: 'SIGNAL_AUTO_LABELED',

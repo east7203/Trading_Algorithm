@@ -395,6 +395,10 @@ export class PaperAutonomyService {
 
   constructor(private readonly config: PaperAutonomyConfig) {}
 
+  private getMaxLiveDelayMinutes(): number {
+    return Number.isFinite(this.config.maxLiveDelayMinutes) ? this.config.maxLiveDelayMinutes : Number.POSITIVE_INFINITY;
+  }
+
   private async loadState(): Promise<void> {
     if (!this.config.statePath) {
       return;
@@ -1287,7 +1291,7 @@ export class PaperAutonomyService {
       return;
     }
     const currentBar = bars[currentIndex];
-    if (!isFreshEnough(currentBar.timestamp, this.config.maxLiveDelayMinutes)) {
+    if (!isFreshEnough(currentBar.timestamp, this.getMaxLiveDelayMinutes())) {
       return;
     }
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
@@ -1651,7 +1655,7 @@ export class PaperAutonomyService {
       enabled: this.config.enabled,
       started: this.started,
       statePath: this.config.statePath,
-      maxLiveDelayMinutes: this.config.maxLiveDelayMinutes,
+      maxLiveDelayMinutes: this.getMaxLiveDelayMinutes(),
       lastIdeaAt: this.lastIdeaAt,
       lastEvaluatedAt: this.lastEvaluatedAt,
       lastError: this.lastError,

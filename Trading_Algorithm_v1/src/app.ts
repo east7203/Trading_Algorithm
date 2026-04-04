@@ -1,11 +1,12 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { getCmeEquitySessionState, type CmeEquitySessionState } from './domain/cmeEquityHours.js';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
-import type { SignalAlert, SignalReviewOutcome, SymbolCode } from './domain/types.js';
+import type { SignalAlert, SignalReviewEntry, SignalReviewOutcome, SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
 import { evaluateRisk } from './services/riskEngine.js';
 import { ExecutionService } from './services/executionService.js';
@@ -60,10 +61,11 @@ import {
 } from './stores/ibkrReconnectStateStore.js';
 import { SignalMonitorSettingsStore } from './stores/signalMonitorSettingsStore.js';
 import { SignalReviewStore } from './stores/signalReviewStore.js';
+import { TradeLearningStore } from './stores/tradeLearningStore.js';
 import { ContinuousTrainingService, type ContinuousTrainingConfig } from './training/continuousTrainingService.js';
 import {
-  buildLearningFeedbackDataset,
-  summarizeLearningPerformance
+  buildLearningFeedbackDatasetFromTradeRecords,
+  summarizeLearningPerformanceFromTradeRecords,
 } from './training/liveLearning.js';
 import type { OneMinuteBar } from './training/historicalTrainer.js';
 import {
@@ -97,6 +99,7 @@ export interface AppContext {
   signalMonitorService: SignalMonitorService | null;
   signalMonitorSettingsStore: SignalMonitorSettingsStore;
   signalReviewStore: SignalReviewStore;
+  tradeLearningStore: TradeLearningStore;
   nativePushNotificationService: NativePushNotificationService | null;
   webPushNotificationService: WebPushNotificationService | null;
   telegramAlertService: TelegramAlertService | null;
@@ -117,6 +120,8 @@ interface BuildAppOptions {
   signalMonitorSettingsStorePath?: string;
   signalReviewStore?: SignalReviewStore;
   signalReviewStorePath?: string;
+  tradeLearningStore?: TradeLearningStore;
+  tradeLearningStorePath?: string;
   ibkrReconnectStateStore?: IbkrReconnectStateStore;
   ibkrReconnectStateStorePath?: string;
   continuousTrainingEnabled?: boolean;
@@ -915,6 +920,26 @@ const resolveSignalReviewStorePath = (override?: string): string => {
   return fromEnv ?? path.resolve(process.cwd(), 'data', 'reviews', 'signal-reviews.json');
 };
 
+const resolveTradeLearningStorePath = (override?: string): string => {
+  if (override) {
+    return path.resolve(process.cwd(), override);
+  }
+
+  if (process.env.NODE_ENV === 'test') {
+    return path.resolve(
+      os.tmpdir(),
+      `trading-algorithm-trade-learning-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+    );
+  }
+
+  const fromEnv = parseOptionalPathEnv(
+    'TRADE_LEARNING_STORE_PATH',
+    path.resolve(process.cwd(), 'data', 'learning', 'trade-learning.json')
+  );
+
+  return fromEnv ?? path.resolve(process.cwd(), 'data', 'learning', 'trade-learning.json');
+};
+
 const resolveSignalMonitorSettingsStorePath = (override?: string): string => {
   if (override) {
     return path.resolve(process.cwd(), override);
@@ -1090,6 +1115,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     new SignalMonitorSettingsStore(resolveSignalMonitorSettingsStorePath(options.signalMonitorSettingsStorePath));
   const signalReviewStore =
     options.signalReviewStore ?? new SignalReviewStore(resolveSignalReviewStorePath(options.signalReviewStorePath));
+  const tradeLearningStore =
+    options.tradeLearningStore ?? new TradeLearningStore(resolveTradeLearningStorePath(options.tradeLearningStorePath));
+  const shouldBootstrapTradeLearningHistory =
+    !(process.env.NODE_ENV === 'test'
+      && options.tradeLearningStore === undefined
+      && options.tradeLearningStorePath === undefined);
   const ibkrReconnectStateStore =
     options.ibkrReconnectStateStore ??
     new IbkrReconnectStateStore(resolveIbkrReconnectStateStorePath(options.ibkrReconnectStateStorePath));
@@ -1702,6 +1733,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   const resolvedContinuousConfig = resolveContinuousTrainingConfig(options.continuousTrainingConfig);
   const continuousTrainingEnabled = options.continuousTrainingEnabled ?? resolvedContinuousConfig.enabled;
+  let tradeLearningBootstrapPromise: Promise<void> = Promise.resolve();
+  const listTradeLearningRecords = async () => {
+    await tradeLearningBootstrapPromise;
+    return tradeLearningStore.listAllRecords();
+  };
   const continuousTrainingService =
     options.continuousTrainingService === undefined
       ? continuousTrainingEnabled
@@ -1709,7 +1745,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedContinuousConfig,
             enabled: true,
             feedbackDatasetProvider: async () =>
-              buildLearningFeedbackDataset(await signalReviewStore.listAllReviews()),
+              buildLearningFeedbackDatasetFromTradeRecords(await listTradeLearningRecords()),
             onRunRecorded: async (run) => {
               if (!run.executed || run.trigger === 'startup') {
                 return;
@@ -1765,6 +1801,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedPaperTradingConfig,
             enabled: true,
             onTradeEvent: async (event: PaperTradeEvent) => {
+              await tradeLearningStore.syncPaperTrade(event.trade, event.at);
               const autonomyLearningUpdate =
                 event.trade.source === 'paper-autonomy'
                   ? await paperAutonomyService?.recordTradeOutcome(event)
@@ -1825,6 +1862,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                       source: 'paper-trading'
                     }
                   });
+                  await tradeLearningStore.syncReview(updatedReview);
                 }
               }
 
@@ -1882,6 +1920,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           })
         : null
       : options.paperTradingService;
+  const syncTradeLearningAlert = async (alert: SignalAlert, source: string) => {
+    await tradeLearningStore.recordAlert(alert, source);
+  };
+  const syncTradeLearningReview = async (review: SignalReviewEntry) => {
+    await tradeLearningStore.syncReview(review);
+  };
   const submitPaperLearningAlert = async (alert: SignalAlert, source: string) => {
     if (!paperTradingService) {
       return null;
@@ -1892,7 +1936,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       return null;
     }
 
-    await signalReviewStore.recordAlert(alert);
+    await syncTradeLearningAlert(alert, source);
+    const reviewEntry = await signalReviewStore.recordAlert(alert);
+    await syncTradeLearningReview(reviewEntry);
+    await tradeLearningStore.syncPaperTrade(trade, alert.detectedAt);
     journalStore.addEvent({
       type: 'SIGNAL_GENERATED',
       timestamp: alert.detectedAt,
@@ -1946,8 +1993,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             () => signalMonitorSettingsStore.get(),
             () => marketResearchService?.status() ?? null,
             signalReviewStore,
+            async (review) => {
+              await syncTradeLearningReview(review);
+            },
             null,
-            null,
+            async ({ alert, source }) => {
+              await syncTradeLearningAlert(alert, source);
+            },
             paperTradingService
               ? async ({ alert, source }) => {
                   await submitPaperLearningAlert(alert, source);
@@ -1969,6 +2021,31 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         app.log.error({ err: error }, 'paper trading service failed to start');
       })
     : null;
+
+  const tradeLearningStartPromise = tradeLearningStore.start().catch((error) => {
+    app.log.error({ err: error }, 'trade learning store failed to start');
+  });
+
+  tradeLearningBootstrapPromise = (async () => {
+    await tradeLearningStartPromise;
+    if (!shouldBootstrapTradeLearningHistory) {
+      return;
+    }
+    const reviews = await signalReviewStore.listAllReviews();
+    for (const review of reviews) {
+      await tradeLearningStore.syncReview(review);
+    }
+
+    if (paperTradingService) {
+      await paperTradingStartPromise;
+      const trades = await paperTradingService.listAllTrades();
+      for (const trade of trades) {
+        await tradeLearningStore.syncPaperTrade(trade, trade.closedAt ?? trade.filledAt ?? trade.submittedAt);
+      }
+    }
+  })().catch((error) => {
+    app.log.error({ err: error }, 'trade learning bootstrap failed');
+  });
 
   if (paperTradingService) {
     app.addHook('onClose', async () => {
@@ -2154,8 +2231,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       latestBarTimestamp,
       frozenFeed
     );
-    const allReviews = await signalReviewStore.listAllReviews();
-    const learningPerformance = summarizeLearningPerformance(allReviews);
+    const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
     const research = marketResearchService ? marketResearchService.status() : null;
     const paper = await syncPaperSessionState();
     const lastAlert = signalMonitorService?.listAlerts(1)[0];
@@ -2734,13 +2810,15 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/learning/performance', async (_request, reply) => {
-    const reviews = await signalReviewStore.listAllReviews();
-    const performance = summarizeLearningPerformance(reviews);
-    const feedback = buildLearningFeedbackDataset(reviews);
+    const records = await listTradeLearningRecords();
+    const performance = summarizeLearningPerformanceFromTradeRecords(records);
+    const feedback = buildLearningFeedbackDatasetFromTradeRecords(records);
+    const database = await tradeLearningStore.summary();
 
     return reply.status(200).send({
       performance,
-      feedback: feedback.counts
+      feedback: feedback.counts,
+      database
     });
   });
 
@@ -2748,6 +2826,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     try {
       const body = parseOrThrow(signalReviewUpsertBodySchema.safeParse(request.body));
       const review = await signalReviewStore.upsertReview(body);
+      await syncTradeLearningReview(review);
       const summary = await signalReviewStore.summary();
       const paperAutonomyLearning = await paperAutonomyService?.recordReplayReview(review);
       const marketResearchLearning = await marketResearchService?.recordReplayReview(review);
@@ -2771,6 +2850,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       return reply.status(200).send({
         review,
         summary,
+        tradeLearning: await tradeLearningStore.getRecord(review.alertId),
         learning: {
           paperAutonomy: paperAutonomyLearning ?? null,
           marketResearch: marketResearchLearning ?? null
@@ -2784,6 +2864,44 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   app.get('/signals/config', async (_request, reply) => {
     return reply.status(200).send({
       config: signalMonitorSettingsStore.get()
+    });
+  });
+
+  app.get('/trade-learning/records', async (request, reply) => {
+    const query = (request.query as { status?: string; limit?: string } | undefined) ?? {};
+    const normalizedStatus = (query.status ?? 'ALL').toUpperCase();
+    const status =
+      normalizedStatus === 'ALL' || normalizedStatus === 'PENDING' || normalizedStatus === 'RESOLVED'
+        ? normalizedStatus
+        : null;
+    if (!status) {
+      return reply.status(400).send({
+        message: 'Invalid trade learning status filter'
+      });
+    }
+
+    const parsedLimit = Number.parseInt(query.limit ?? '50', 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 250) : 50;
+    const [records, summary] = await Promise.all([
+      tradeLearningStore.listRecords(status as 'ALL' | 'PENDING' | 'RESOLVED', limit),
+      tradeLearningStore.summary()
+    ]);
+
+    return reply.status(200).send({
+      records,
+      summary
+    });
+  });
+
+  app.get('/trade-learning/summary', async (_request, reply) => {
+    const [summary, records] = await Promise.all([
+      tradeLearningStore.summary(),
+      tradeLearningStore.listRecords('RESOLVED', 20)
+    ]);
+
+    return reply.status(200).send({
+      summary,
+      recentResolvedRecords: records
     });
   });
 
@@ -2826,8 +2944,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
       .slice(0, 8);
     const reviews = await signalReviewStore.summary();
-    const allReviews = await signalReviewStore.listAllReviews();
-    const learningPerformance = summarizeLearningPerformance(allReviews);
+    const tradeLearning = await tradeLearningStore.summary();
+    const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
     const research: MarketResearchStatus | { enabled: false; started: false } = marketResearchService
@@ -2912,6 +3030,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         training,
         research,
         learningPerformance,
+        tradeLearning,
         reviews,
         signalConfig,
         lastAlert: lastAlert
@@ -3915,6 +4034,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     signalMonitorService,
     signalMonitorSettingsStore,
     signalReviewStore,
+    tradeLearningStore,
     nativePushNotificationService,
     webPushNotificationService,
     telegramAlertService,

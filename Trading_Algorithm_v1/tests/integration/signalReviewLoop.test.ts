@@ -89,10 +89,15 @@ const buildMomentumBars = () => {
   return bars;
 };
 
-const withApp = (signalReviewStorePath: string, signalMonitorSettingsStorePath: string): AppContext => {
+const withApp = (
+  signalReviewStorePath: string,
+  signalMonitorSettingsStorePath: string,
+  tradeLearningStorePath: string
+): AppContext => {
   const ctx = buildApp({
     signalReviewStorePath,
     signalMonitorSettingsStorePath,
+    tradeLearningStorePath,
     continuousTrainingEnabled: false,
     signalMonitorEnabled: true,
     signalMonitorConfig: {
@@ -108,11 +113,12 @@ const withApp = (signalReviewStorePath: string, signalMonitorSettingsStorePath: 
 };
 
 const withReplayLearningApp = (tempDir: string): AppContext => {
-  const ctx = buildApp({
-    signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
-    signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor-settings.json'),
-    continuousTrainingEnabled: false,
-    signalMonitorEnabled: false,
+    const ctx = buildApp({
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor-settings.json'),
+      tradeLearningStorePath: path.join(tempDir, 'trade-learning.json'),
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: false,
     marketResearchEnabled: true,
     marketResearchConfig: {
       archivePath: undefined,
@@ -211,7 +217,9 @@ describe('signal review loop integration', () => {
     const storePath = path.join(tempDir, 'signal-reviews.json');
     const settingsPath = path.join(tempDir, 'signal-monitor-settings.json');
 
-    const ctx = withApp(storePath, settingsPath);
+    const tradeLearningPath = path.join(tempDir, 'trade-learning.json');
+
+    const ctx = withApp(storePath, settingsPath, tradeLearningPath);
     await relaxSignalSettings(ctx);
 
     const ingest = await ctx.app.inject({
@@ -249,6 +257,7 @@ describe('signal review loop integration', () => {
     expect(saveResponse.statusCode).toBe(200);
     expect(saveResponse.json().review.reviewStatus).toBe('COMPLETED');
     expect(saveResponse.json().review.outcome).toBe('WOULD_WIN');
+    expect(saveResponse.json().tradeLearning.reasoning.reviewNotes).toBe('Held the break and clean continuation.');
 
     const diagnostics = await ctx.app.inject({
       method: 'GET',
@@ -256,6 +265,7 @@ describe('signal review loop integration', () => {
     });
     expect(diagnostics.statusCode).toBe(200);
     expect(diagnostics.json().diagnostics.reviews.completed).toBeGreaterThan(0);
+    expect(diagnostics.json().diagnostics.tradeLearning.resolvedRecords).toBeGreaterThan(0);
     expect(diagnostics.json().diagnostics.lastAlert.symbol).toBe('NQ');
     expect(diagnostics.json().diagnostics.learningPerformance.resolvedReviews).toBeGreaterThan(0);
 
@@ -266,6 +276,15 @@ describe('signal review loop integration', () => {
     expect(learning.statusCode).toBe(200);
     expect(learning.json().performance.bySetup.length).toBeGreaterThan(0);
     expect(learning.json().feedback.manualResolvedReviews).toBeGreaterThan(0);
+    expect(learning.json().database.withReviewNotes).toBeGreaterThan(0);
+
+    const tradeLearning = await ctx.app.inject({
+      method: 'GET',
+      path: '/trade-learning/records?status=RESOLVED&limit=10'
+    });
+    expect(tradeLearning.statusCode).toBe(200);
+    const savedTradeRecord = tradeLearning.json().records.find((record) => record.alertId === review.alertId);
+    expect(savedTradeRecord?.reasoning.reviewNotes).toBe('Held the break and clean continuation.');
 
     const journal = await ctx.app.inject({
       method: 'GET',
@@ -277,7 +296,7 @@ describe('signal review loop integration', () => {
     await ctx.app.close();
     contexts.pop();
 
-    const reopened = withApp(storePath, settingsPath);
+    const reopened = withApp(storePath, settingsPath, tradeLearningPath);
     const completedResponse = await reopened.app.inject({
       method: 'GET',
       path: '/signals/reviews?status=COMPLETED&limit=10'
@@ -286,6 +305,13 @@ describe('signal review loop integration', () => {
     expect(completedResponse.statusCode).toBe(200);
     expect(completedResponse.json().reviews[0].outcome).toBe('WOULD_WIN');
     expect(completedResponse.json().reviews[0].reviewedBy).toBe('qa-reviewer');
+
+    const tradeLearningSummary = await reopened.app.inject({
+      method: 'GET',
+      path: '/trade-learning/summary'
+    });
+    expect(tradeLearningSummary.statusCode).toBe(200);
+    expect(tradeLearningSummary.json().summary.wins).toBeGreaterThan(0);
   });
 
   it('feeds replay reviews into paper autonomy and market research', async () => {
@@ -310,6 +336,8 @@ describe('signal review loop integration', () => {
     expect(saveResponse.statusCode).toBe(200);
     expect(saveResponse.json().learning.paperAutonomy?.thesis).toBe('TREND_BREAKOUT_EXPANSION');
     expect(saveResponse.json().learning.marketResearch?.thesis).toBe('ALIGNED_CONTINUATION');
+    expect(saveResponse.json().tradeLearning.autonomy.thesis).toBe('TREND_BREAKOUT_EXPANSION');
+    expect(saveResponse.json().tradeLearning.research.direction).toBe('BULLISH');
 
     const paperAutonomyStatus = ctx.paperAutonomyService?.status();
     expect(paperAutonomyStatus?.closedIdeas).toBeGreaterThan(0);
@@ -318,5 +346,13 @@ describe('signal review loop integration', () => {
     const researchStatus = ctx.marketResearchService?.status();
     expect(researchStatus?.performance.evaluatedPredictions).toBeGreaterThan(0);
     expect(researchStatus?.knowledgeBase.bestThesis?.thesis).toBe('ALIGNED_CONTINUATION');
+
+    const tradeLearningSummary = await ctx.app.inject({
+      method: 'GET',
+      path: '/trade-learning/summary'
+    });
+    expect(tradeLearningSummary.statusCode).toBe(200);
+    expect(tradeLearningSummary.json().summary.byAutonomyThesis[0].key).toBe('TREND_BREAKOUT_EXPANSION');
+    expect(tradeLearningSummary.json().summary.byResearchDirection[0].key).toBe('BULLISH');
   });
 });

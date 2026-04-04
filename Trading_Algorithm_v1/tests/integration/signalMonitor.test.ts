@@ -193,7 +193,8 @@ describe('signal monitor integration', () => {
         maxBarsPerSymbol: 500
       },
       paperTradingConfig: {
-        statePath: path.join(tempDir, 'paper-account.json')
+        statePath: path.join(tempDir, 'paper-account.json'),
+        maxLiveDelayMinutes: 10_000_000
       },
       paperAutonomyEnabled: false
     });
@@ -247,6 +248,7 @@ describe('signal monitor integration', () => {
       },
       paperTradingConfig: {
         statePath: path.join(tempDir, 'paper-account.json'),
+        maxLiveDelayMinutes: 10_000_000,
         autonomyMode: 'UNRESTRICTED',
         maxConcurrentTrades: 0
       },
@@ -323,6 +325,7 @@ describe('signal monitor integration', () => {
       },
       paperTradingConfig: {
         statePath: path.join(tempDir, 'paper-account.json'),
+        maxLiveDelayMinutes: 10_000_000,
         maxConcurrentTrades: 3
       }
     });
@@ -371,7 +374,8 @@ describe('signal monitor integration', () => {
         maxBarsPerSymbol: 500
       },
       paperTradingConfig: {
-        statePath: path.join(tempDir, 'paper-account.json')
+        statePath: path.join(tempDir, 'paper-account.json'),
+        maxLiveDelayMinutes: 10_000_000
       },
       paperAutonomyEnabled: false
     });

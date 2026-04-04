@@ -294,6 +294,10 @@ export class PaperTradingService {
     this.autonomyRiskPct = normalizeAutonomyRiskPct(config.autonomyRiskPct ?? 0.35);
   }
 
+  private getMaxLiveDelayMinutes(): number {
+    return Number.isFinite(this.config.maxLiveDelayMinutes) ? this.config.maxLiveDelayMinutes : Number.POSITIVE_INFINITY;
+  }
+
   async start(): Promise<void> {
     if (!this.config.enabled || this.started) {
       return;
@@ -542,7 +546,7 @@ export class PaperTradingService {
     if (!isCmeEquitySessionOpen(alert.detectedAt)) {
       return null;
     }
-    if (!isFreshEnough(alert.detectedAt, this.config.maxLiveDelayMinutes)) {
+    if (!isFreshEnough(alert.detectedAt, this.getMaxLiveDelayMinutes())) {
       return null;
     }
 
@@ -656,7 +660,7 @@ export class PaperTradingService {
       if (!isCmeEquitySessionOpen(bar.timestamp)) {
         continue;
       }
-      if (!isFreshEnough(bar.timestamp, this.config.maxLiveDelayMinutes, nowIso)) {
+      if (!isFreshEnough(bar.timestamp, this.getMaxLiveDelayMinutes(), nowIso)) {
         continue;
       }
       this.latestPriceBySymbol.set(bar.symbol, bar.close);
@@ -818,7 +822,7 @@ export class PaperTradingService {
       started: this.started,
       statePath: this.config.statePath,
       initialBalance: round(this.config.initialBalance, 2),
-      maxLiveDelayMinutes: this.config.maxLiveDelayMinutes,
+      maxLiveDelayMinutes: this.getMaxLiveDelayMinutes(),
       maxConcurrentTrades: this.maxConcurrentTrades,
       autonomyMode: this.autonomyMode,
       autonomyRiskPct: this.autonomyRiskPct,
@@ -847,6 +851,11 @@ export class PaperTradingService {
 
   getRiskAccountSnapshot(now: string): AccountSnapshot {
     return this.status(now).accountSnapshot;
+  }
+
+  async listAllTrades(): Promise<PaperTrade[]> {
+    await this.start();
+    return this.listTrades().map((trade) => structuredClone(trade));
   }
 
   async reset(now = new Date().toISOString()): Promise<PaperTradingStatus> {
