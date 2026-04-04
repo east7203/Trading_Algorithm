@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=48" />
+    <link rel="stylesheet" href="styles.css?v=49" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -133,7 +133,7 @@
         <button class="tab-btn" type="button" data-tab="reviews">
           <span class="tab-btn-content">
             <span class="tab-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
-            <span class="tab-label">Replay</span>
+            <span class="tab-label">Learn</span>
           </span>
         </button>
         <button class="tab-btn" type="button" data-tab="settings">
@@ -284,9 +284,9 @@
               <p class="home-snapshot-note">Lead 5m setup on the board.</p>
             </article>
             <article class="home-snapshot-card">
-              <p class="stat-label">Replay Loop</p>
+              <p class="stat-label">Learning Loop</p>
               <p id="homeReplayState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">What still needs your review.</p>
+              <p class="home-snapshot-note">Resolved trades plus the feedback queue.</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Model</p>
@@ -541,61 +541,77 @@
         <section id="view-reviews" class="view view-reviews">
           <div class="section-head">
             <div>
-              <h2>Replay Desk</h2>
-              <p class="section-kicker">Read the chart, tag what happened, and feed the engines without fighting the UI.</p>
+              <h2>Learning Lab</h2>
+              <p class="section-kicker">Let the self-learning engine show what it is leaning into, what it is backing away from, and where your next feedback matters most.</p>
             </div>
-            <span id="reviewSummaryChip" class="chip chip-neutral">0 pending</span>
+            <span id="reviewSummaryChip" class="chip chip-neutral">Learning --</span>
           </div>
 
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
-              <h3>What The Queue Is Telling Us</h3>
-              <span id="sessionSummaryChip" class="chip chip-neutral">Waiting on reviews</span>
+              <h3>What The Engine Is Learning</h3>
+              <span id="learningProfileChip" class="chip chip-neutral">Learning profile loading</span>
             </div>
-            <p id="sessionSummaryHeadline" class="session-summary-headline">--</p>
-            <p id="sessionSummaryContext" class="session-summary-copy">Use the pending queue below to label how price behaved after entry. The archive stays below as reference, not the main workflow.</p>
+            <p id="learningHeadline" class="session-summary-headline">--</p>
+            <p id="learningContext" class="session-summary-copy">The system is pulling together setup, symbol, research, and autonomy outcomes from the trade-learning database.</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Strongest Pattern</p>
-                <p id="sessionSummaryStrongest" class="insight-text">--</p>
+                <p class="stat-label">Resolved Trades</p>
+                <p id="learningResolvedRecords" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Needs Tightening</p>
-                <p id="sessionSummaryWeakest" class="insight-text">--</p>
+                <p class="stat-label">Refresh State</p>
+                <p id="learningRefreshState" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Tomorrow Focus</p>
-                <p id="sessionSummaryTomorrow" class="insight-text">--</p>
+                <p class="stat-label">Top Win Reason</p>
+                <p id="learningTopWinReason" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Feedback Mix</p>
-                <p id="sessionSummaryFeedback" class="insight-text">--</p>
+                <p class="stat-label">Top Loss Reason</p>
+                <p id="learningTopLossReason" class="insight-text">--</p>
               </article>
             </div>
           </section>
 
           <section class="insights-grid review-insights-grid">
             <article class="insight-card">
-              <p class="stat-label">Best Setup</p>
-              <p id="reviewSetupEdge" class="insight-text">--</p>
+              <p class="stat-label">Top Learned Edge</p>
+              <p id="learningBestEdge" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Best Time</p>
-              <p id="reviewTimeEdge" class="insight-text">--</p>
+              <p class="stat-label">Biggest Drag</p>
+              <p id="learningBiggestDrag" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Best Score Bucket</p>
-              <p id="reviewScoreEdge" class="insight-text">--</p>
+              <p class="stat-label">Research Edge</p>
+              <p id="learningResearchEdge" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Ready vs Blocked</p>
-              <p id="reviewBlockedVsReady" class="insight-text">--</p>
+              <p class="stat-label">Autonomy Thesis</p>
+              <p id="learningAutonomyEdge" class="insight-text">--</p>
             </article>
           </section>
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Replay Queue</h3>
+              <h3>What It Is Favoring</h3>
+              <span class="chip chip-neutral">Higher score = stronger learned edge</span>
+            </div>
+            <div id="learningFavoringList" class="stack learning-pattern-list"></div>
+          </section>
+
+          <section class="review-section">
+            <div class="section-subhead">
+              <h3>What It Is Avoiding</h3>
+              <span class="chip chip-neutral">Negative score = learned drag</span>
+            </div>
+            <div id="learningAvoidingList" class="stack learning-pattern-list"></div>
+          </section>
+
+          <section class="review-section">
+            <div class="section-subhead">
+              <h3>Needs Feedback</h3>
               <span id="reviewPendingQueueChip" class="chip chip-neutral">0 pending</span>
             </div>
             <div id="reviewsPendingList" class="stack"></div>
@@ -603,8 +619,8 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Reviewed Archive</h3>
-              <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 completed</span>
+              <h3>Recent Learned Cases</h3>
+              <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 learned</span>
             </div>
             <div id="reviewsCompletedList" class="stack"></div>
           </section>
@@ -1459,6 +1475,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=48"></script>
+    <script type="module" src="app.js?v=49"></script>
   </body>
 </html>

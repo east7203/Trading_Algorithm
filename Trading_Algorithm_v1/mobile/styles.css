@@ -6971,6 +6971,49 @@ select {
   border-color: var(--rh-border);
 }
 
+/* ---- Learning tab ---- */
+.learning-pattern-list {
+  display: grid;
+  gap: 12px;
+}
+
+.learning-pattern-card {
+  display: grid;
+  gap: 8px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--rh-border);
+}
+
+.learning-pattern-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.learning-pattern-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #f7fafc;
+}
+
+.learning-pattern-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.74);
+}
+
+@media (max-width: 560px) {
+  .learning-pattern-head {
+    flex-direction: column;
+  }
+}
+
 /* ---- Reduce motion ---- */
 :root.reduce-motion .view.is-active {
   animation: none;

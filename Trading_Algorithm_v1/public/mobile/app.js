@@ -123,17 +123,19 @@ const reviewPendingStatEl = document.getElementById('reviewPendingStat');
 const reviewSummaryChipEl = document.getElementById('reviewSummaryChip');
 const reviewPendingQueueChipEl = document.getElementById('reviewPendingQueueChip');
 const reviewCompletedQueueChipEl = document.getElementById('reviewCompletedQueueChip');
-const sessionSummaryChipEl = document.getElementById('sessionSummaryChip');
-const sessionSummaryHeadlineEl = document.getElementById('sessionSummaryHeadline');
-const sessionSummaryContextEl = document.getElementById('sessionSummaryContext');
-const sessionSummaryStrongestEl = document.getElementById('sessionSummaryStrongest');
-const sessionSummaryWeakestEl = document.getElementById('sessionSummaryWeakest');
-const sessionSummaryTomorrowEl = document.getElementById('sessionSummaryTomorrow');
-const sessionSummaryFeedbackEl = document.getElementById('sessionSummaryFeedback');
-const reviewSetupEdgeEl = document.getElementById('reviewSetupEdge');
-const reviewTimeEdgeEl = document.getElementById('reviewTimeEdge');
-const reviewScoreEdgeEl = document.getElementById('reviewScoreEdge');
-const reviewBlockedVsReadyEl = document.getElementById('reviewBlockedVsReady');
+const learningProfileChipEl = document.getElementById('learningProfileChip');
+const learningHeadlineEl = document.getElementById('learningHeadline');
+const learningContextEl = document.getElementById('learningContext');
+const learningResolvedRecordsEl = document.getElementById('learningResolvedRecords');
+const learningRefreshStateEl = document.getElementById('learningRefreshState');
+const learningTopWinReasonEl = document.getElementById('learningTopWinReason');
+const learningTopLossReasonEl = document.getElementById('learningTopLossReason');
+const learningBestEdgeEl = document.getElementById('learningBestEdge');
+const learningBiggestDragEl = document.getElementById('learningBiggestDrag');
+const learningResearchEdgeEl = document.getElementById('learningResearchEdge');
+const learningAutonomyEdgeEl = document.getElementById('learningAutonomyEdge');
+const learningFavoringListEl = document.getElementById('learningFavoringList');
+const learningAvoidingListEl = document.getElementById('learningAvoidingList');
 const setupMixEl = document.getElementById('setupMix');
 const guardrailSummaryEl = document.getElementById('guardrailSummary');
 const journalSummaryEl = document.getElementById('journalSummary');
@@ -305,6 +307,7 @@ let latestDeskBrief = null;
 let latestHomeDeck = null;
 let latestRiskConfig = null;
 let latestHealth = null;
+let latestSelfLearningStatus = null;
 let lastSyncAt = null;
 const latestReplayLearningByAlertId = new Map();
 let serviceWorkerRegistrationPromise = null;
@@ -2078,7 +2081,10 @@ const renderHomeDashboard = () => {
   homeTopIdeaEl.textContent = topAlert
     ? `${topAlert.symbol} ${topAlert.side} • ${setupLabel(topAlert.setupType)}`
     : 'No live lead idea';
-  homeReplayStateEl.textContent = `${reviewSummary.pending} pending • ${reviewSummary.completed} done`;
+  const learningProfile = getSelfLearningProfile();
+  homeReplayStateEl.textContent = learningProfile
+    ? `${learningProfile.resolvedRecords} learned • ${reviewSummary.pending} pending`
+    : `${reviewSummary.pending} pending • ${reviewSummary.completed} done`;
   homeModelStateEl.textContent = diagnostics?.rankingModel?.modelId
     ? `${diagnostics.rankingModel.modelId} • ${lastRetrainAt ? fmtRelativeMinutes(lastRetrainAt) : 'fresh run unknown'}`
     : 'Model not loaded';
@@ -5654,21 +5660,216 @@ const renderPaperAutonomyDiagnostics = (autonomy) => {
   );
 };
 
-const renderReviewInsights = () => {
-  const summary = reviewPerformanceSummary(latestReviews);
-  reviewSetupEdgeEl.textContent = summary.bySetup;
-  reviewTimeEdgeEl.textContent = summary.byTime;
-  reviewScoreEdgeEl.textContent = summary.byScore;
-  reviewBlockedVsReadyEl.textContent = summary.blockedVsReady;
+const getSelfLearningStatus = () => latestSelfLearningStatus ?? latestDiagnostics?.diagnostics?.selfLearning ?? null;
 
-  const sessionSummary = buildSessionSummary(latestReviews);
-  sessionSummaryChipEl.textContent = sessionSummary.chip;
-  sessionSummaryHeadlineEl.textContent = sessionSummary.headline;
-  sessionSummaryContextEl.textContent = sessionSummary.context;
-  sessionSummaryStrongestEl.textContent = sessionSummary.strongest;
-  sessionSummaryWeakestEl.textContent = sessionSummary.weakest;
-  sessionSummaryTomorrowEl.textContent = sessionSummary.tomorrow;
-  sessionSummaryFeedbackEl.textContent = sessionSummary.feedback;
+const getSelfLearningProfile = () => getSelfLearningStatus()?.profile ?? null;
+
+const describeLearningBucketLabel = (category, bucket) => {
+  if (!bucket) {
+    return '--';
+  }
+
+  if (category === 'setupSymbol') {
+    const [setupType, symbol] = String(bucket.key).split('|');
+    return setupType && symbol ? `${symbol} • ${setupLabel(setupType)}` : bucket.label;
+  }
+
+  if (category === 'setup') {
+    return setupLabel(bucket.key);
+  }
+
+  if (category === 'research') {
+    return `Research ${researchDirectionLabel(bucket.key)}`;
+  }
+
+  if (category === 'autonomy') {
+    return paperAutonomyThesisLabel(bucket.key);
+  }
+
+  if (category === 'symbol') {
+    return `${bucket.key} futures`;
+  }
+
+  return bucket.label;
+};
+
+const learningBucketMeta = (bucket) =>
+  `${bucket.scoreAdjustment > 0 ? '+' : ''}${fmtNum(bucket.scoreAdjustment, 1)} score • ${fmtNum(bucket.winRate * 100, 0)}% win • ${bucket.resolved} resolved`;
+
+const learningBucketNote = (bucket) =>
+  `${fmtNum(bucket.avgR, 2)}R avg • confidence ${fmtNum(bucket.confidence * 100, 0)}% • risk x${fmtNum(bucket.riskMultiplier, 2)}`;
+
+const buildLearningBucketPool = (profile) => [
+  ...(profile?.bySetupSymbol ?? []).map((bucket) => ({ category: 'setupSymbol', bucket })),
+  ...(profile?.bySetup ?? []).map((bucket) => ({ category: 'setup', bucket })),
+  ...(profile?.bySymbol ?? []).map((bucket) => ({ category: 'symbol', bucket })),
+  ...(profile?.byResearchDirection ?? []).map((bucket) => ({ category: 'research', bucket })),
+  ...(profile?.byAutonomyThesis ?? []).map((bucket) => ({ category: 'autonomy', bucket }))
+];
+
+const pickLearningEdge = (pool, direction) => {
+  const filtered = pool.filter(({ bucket }) =>
+    direction === 'positive' ? Number(bucket.scoreAdjustment) > 0 : Number(bucket.scoreAdjustment) < 0
+  );
+
+  return filtered.sort((left, right) => {
+    const leftScore = Math.abs(Number(left.bucket.scoreAdjustment) || 0);
+    const rightScore = Math.abs(Number(right.bucket.scoreAdjustment) || 0);
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+    return (Number(right.bucket.resolved) || 0) - (Number(left.bucket.resolved) || 0);
+  })[0] ?? null;
+};
+
+const renderLearningBucketList = (container, entries, emptyMessage) => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  if (!entries.length) {
+    renderEmpty(container, emptyMessage);
+    return;
+  }
+
+  entries.forEach(({ category, bucket }) => {
+    const card = document.createElement('article');
+    card.className = 'learning-pattern-card';
+    card.innerHTML = `
+      <div class="learning-pattern-head">
+        <p class="learning-pattern-title">${escapeHtml(describeLearningBucketLabel(category, bucket))}</p>
+        <span class="pill ${Number(bucket.scoreAdjustment) >= 0 ? 'chip-online' : 'chip-offline'}">${escapeHtml(learningBucketMeta(bucket))}</span>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(learningBucketNote(bucket))}</p>
+    `;
+    container.appendChild(card);
+  });
+};
+
+const renderReviewInsights = () => {
+  const status = getSelfLearningStatus();
+  const profile = getSelfLearningProfile();
+  const pendingCount = reviewSummary.pending ?? latestReviews.filter((review) => review.reviewStatus === 'PENDING').length;
+  const completedCount = reviewSummary.completed ?? latestReviews.filter((review) => review.reviewStatus === 'COMPLETED').length;
+  const pool = buildLearningBucketPool(profile);
+  const bestEdge = pickLearningEdge(pool, 'positive');
+  const biggestDrag = pickLearningEdge(pool, 'negative');
+  const researchEdge = pickLearningEdge(
+    (profile?.byResearchDirection ?? []).map((bucket) => ({ category: 'research', bucket })),
+    'positive'
+  ) ?? ((profile?.byResearchDirection?.[0] ?? null) ? { category: 'research', bucket: profile.byResearchDirection[0] } : null);
+  const autonomyEdge = pickLearningEdge(
+    (profile?.byAutonomyThesis ?? []).map((bucket) => ({ category: 'autonomy', bucket })),
+    'positive'
+  ) ?? ((profile?.byAutonomyThesis?.[0] ?? null) ? { category: 'autonomy', bucket: profile.byAutonomyThesis[0] } : null);
+
+  if (!status?.enabled || !profile) {
+    if (reviewSummaryChipEl) {
+      reviewSummaryChipEl.textContent = `${pendingCount} pending feedback`;
+    }
+    if (learningProfileChipEl) {
+      learningProfileChipEl.textContent = 'Learning profile unavailable';
+    }
+    if (learningHeadlineEl) {
+      learningHeadlineEl.textContent = 'The learning engine has not loaded a profile yet.';
+    }
+    if (learningContextEl) {
+      learningContextEl.textContent = 'Once resolved trades accumulate, this tab will show what the model is learning from wins, losses, research direction, and autonomy thesis results.';
+    }
+    if (learningResolvedRecordsEl) {
+      learningResolvedRecordsEl.textContent = '--';
+    }
+    if (learningRefreshStateEl) {
+      learningRefreshStateEl.textContent = '--';
+    }
+    if (learningTopWinReasonEl) {
+      learningTopWinReasonEl.textContent = '--';
+    }
+    if (learningTopLossReasonEl) {
+      learningTopLossReasonEl.textContent = '--';
+    }
+    if (learningBestEdgeEl) {
+      learningBestEdgeEl.textContent = '--';
+    }
+    if (learningBiggestDragEl) {
+      learningBiggestDragEl.textContent = '--';
+    }
+    if (learningResearchEdgeEl) {
+      learningResearchEdgeEl.textContent = '--';
+    }
+    if (learningAutonomyEdgeEl) {
+      learningAutonomyEdgeEl.textContent = '--';
+    }
+    renderLearningBucketList(learningFavoringListEl, [], 'No learned edge is strong enough yet.');
+    renderLearningBucketList(learningAvoidingListEl, [], 'No learned drag is strong enough yet.');
+    return;
+  }
+
+  const favoring = pool
+    .filter(({ bucket }) => Number(bucket.scoreAdjustment) > 0)
+    .sort((left, right) => Number(right.bucket.scoreAdjustment) - Number(left.bucket.scoreAdjustment))
+    .slice(0, 4);
+  const avoiding = pool
+    .filter(({ bucket }) => Number(bucket.scoreAdjustment) < 0)
+    .sort((left, right) => Number(left.bucket.scoreAdjustment) - Number(right.bucket.scoreAdjustment))
+    .slice(0, 4);
+  const topWinReason = profile.topWinReasons?.[0] ?? null;
+  const topLossReason = profile.topLossReasons?.[0] ?? null;
+
+  if (reviewSummaryChipEl) {
+    reviewSummaryChipEl.textContent = `${profile.resolvedRecords} learned • ${pendingCount} pending`;
+  }
+  if (learningProfileChipEl) {
+    learningProfileChipEl.textContent = `${profile.resolvedRecords} resolved • ${status.refreshIntervalMinutes}m refresh`;
+  }
+  if (learningHeadlineEl) {
+    learningHeadlineEl.textContent = bestEdge
+      ? `Lean into ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`
+      : 'The learning engine is still collecting a clear edge.';
+  }
+  if (learningContextEl) {
+    learningContextEl.textContent = bestEdge && biggestDrag
+      ? `The model is currently favoring ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} and pulling back from ${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)}. ${pendingCount} pending review${pendingCount === 1 ? '' : 's'} can sharpen that read.`
+      : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. ${completedCount} completed review${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
+  }
+  if (learningResolvedRecordsEl) {
+    learningResolvedRecordsEl.textContent = `${profile.resolvedRecords} resolved • ${profile.totalRecords} total records`;
+  }
+  if (learningRefreshStateEl) {
+    learningRefreshStateEl.textContent = status.lastRefreshedAt
+      ? `${fmtRelativeMinutes(status.lastRefreshedAt)} • ${status.recentWindowDays}d window`
+      : `${status.refreshIntervalMinutes}m refresh cadence`;
+  }
+  if (learningTopWinReasonEl) {
+    learningTopWinReasonEl.textContent = topWinReason ? `${topWinReason.key} • ${topWinReason.count}` : 'No consistent win reason yet.';
+  }
+  if (learningTopLossReasonEl) {
+    learningTopLossReasonEl.textContent = topLossReason ? `${topLossReason.key} • ${topLossReason.count}` : 'No consistent loss reason yet.';
+  }
+  if (learningBestEdgeEl) {
+    learningBestEdgeEl.textContent = bestEdge
+      ? `${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} • ${learningBucketMeta(bestEdge.bucket)}`
+      : 'No positive edge has enough evidence yet.';
+  }
+  if (learningBiggestDragEl) {
+    learningBiggestDragEl.textContent = biggestDrag
+      ? `${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)} • ${learningBucketMeta(biggestDrag.bucket)}`
+      : 'No negative drag stands out yet.';
+  }
+  if (learningResearchEdgeEl) {
+    learningResearchEdgeEl.textContent = researchEdge
+      ? `${describeLearningBucketLabel(researchEdge.category, researchEdge.bucket)} • ${learningBucketMeta(researchEdge.bucket)}`
+      : 'Research direction has not separated itself yet.';
+  }
+  if (learningAutonomyEdgeEl) {
+    learningAutonomyEdgeEl.textContent = autonomyEdge
+      ? `${describeLearningBucketLabel(autonomyEdge.category, autonomyEdge.bucket)} • ${learningBucketMeta(autonomyEdge.bucket)}`
+      : 'Autonomy thesis edge is still forming.';
+  }
+
+  renderLearningBucketList(learningFavoringListEl, favoring, 'No learned edge is strong enough yet.');
+  renderLearningBucketList(learningAvoidingListEl, avoiding, 'Nothing is being penalized hard yet.');
 };
 
 const renderDiagnostics = () => {
@@ -5879,12 +6080,17 @@ const renderHero = () => {
 };
 
 const updateStats = () => {
+  const learningProfile = getSelfLearningProfile();
   signalCountEl.textContent = String(latestAlerts.length);
   pendingCountEl.textContent = String(latestPending.length);
   reviewPendingStatEl.textContent = String(reviewSummary.pending);
-  reviewSummaryChipEl.textContent = `${reviewSummary.pending} pending • ${reviewSummary.completed} done`;
+  reviewSummaryChipEl.textContent = learningProfile
+    ? `${learningProfile.resolvedRecords} learned • ${reviewSummary.pending} pending`
+    : `${reviewSummary.pending} pending feedback`;
   reviewPendingQueueChipEl.textContent = `${reviewSummary.pending} pending`;
-  reviewCompletedQueueChipEl.textContent = `${reviewSummary.completed} completed`;
+  reviewCompletedQueueChipEl.textContent = learningProfile
+    ? `${reviewSummary.completed} learned`
+    : `${reviewSummary.completed} completed`;
 
   const approvedToday = latestTrades.filter(
     (trade) => trade.status === 'APPROVED' && isSameLocalDay(trade.approvedAt ?? trade.createdAt)
@@ -5943,6 +6149,17 @@ const loadDeskBrief = async () => {
     latestDeskBrief = null;
   }
   renderDeskBrief();
+  renderHomeDashboard();
+};
+
+const loadTradeLearningProfile = async () => {
+  try {
+    const payload = await apiFetch('/trade-learning/profile');
+    latestSelfLearningStatus = payload?.selfLearning ?? null;
+  } catch {
+    latestSelfLearningStatus = null;
+  }
+  renderReviewInsights();
   renderHomeDashboard();
 };
 
@@ -6537,7 +6754,7 @@ const renderReviewCard = (review) => {
         reviewOutcomeEl.value = button.dataset.outcome ?? '';
       }
       syncReviewQuickPickState(node);
-      setStatus(`Status: replay labeled ${button.textContent?.trim().toLowerCase()} • save to confirm`);
+      setStatus(`Status: feedback labeled ${button.textContent?.trim().toLowerCase()} • save to confirm`);
     });
   });
   reviewValidityEl?.addEventListener('change', () => syncReviewQuickPickState(node));
@@ -6598,9 +6815,9 @@ const loadReviews = async () => {
     }
 
     if (!completed.length) {
-      renderEmpty(reviewsCompletedListEl, 'No completed reviews yet.');
+      renderEmpty(reviewsCompletedListEl, 'No learned cases yet.');
     } else {
-      completed.slice(0, 12).forEach((review) => {
+      completed.slice(0, 6).forEach((review) => {
         reviewsCompletedListEl.appendChild(renderReviewCard(review));
       });
     }
@@ -6615,7 +6832,7 @@ const loadReviews = async () => {
     updateStats();
     renderPaperAccount();
     renderEmpty(reviewsPendingListEl, `Failed to load reviews: ${error.message}`);
-    renderEmpty(reviewsCompletedListEl, 'Review history unavailable.');
+    renderEmpty(reviewsCompletedListEl, 'Learned cases unavailable.');
   }
 };
 
@@ -6636,6 +6853,7 @@ const refreshAll = async () => {
     loadReviews(),
     loadDiagnostics(),
     loadDeskBrief(),
+    loadTradeLearningProfile(),
     loadHomeDeck(),
     loadCalendar(),
     loadRiskConfig()

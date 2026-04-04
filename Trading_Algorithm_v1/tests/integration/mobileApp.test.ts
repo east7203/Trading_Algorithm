@@ -30,7 +30,7 @@ describe('mobile app endpoints', () => {
     expect(mobile.statusCode).toBe(200);
     expect(mobile.headers['content-type']).toContain('text/html');
     expect(mobile.body).toContain('Evan TradeAssist');
-    expect(mobile.body).toContain('Replay Desk');
+    expect(mobile.body).toContain('Learning Lab');
     expect(mobile.body).toContain('Engine Room');
     expect(mobile.body).toContain('Pull to refresh');
     expect(mobile.body).toContain('Continuous Training');
