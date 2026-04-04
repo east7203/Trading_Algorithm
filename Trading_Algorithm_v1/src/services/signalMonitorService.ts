@@ -35,6 +35,7 @@ import type { NativePushNotificationService } from './nativePushNotificationServ
 import type { TelegramAlertService } from './telegramAlertService.js';
 import type { WebPushNotificationService } from './webPushNotificationService.js';
 import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
+import type { SelfLearningSignalAdjustment } from './selfLearningService.js';
 
 interface LocalTimeParts {
   dayKey: string;
@@ -485,6 +486,7 @@ export class SignalMonitorService {
     private readonly config: SignalMonitorConfig,
     private readonly getSettings: () => SignalMonitorSettings,
     private readonly getMarketResearchStatus: () => MarketResearchStatus | null,
+    private readonly getSelfLearningSignalAdjustment: ((candidate: SetupCandidate) => SelfLearningSignalAdjustment | null) | null | undefined,
     private readonly signalReviewStore: SignalReviewStore,
     private readonly onReviewUpdated?: ((review: SignalReviewEntry) => Promise<void> | void) | null,
     private readonly getAccountSnapshot?: ((now: string) => AccountSnapshot) | null,
@@ -1236,6 +1238,8 @@ export class SignalMonitorService {
         typeof candidate.metadata.aiContextScore === 'number' ? candidate.metadata.aiContextScore : 0;
       const newsAiContextScore = newsContext.scoreAdjustment;
       const researchAiContext = deriveResearchAiContext(candidate, researchStatus);
+      const selfLearningContext = this.getSelfLearningSignalAdjustment?.(candidate) ?? null;
+      const selfLearningAiContextScore = selfLearningContext?.scoreAdjustment ?? 0;
 
       return {
         ...candidate,
@@ -1244,13 +1248,17 @@ export class SignalMonitorService {
           regimeAiContextScore,
           newsAiContextScore,
           researchAiContextScore: researchAiContext.scoreAdjustment,
+          selfLearningAiContextScore,
+          selfLearningConfidence: selfLearningContext?.confidence ?? 0,
+          selfLearningSummary: selfLearningContext?.summary,
+          selfLearningComponents: selfLearningContext?.components ?? [],
           researchTrendDirection: researchAiContext.direction,
           researchTrendConfidence: researchAiContext.confidence,
           researchTrendLeadSymbol: researchAiContext.leadSymbol,
           researchTrendAligned: researchAiContext.aligned,
           researchTrendSummary: researchAiContext.summary,
           aiContextScore: clamp(
-            regimeAiContextScore + newsAiContextScore + researchAiContext.scoreAdjustment,
+            regimeAiContextScore + newsAiContextScore + researchAiContext.scoreAdjustment + selfLearningAiContextScore,
             -8,
             8
           ),

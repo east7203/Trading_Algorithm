@@ -62,6 +62,11 @@ import {
 import { SignalMonitorSettingsStore } from './stores/signalMonitorSettingsStore.js';
 import { SignalReviewStore } from './stores/signalReviewStore.js';
 import { TradeLearningStore } from './stores/tradeLearningStore.js';
+import {
+  SelfLearningService,
+  type SelfLearningConfig,
+  type SelfLearningStatus
+} from './services/selfLearningService.js';
 import { ContinuousTrainingService, type ContinuousTrainingConfig } from './training/continuousTrainingService.js';
 import {
   buildLearningFeedbackDatasetFromTradeRecords,
@@ -100,6 +105,7 @@ export interface AppContext {
   signalMonitorSettingsStore: SignalMonitorSettingsStore;
   signalReviewStore: SignalReviewStore;
   tradeLearningStore: TradeLearningStore;
+  selfLearningService: SelfLearningService | null;
   nativePushNotificationService: NativePushNotificationService | null;
   webPushNotificationService: WebPushNotificationService | null;
   telegramAlertService: TelegramAlertService | null;
@@ -122,6 +128,9 @@ interface BuildAppOptions {
   signalReviewStorePath?: string;
   tradeLearningStore?: TradeLearningStore;
   tradeLearningStorePath?: string;
+  selfLearningEnabled?: boolean;
+  selfLearningConfig?: Partial<SelfLearningConfig>;
+  selfLearningService?: SelfLearningService | null;
   ibkrReconnectStateStore?: IbkrReconnectStateStore;
   ibkrReconnectStateStorePath?: string;
   continuousTrainingEnabled?: boolean;
@@ -237,6 +246,15 @@ interface PaperAutonomyConfigInput {
   minTrendConfidence: number;
   breakoutLookbackBars5m: number;
   pullbackLookbackBars5m: number;
+}
+
+interface SelfLearningConfigInput {
+  enabled: boolean;
+  refreshIntervalMs: number;
+  minResolvedRecords: number;
+  minBucketSamples: number;
+  recentWindowDays: number;
+  maxReasonBuckets: number;
 }
 
 interface IbkrLoginTriggerResult {
@@ -570,6 +588,24 @@ const resolveContinuousTrainingConfig = (
       ...defaults.trainingOptions,
       ...(overrides.trainingOptions ?? {})
     }
+  };
+};
+
+const resolveSelfLearningConfig = (
+  overrides: Partial<SelfLearningConfig> = {}
+): SelfLearningConfigInput => {
+  const defaults: SelfLearningConfigInput = {
+    enabled: parseBooleanEnv('SELF_LEARNING_ENABLED', true),
+    refreshIntervalMs: parseIntEnv('SELF_LEARNING_REFRESH_MINUTES', 5, 1, 240) * 60 * 1000,
+    minResolvedRecords: parseIntEnv('SELF_LEARNING_MIN_RESOLVED_RECORDS', 8, 1, 10_000),
+    minBucketSamples: parseIntEnv('SELF_LEARNING_MIN_BUCKET_SAMPLES', 3, 1, 500),
+    recentWindowDays: parseIntEnv('SELF_LEARNING_RECENT_WINDOW_DAYS', 45, 1, 3650),
+    maxReasonBuckets: parseIntEnv('SELF_LEARNING_MAX_REASON_BUCKETS', 6, 1, 50)
+  };
+
+  return {
+    ...defaults,
+    ...overrides
   };
 };
 
@@ -1733,11 +1769,23 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   const resolvedContinuousConfig = resolveContinuousTrainingConfig(options.continuousTrainingConfig);
   const continuousTrainingEnabled = options.continuousTrainingEnabled ?? resolvedContinuousConfig.enabled;
+  const resolvedSelfLearningConfig = resolveSelfLearningConfig(options.selfLearningConfig);
+  const selfLearningEnabled = options.selfLearningEnabled ?? resolvedSelfLearningConfig.enabled;
   let tradeLearningBootstrapPromise: Promise<void> = Promise.resolve();
   const listTradeLearningRecords = async () => {
     await tradeLearningBootstrapPromise;
     return tradeLearningStore.listAllRecords();
   };
+  const selfLearningService =
+    options.selfLearningService === undefined
+      ? selfLearningEnabled
+        ? new SelfLearningService({
+            ...resolvedSelfLearningConfig,
+            enabled: true,
+            recordsProvider: () => listTradeLearningRecords()
+          })
+        : null
+      : options.selfLearningService;
   const continuousTrainingService =
     options.continuousTrainingService === undefined
       ? continuousTrainingEnabled
@@ -1802,6 +1850,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             enabled: true,
             onTradeEvent: async (event: PaperTradeEvent) => {
               await tradeLearningStore.syncPaperTrade(event.trade, event.at);
+              selfLearningService?.queueRefresh();
               const autonomyLearningUpdate =
                 event.trade.source === 'paper-autonomy'
                   ? await paperAutonomyService?.recordTradeOutcome(event)
@@ -1863,6 +1912,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                     }
                   });
                   await tradeLearningStore.syncReview(updatedReview);
+                  selfLearningService?.queueRefresh();
                 }
               }
 
@@ -1922,9 +1972,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       : options.paperTradingService;
   const syncTradeLearningAlert = async (alert: SignalAlert, source: string) => {
     await tradeLearningStore.recordAlert(alert, source);
+    selfLearningService?.queueRefresh();
   };
   const syncTradeLearningReview = async (review: SignalReviewEntry) => {
     await tradeLearningStore.syncReview(review);
+    selfLearningService?.queueRefresh();
   };
   const submitPaperLearningAlert = async (alert: SignalAlert, source: string) => {
     if (!paperTradingService) {
@@ -1940,6 +1992,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const reviewEntry = await signalReviewStore.recordAlert(alert);
     await syncTradeLearningReview(reviewEntry);
     await tradeLearningStore.syncPaperTrade(trade, alert.detectedAt);
+    selfLearningService?.queueRefresh();
     journalStore.addEvent({
       type: 'SIGNAL_GENERATED',
       timestamp: alert.detectedAt,
@@ -1963,6 +2016,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             enabled: true,
             getMarketResearchStatus: () => marketResearchService?.status() ?? null,
             getPaperTradingStatus: () => paperTradingService?.status() ?? null,
+            getSelfLearningAdjustment: (input) => selfLearningService?.scoreAutonomyIdea(input) ?? null,
             submitAlert: async (alert, source) => submitPaperLearningAlert(alert, source)
           })
         : null
@@ -1992,6 +2046,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             },
             () => signalMonitorSettingsStore.get(),
             () => marketResearchService?.status() ?? null,
+            (candidate) => selfLearningService?.scoreSignalCandidate(candidate) ?? null,
             signalReviewStore,
             async (review) => {
               await syncTradeLearningReview(review);
@@ -2046,6 +2101,22 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   })().catch((error) => {
     app.log.error({ err: error }, 'trade learning bootstrap failed');
   });
+
+  const selfLearningStartPromise = selfLearningService
+    ? (async () => {
+        await tradeLearningBootstrapPromise;
+        await selfLearningService.start();
+      })().catch((error) => {
+        app.log.error({ err: error }, 'self-learning service failed to start');
+      })
+    : null;
+
+  if (selfLearningService) {
+    app.addHook('onClose', async () => {
+      await selfLearningStartPromise;
+      selfLearningService.stop();
+    });
+  }
 
   if (paperTradingService) {
     app.addHook('onClose', async () => {
@@ -2814,11 +2885,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const performance = summarizeLearningPerformanceFromTradeRecords(records);
     const feedback = buildLearningFeedbackDatasetFromTradeRecords(records);
     const database = await tradeLearningStore.summary();
+    const selfLearning = selfLearningService?.status() ?? null;
 
     return reply.status(200).send({
       performance,
       feedback: feedback.counts,
-      database
+      database,
+      selfLearning
     });
   });
 
@@ -2905,6 +2978,22 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.get('/trade-learning/profile', async (_request, reply) => {
+    const selfLearning = selfLearningService?.status();
+    if (!selfLearning) {
+      return reply.status(200).send({
+        selfLearning: {
+          enabled: false,
+          started: false
+        } satisfies Pick<SelfLearningStatus, 'enabled' | 'started'>
+      });
+    }
+
+    return reply.status(200).send({
+      selfLearning
+    });
+  });
+
   app.patch('/signals/config', async (request, reply) => {
     try {
       const body = parseOrThrow(signalMonitorSettingsPatchSchema.safeParse(request.body));
@@ -2945,6 +3034,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       .slice(0, 8);
     const reviews = await signalReviewStore.summary();
     const tradeLearning = await tradeLearningStore.summary();
+    const selfLearning = selfLearningService?.status() ?? { enabled: false, started: false };
     const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
@@ -3031,6 +3121,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         research,
         learningPerformance,
         tradeLearning,
+        selfLearning,
         reviews,
         signalConfig,
         lastAlert: lastAlert
@@ -4035,6 +4126,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     signalMonitorSettingsStore,
     signalReviewStore,
     tradeLearningStore,
+    selfLearningService,
     nativePushNotificationService,
     webPushNotificationService,
     telegramAlertService,

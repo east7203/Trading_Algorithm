@@ -277,6 +277,7 @@ describe('signal review loop integration', () => {
     expect(learning.json().performance.bySetup.length).toBeGreaterThan(0);
     expect(learning.json().feedback.manualResolvedReviews).toBeGreaterThan(0);
     expect(learning.json().database.withReviewNotes).toBeGreaterThan(0);
+    expect(learning.json().selfLearning.enabled).toBe(true);
 
     const tradeLearning = await ctx.app.inject({
       method: 'GET',
@@ -285,6 +286,14 @@ describe('signal review loop integration', () => {
     expect(tradeLearning.statusCode).toBe(200);
     const savedTradeRecord = tradeLearning.json().records.find((record) => record.alertId === review.alertId);
     expect(savedTradeRecord?.reasoning.reviewNotes).toBe('Held the break and clean continuation.');
+
+    const selfLearning = await ctx.app.inject({
+      method: 'GET',
+      path: '/trade-learning/profile'
+    });
+    expect(selfLearning.statusCode).toBe(200);
+    expect(selfLearning.json().selfLearning.enabled).toBe(true);
+    expect(selfLearning.json().selfLearning.profile.resolvedRecords).toBeGreaterThan(0);
 
     const journal = await ctx.app.inject({
       method: 'GET',

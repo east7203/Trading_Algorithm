@@ -16,6 +16,7 @@ import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training
 import { streamNdjsonValues } from '../utils/ndjson.js';
 import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
 import type { PaperTrade, PaperTradeEvent, PaperTradingStatus } from './paperTradingService.js';
+import type { SelfLearningAutonomyAdjustment } from './selfLearningService.js';
 
 export type PaperAutonomyThesis =
   | 'TREND_BREAKOUT_EXPANSION'
@@ -177,6 +178,12 @@ export interface PaperAutonomyConfig {
   pullbackLookbackBars5m: number;
   getMarketResearchStatus?: () => MarketResearchStatus | null;
   getPaperTradingStatus?: () => PaperTradingStatus | null;
+  getSelfLearningAdjustment?: (input: {
+    thesis: PaperAutonomyThesis;
+    symbol: SymbolCode;
+    side: Side;
+    researchDirection?: ResearchTrendDirection;
+  }) => SelfLearningAutonomyAdjustment | null;
   submitAlert: (alert: SignalAlert, source: string) => Promise<PaperTrade | null>;
 }
 
@@ -1332,17 +1339,35 @@ export class PaperAutonomyService {
     const ideas = rawIdeas
       .map((idea) => {
         const adjustment = this.buildPortfolioAdjustment(symbol, idea.thesis, idea.side);
+        const selfLearningAdjustment =
+          this.config.getSelfLearningAdjustment?.({
+            thesis: idea.thesis,
+            symbol,
+            side: idea.side,
+            researchDirection: trend.direction
+          }) ?? null;
         const adjustedScore = round(clamp(idea.score + adjustment.scoreAdjustment, 0, 100), 2);
+        const selfLearnedScore = round(
+          clamp(adjustedScore + (selfLearningAdjustment?.scoreAdjustment ?? 0), 0, 100),
+          2
+        );
         const adaptiveRiskPct = round(
-          clamp(this.buildAdaptiveRiskPct(idea.thesis, symbol, trend.confidence) * adjustment.riskMultiplier, 0.1, 1.25),
+          clamp(
+            this.buildAdaptiveRiskPct(idea.thesis, symbol, trend.confidence)
+            * adjustment.riskMultiplier
+            * (selfLearningAdjustment?.riskMultiplier ?? 1),
+            0.1,
+            1.25
+          ),
           2
         );
         return {
           ...idea,
           rawScore: idea.score,
-          score: adjustedScore,
+          score: selfLearnedScore,
           adaptiveRiskPct,
-          portfolioAdjustment: adjustment
+          portfolioAdjustment: adjustment,
+          selfLearningAdjustment
         };
       })
       .filter((idea) => idea.score >= minimumIdeaScore);
@@ -1378,7 +1403,11 @@ export class PaperAutonomyService {
       },
       metadata: {
         autonomyThesis: bestIdea.thesis,
-        autonomyReason: `${bestIdea.reason} • ${bestIdea.portfolioAdjustment.summary}`,
+        autonomyReason: [
+          bestIdea.reason,
+          bestIdea.portfolioAdjustment.summary,
+          bestIdea.selfLearningAdjustment?.summary
+        ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(' • '),
         researchDirection: trend.direction,
         researchConfidence: trend.confidence,
         exploratory: trend.exploratory,
@@ -1386,6 +1415,7 @@ export class PaperAutonomyService {
         autonomyRawScore: bestIdea.rawScore,
         autonomyAdjustedScore: bestIdea.score,
         autonomyPortfolioAdjustment: bestIdea.portfolioAdjustment.summary,
+        autonomySelfLearningAdjustment: bestIdea.selfLearningAdjustment?.summary ?? 'neutral self-learning',
         paperAutonomyRiskPct: bestIdea.adaptiveRiskPct,
         paperTradeExpiresAt: this.buildTradeExpiry(currentBar.timestamp)
       },
