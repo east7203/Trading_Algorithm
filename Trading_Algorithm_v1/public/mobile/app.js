@@ -291,7 +291,7 @@ const views = {
   signals: document.getElementById('view-signals'),
   pending: document.getElementById('view-pending'),
   trades: document.getElementById('view-trades'),
-  reviews: document.getElementById('view-reviews'),
+  learning: document.getElementById('view-learning'),
   settings: document.getElementById('view-settings'),
   status: document.getElementById('view-status')
 };
@@ -2154,10 +2154,20 @@ const recommendedMorningPreset = () => ({
   requireOpeningRangeComplete: true
 });
 
+const normalizeTabName = (tab) => {
+  if (tab === 'reviews') {
+    return 'learning';
+  }
+  if (tab === 'pending') {
+    return 'home';
+  }
+  return tab;
+};
+
 const parseRouteState = () => {
   const params = new URLSearchParams(window.location.search);
   return {
-    tab: params.get('tab') || null,
+    tab: normalizeTabName(params.get('tab') || null),
     alertId: params.get('alertId') || null,
     focus: params.get('focus') || null
   };
@@ -2187,15 +2197,16 @@ const updateRouteState = ({ tab, alertId, focus }) => {
 };
 
 const routeToSignalAlert = (alertId, tab = 'signals') => {
+  const normalizedTab = normalizeTabName(tab);
   activeRouteAlertId = alertId || null;
   focusedAlertId = alertId || null;
-  if (tab === 'signals') {
+  if (normalizedTab === 'signals') {
     signalFilters.status = 'ALL';
     signalFilters.symbol = 'ALL';
     updateSegmentedControls();
   }
   updateRouteState({
-    tab,
+    tab: normalizedTab,
     alertId
   });
 };
@@ -5284,7 +5295,7 @@ const syncSeenAlerts = async (alerts) => {
 };
 
 const setActiveTab = (tabName) => {
-  const normalizedTab = tabName === 'pending' ? 'home' : tabName;
+  const normalizedTab = normalizeTabName(tabName);
   tabButtons.forEach((button) => {
     const isActive = button.dataset.tab === normalizedTab;
     button.classList.toggle('is-active', isActive);
@@ -6327,8 +6338,8 @@ const loadAlerts = async () => {
       }
 
       reviewBtn.addEventListener('click', () => {
-        routeToSignalAlert(alert.alertId, 'reviews');
-        setActiveTab('reviews');
+        routeToSignalAlert(alert.alertId, 'learning');
+        setActiveTab('learning');
       });
       reviewBtn.textContent = 'Open Review';
 
@@ -6955,7 +6966,7 @@ const bindPullToRefresh = () => {
     pullRefreshEl.classList.remove('is-armed');
     pullRefreshLabelEl.textContent = 'Refreshing';
     if (pullRefreshMetaEl) {
-      pullRefreshMetaEl.textContent = 'Updating signals, reviews, and health';
+      pullRefreshMetaEl.textContent = 'Updating signals, learning, and health';
     }
     setPullRefreshDistance(PULL_REFRESH_SETTLE_PX);
 
@@ -7294,7 +7305,7 @@ const bindStatusRecoveryControls = () => {
 const bootstrap = async () => {
   const prefs = getUiPrefs();
   const routeState = parseRouteState();
-  const initialTab = routeState.tab === 'pending' ? 'home' : routeState.tab;
+  const initialTab = normalizeTabName(routeState.tab);
   activeRouteAlertId = routeState.alertId;
   focusedAlertId = routeState.alertId;
   applyUiPrefs(prefs);
@@ -7353,7 +7364,7 @@ const bootstrap = async () => {
     const nextRoute = parseRouteState();
     activeRouteAlertId = nextRoute.alertId;
     focusedAlertId = nextRoute.alertId;
-    const nextTab = nextRoute.tab === 'pending' ? 'home' : nextRoute.tab;
+    const nextTab = normalizeTabName(nextRoute.tab);
     if (nextTab) {
       setActiveTab(nextTab);
     }

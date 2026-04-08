@@ -1,6 +1,6 @@
 # Trading Algorithm
 
-Futures signal-operations platform for `NQ` and `ES` that combines rule-based setup detection, macro/news filtering, continuous ranking-model retraining, broker-session recovery, and operator-facing mobile alerts.
+Time-series learning and decision-support platform for `NQ` and `ES` that combines rule-based setup detection, a unified trade-learning database, self-learning score adjustment, continuous ranking-model retraining, broker-session recovery, and operator-facing mobile alerts.
 
 This is a portfolio project built to solve a practical problem: keep a discretionary futures workflow disciplined, observable, and repeatable without turning it into a black-box auto trader.
 
@@ -8,10 +8,12 @@ This is a portfolio project built to solve a practical problem: keep a discretio
 
 - detects multiple intraday futures setups from live `NQ` / `ES` market data
 - ranks setups with a continuously retrained model instead of static priority weights
+- stores each trade idea as a labeled learning record with outcome, reasoning, research context, and thesis metadata
+- builds a self-learning profile that adjusts future signal scoring from resolved trade outcomes
 - blocks or penalizes setups around macro events and risk-policy violations
 - delivers alerts to mobile/web/Telegram with review and acknowledgment workflows
 - survives broker disconnects with IBKR recovery logic, fallback notifications, and state persistence
-- keeps an auditable event trail for signals, reviews, training, and recovery operations
+- keeps an auditable event trail for signals, labels, training, and recovery operations
 
 ## Why It Is Interesting
 
@@ -19,6 +21,8 @@ This is not a toy charting script. It combines several systems that usually live
 
 - live market-data ingestion
 - multi-timeframe setup detection
+- trade-outcome labeling and storage
+- self-learning profile generation
 - model training and promotion
 - economic-calendar context
 - mobile UI and push delivery
@@ -38,12 +42,14 @@ flowchart LR
   D --> E["Risk + macro/news filter"]
   E --> F["Ranking model"]
   F --> G["Alerts\nMobile / Telegram / Web push"]
-  G --> H["Review loop"]
-  H --> I["Continuous training service"]
+  G --> H["Trade-learning database"]
+  H --> I["Self-learning profile"]
+  H --> J["Continuous training service"]
   I --> F
-  J["IBKR recovery services"] --> G
-  J --> A
-  K["Economic calendar provider"] --> E
+  J --> F
+  K["IBKR recovery services"] --> G
+  K --> A
+  L["Economic calendar provider"] --> E
 ```
 
 ## Core Engineering Highlights
@@ -54,23 +60,31 @@ The signal engine does not depend on a single pattern. It can evaluate multiple 
 ### 2. 5-minute alerting with higher-timeframe context
 Alerts are generated on closed `5m` bars, while the setup logic can still use `15m` and `1H` structure for context. That keeps entries timely without throwing away higher-timeframe signal quality.
 
-### 3. Continuous model retraining
-The ranking model retrains automatically on the VPS from historical bars, live bars, and review outcomes. The active live model is updated continuously so the system adapts instead of freezing a one-time score map.
+### 3. Unified trade-learning database
+Every trade idea can be stored with setup metadata, research context, autonomy thesis, review notes, and realized outcome. That turns the project from a signal app into a labeled learning system with a real feedback dataset.
 
-### 4. Macro-aware filtering
+### 4. Continuous retraining plus fast self-learning
+The system adapts in two layers:
+
+- a fast self-learning profile that adjusts score and risk from recent resolved outcomes
+- a slower retraining loop that rebuilds the ranking model from the trade-learning database
+
+That separation lets the desk adapt quickly without pretending every change needs a full model rebuild.
+
+### 5. Macro-aware filtering
 The signal engine integrates a live economic calendar layer and scores/blocks setups around relevant macro events instead of pretending price action exists in isolation.
 
-### 5. Broker recovery as an application feature
+### 6. Broker recovery as an application feature
 IBKR disconnects are treated as a first-class operational problem. The system persists reconnect state, sends recovery-progress notifications, and supports phone-assisted recovery rather than leaving broker outages invisible.
 
-### 6. Operator-facing mobile workflow
+### 7. Operator-facing mobile workflow
 The mobile UI is not a generic dashboard. It is designed around the actual operational loop: signal review, setup filtering, recovery status, session summary, and training visibility.
 
 ## Stack
 
 - **Backend:** TypeScript, Fastify, Node.js
 - **Validation:** Zod
-- **Training:** custom ranking-model pipeline over historical + live examples
+- **Training:** custom ranking-model pipeline over historical + live examples, plus a self-learning profile built from resolved trade records
 - **Market data:** IBKR TWS API / IB Gateway, with fallback bridge support
 - **Calendar/news context:** Forex Factory provider integration with pluggable calendar client interface
 - **Notifications:** Telegram, web push, native push hooks
@@ -104,6 +118,8 @@ npm run dev
 Key employer-facing signals in the repo:
 
 - meaningful test coverage instead of hand-wavy claims
+- explicit labeled-outcome learning loop instead of vague “AI” claims
+- measurable feature buckets by setup, symbol, research direction, and autonomy thesis
 - explicit risk controls and manual-execution boundaries
 - real deployment workflow and VPS operating model
 - evidence of iterative operational engineering, not just feature accumulation
@@ -122,6 +138,7 @@ It helps detect, rank, filter, and review setups. It does not pretend that autom
 - live broker/data path: IBKR on VPS
 - live economic calendar path: Forex Factory integration
 - continuous training: enabled on VPS
+- self-learning profile: enabled on VPS
 
 ## Notes For Reviewers
 

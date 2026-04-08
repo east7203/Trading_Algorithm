@@ -2180,11 +2180,11 @@ h1 {
 }
 
 .view-signals .stack,
-.view-reviews .stack {
+.view-learning .stack {
   margin-top: 0;
 }
 
-.view-reviews .review-section + .review-section {
+.view-learning .review-section + .review-section {
   margin-top: 18px;
 }
 
@@ -6501,7 +6501,7 @@ h2, h3 {
   max-height: min(40vh, 320px);
 }
 
-.view-reviews {
+.view-learning {
   display: grid;
   align-content: start;
   gap: 14px;

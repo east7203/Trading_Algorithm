@@ -21,7 +21,9 @@ Primary goals:
 5. Macro/news context and risk policy adjust or block candidates.
 6. The ranking model orders surviving candidates.
 7. Alerts are published to the operator.
-8. Reviews and outcomes feed back into retraining.
+8. Reviews, paper outcomes, and resolved trades are stored in the trade-learning database.
+9. The self-learning profile refreshes from that database and adjusts runtime scoring.
+10. The continuous training service retrains the ranker from the same labeled trade history.
 
 ## Detection Model
 
@@ -59,8 +61,9 @@ Training inputs include:
 - live bar-derived examples
 - auto-labeled outcomes
 - operator review feedback
+- unified trade-learning records from paper and manual review flows
 
-The model is therefore not a fixed static score card. It is an adapting ranker over a stable ruleset.
+The model is therefore not a fixed static score card. It is an adapting ranker over a stable ruleset, with a faster self-learning layer running in parallel.
 
 ## Macro / News Layer
 
@@ -103,6 +106,7 @@ The model ranks eligible setups. It does not replace risk rules or macro filters
 ## What I Would Improve Next
 
 - richer setup attribution in alerts and review summaries
+- richer learning dashboards by setup family, thesis, and research regime
 - cleaner provider redundancy for macro-calendar ingestion
 - more explicit performance dashboards by setup family and session regime
 - stronger deploy packaging so the VPS path is less sensitive to local build artifacts

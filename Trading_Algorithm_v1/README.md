@@ -1,11 +1,13 @@
 # Trading Algorithm v1
 
-Runtime and operator documentation for the active futures signal platform. The portfolio overview lives at the repository root README.
+Runtime and operator documentation for the active futures time-series learning platform. The portfolio overview lives at the repository root README.
 
 ## What is implemented
 
 - Multi-setup portfolio detector pipeline with normalized `SetupCandidate` output.
 - Rule-first ranking (`/signals/rank`) where AI/1m only influences score for already-eligible signals.
+- Unified trade-learning database that stores setup metadata, research context, review outcomes, and paper-trade outcomes.
+- Self-learning profile generation that scores edges by setup, symbol, setup-symbol pair, research direction, and autonomy thesis.
 - Risk engine with hard brakes:
   - default per-trade risk `0.50%`
   - user max risk cap (never above `1.00%`)
@@ -40,6 +42,12 @@ This build is configured for manual execution only: it helps detect/rank setups 
 - `GET /journal/trades`
 - `GET /health`
 
+Learning endpoints:
+
+- `GET /trade-learning/records`
+- `GET /trade-learning/summary`
+- `GET /trade-learning/profile`
+
 ## Core types
 
 Implemented in `src/domain/types.ts`:
@@ -61,6 +69,15 @@ Implemented detectors:
 5. Werlein-style higher-timeframe liquidity + SMT setup
 
 All alert payloads are now emitted as `5m` alerts, while setup context can still use `15m` and `1H` structure internally.
+
+## Learning model
+
+The system now learns in two layers:
+
+- a unified trade-learning database for labeled trade outcomes and reasoning
+- a self-learning profile that adjusts future scoring from resolved results without waiting for a full retrain
+
+This means the runtime can adapt quickly to changing edge quality while still preserving the slower continuous retraining process for the ranking model.
 
 ## News source
 

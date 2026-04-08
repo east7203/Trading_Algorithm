@@ -28,9 +28,9 @@
       "url": "./?tab=trades"
     },
     {
-      "name": "Replay",
-      "short_name": "Replay",
-      "url": "./?tab=reviews"
+      "name": "Learn",
+      "short_name": "Learn",
+      "url": "./?tab=learning"
     },
     {
       "name": "Engine",
