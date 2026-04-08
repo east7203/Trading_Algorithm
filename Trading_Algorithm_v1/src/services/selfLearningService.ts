@@ -41,6 +41,14 @@ export interface SelfLearningProfile {
   resolvedRecords: number;
   recentResolvedRecords: number;
   recentWindowDays: number;
+  overallWinRate: number;
+  overallAvgR: number;
+  recentWinRate: number;
+  recentAvgR: number;
+  recentVsOverallWinRateDelta: number;
+  recentVsOverallAvgRDelta: number;
+  activePositiveEdges: number;
+  activeNegativeEdges: number;
   topWinReasons: SelfLearningReasonBucket[];
   topLossReasons: SelfLearningReasonBucket[];
   bySetup: SelfLearningBucket[];
@@ -112,6 +120,14 @@ const emptyProfile = (recentWindowDays: number): SelfLearningProfile => ({
   resolvedRecords: 0,
   recentResolvedRecords: 0,
   recentWindowDays,
+  overallWinRate: 0,
+  overallAvgR: 0,
+  recentWinRate: 0,
+  recentAvgR: 0,
+  recentVsOverallWinRateDelta: 0,
+  recentVsOverallAvgRDelta: 0,
+  activePositiveEdges: 0,
+  activeNegativeEdges: 0,
   topWinReasons: [],
   topLossReasons: [],
   bySetup: [],
@@ -478,23 +494,78 @@ export class SelfLearningService {
       }
     }
 
+    const overallStats = summarizeOutcomeStats(resolvedRecords);
+    const recentStats = summarizeOutcomeStats(recentResolved);
+    const finalizedSetupBuckets = finalizeBuckets(bySetup, this.config.minBucketSamples);
+    const finalizedSymbolBuckets = finalizeBuckets(bySymbol, this.config.minBucketSamples);
+    const finalizedSetupSymbolBuckets = finalizeBuckets(bySetupSymbol, this.config.minBucketSamples);
+    const finalizedSideBuckets = finalizeBuckets(bySide, this.config.minBucketSamples);
+    const finalizedResearchBuckets = finalizeBuckets(byResearchDirection, this.config.minBucketSamples);
+    const finalizedAutonomyBuckets = finalizeBuckets(byAutonomyThesis, this.config.minBucketSamples);
+    const adjustmentBuckets = [
+      ...finalizedSetupBuckets,
+      ...finalizedSymbolBuckets,
+      ...finalizedSetupSymbolBuckets,
+      ...finalizedSideBuckets,
+      ...finalizedResearchBuckets,
+      ...finalizedAutonomyBuckets
+    ];
+    const activePositiveEdges = adjustmentBuckets.filter((bucket) => bucket.scoreAdjustment > 0).length;
+    const activeNegativeEdges = adjustmentBuckets.filter((bucket) => bucket.scoreAdjustment < 0).length;
+
     return {
       generatedAt: new Date().toISOString(),
       totalRecords: records.length,
       resolvedRecords: resolvedRecords.length,
       recentResolvedRecords: recentResolved.length,
       recentWindowDays: this.config.recentWindowDays,
+      overallWinRate: overallStats.winRate,
+      overallAvgR: overallStats.avgR,
+      recentWinRate: recentStats.winRate,
+      recentAvgR: recentStats.avgR,
+      recentVsOverallWinRateDelta: round(recentStats.winRate - overallStats.winRate, 3),
+      recentVsOverallAvgRDelta: round(recentStats.avgR - overallStats.avgR, 2),
+      activePositiveEdges,
+      activeNegativeEdges,
       topWinReasons: finalizeReasonBuckets(winReasons, this.config.maxReasonBuckets),
       topLossReasons: finalizeReasonBuckets(lossReasons, this.config.maxReasonBuckets),
-      bySetup: finalizeBuckets(bySetup, this.config.minBucketSamples),
-      bySymbol: finalizeBuckets(bySymbol, this.config.minBucketSamples),
-      bySetupSymbol: finalizeBuckets(bySetupSymbol, this.config.minBucketSamples),
-      bySide: finalizeBuckets(bySide, this.config.minBucketSamples),
-      byResearchDirection: finalizeBuckets(byResearchDirection, this.config.minBucketSamples),
-      byAutonomyThesis: finalizeBuckets(byAutonomyThesis, this.config.minBucketSamples)
+      bySetup: finalizedSetupBuckets,
+      bySymbol: finalizedSymbolBuckets,
+      bySetupSymbol: finalizedSetupSymbolBuckets,
+      bySide: finalizedSideBuckets,
+      byResearchDirection: finalizedResearchBuckets,
+      byAutonomyThesis: finalizedAutonomyBuckets
     };
   }
 }
 
 const average = (values: number[]): number =>
   values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+
+const summarizeOutcomeStats = (records: TradeLearningRecord[]) => {
+  let wins = 0;
+  let losses = 0;
+  let breakeven = 0;
+  let totalR = 0;
+
+  for (const record of records) {
+    const outcome = resolveOutcome(record);
+    if (!outcome) {
+      continue;
+    }
+    wins += outcome === 'WIN' ? 1 : 0;
+    losses += outcome === 'LOSS' ? 1 : 0;
+    breakeven += outcome === 'FLAT' ? 1 : 0;
+    totalR += typeof record.paperTrade?.realizedR === 'number' ? record.paperTrade.realizedR : 0;
+  }
+
+  const resolved = wins + losses + breakeven;
+  return {
+    resolved,
+    wins,
+    losses,
+    breakeven,
+    winRate: resolved > 0 ? round(wins / resolved, 3) : 0,
+    avgR: resolved > 0 ? round(totalR / resolved, 2) : 0
+  };
+};

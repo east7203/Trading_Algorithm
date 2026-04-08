@@ -5717,6 +5717,12 @@ const learningBucketMeta = (bucket) =>
 const learningBucketNote = (bucket) =>
   `${fmtNum(bucket.avgR, 2)}R avg • confidence ${fmtNum(bucket.confidence * 100, 0)}% • risk x${fmtNum(bucket.riskMultiplier, 2)}`;
 
+const formatPercentPoints = (value) => {
+  const basisPoints = Math.round((Number(value) || 0) * 100);
+  const sign = basisPoints > 0 ? '+' : '';
+  return `${sign}${basisPoints} pts`;
+};
+
 const buildLearningBucketPool = (profile) => [
   ...(profile?.bySetupSymbol ?? []).map((bucket) => ({ category: 'setupSymbol', bucket })),
   ...(profile?.bySetup ?? []).map((bucket) => ({ category: 'setup', bucket })),
@@ -5911,24 +5917,30 @@ const renderReviewInsights = () => {
     reviewSummaryChipEl.textContent = `${profile.resolvedRecords} learned • ${pendingCount} awaiting outcome`;
   }
   if (learningProfileChipEl) {
-    learningProfileChipEl.textContent = `${profile.resolvedRecords} resolved • ${status.refreshIntervalMinutes}m refresh`;
+    learningProfileChipEl.textContent = `${profile.resolvedRecords} resolved • ${formatPercentPoints(profile.recentVsOverallWinRateDelta)} recent`;
   }
   if (learningHeadlineEl) {
-    learningHeadlineEl.textContent = bestEdge
-      ? `Lean into ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`
-      : 'The learning engine is still collecting a clear edge.';
+    if (profile.recentResolvedRecords >= status.minResolvedRecords && profile.recentVsOverallWinRateDelta >= 0.05) {
+      learningHeadlineEl.textContent = `Recent learning is improving by ${formatPercentPoints(profile.recentVsOverallWinRateDelta)}.`;
+    } else if (profile.recentResolvedRecords >= status.minResolvedRecords && profile.recentVsOverallWinRateDelta <= -0.05) {
+      learningHeadlineEl.textContent = `Recent learning is slipping by ${formatPercentPoints(profile.recentVsOverallWinRateDelta)}.`;
+    } else {
+      learningHeadlineEl.textContent = bestEdge
+        ? `Lean into ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`
+        : 'The learning engine is still collecting a clear edge.';
+    }
   }
   if (learningContextEl) {
     learningContextEl.textContent = bestEdge && biggestDrag
-      ? `The model is currently favoring ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} and pulling back from ${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)}. ${pendingCount} case${pendingCount === 1 ? '' : 's'} are still awaiting outcome confirmation from the engine.`
-      : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. ${completedCount} completed case${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
+      ? `The model is currently favoring ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} and pulling back from ${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)}. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, with ${pendingCount} case${pendingCount === 1 ? '' : 's'} still awaiting outcome.`
+      : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, and ${completedCount} completed case${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
   }
   if (learningResolvedRecordsEl) {
-    learningResolvedRecordsEl.textContent = `${profile.resolvedRecords} resolved • ${profile.totalRecords} total records`;
+    learningResolvedRecordsEl.textContent = `${profile.resolvedRecords} resolved • ${profile.recentResolvedRecords} recent • ${profile.totalRecords} total`;
   }
   if (learningRefreshStateEl) {
     learningRefreshStateEl.textContent = status.lastRefreshedAt
-      ? `${fmtRelativeMinutes(status.lastRefreshedAt)} • ${status.recentWindowDays}d window`
+      ? `${fmtRelativeMinutes(status.lastRefreshedAt)} • ${fmtNum(profile.recentAvgR, 2)}R recent vs ${fmtNum(profile.overallAvgR, 2)}R overall`
       : `${status.refreshIntervalMinutes}m refresh cadence`;
   }
   if (learningTopWinReasonEl) {

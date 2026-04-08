@@ -166,7 +166,11 @@ describe('self learning service', () => {
 
     await service.start();
     const status = service.status();
+    expect(status.started).toBe(true);
     expect(status.profile.resolvedRecords).toBe(6);
+    expect(status.profile.overallWinRate).toBeGreaterThan(0);
+    expect(status.profile.recentWinRate).toBeGreaterThan(0);
+    expect(status.profile.activePositiveEdges).toBeGreaterThan(0);
     expect(status.profile.bySetupSymbol[0]?.key).toBe('NY_BREAK_RETEST_MOMENTUM|NQ');
     expect(status.profile.topWinReasons.map((entry) => entry.key)).toContain('held retest');
 

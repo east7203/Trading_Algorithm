@@ -294,7 +294,10 @@ describe('signal review loop integration', () => {
     });
     expect(selfLearning.statusCode).toBe(200);
     expect(selfLearning.json().selfLearning.enabled).toBe(true);
+    expect(selfLearning.json().selfLearning.started).toBe(true);
     expect(selfLearning.json().selfLearning.profile.resolvedRecords).toBeGreaterThan(0);
+    expect(selfLearning.json().selfLearning.profile.overallWinRate).toBeGreaterThan(0);
+    expect(selfLearning.json().selfLearning.profile.recentResolvedRecords).toBeGreaterThan(0);
 
     const journal = await ctx.app.inject({
       method: 'GET',

@@ -2127,6 +2127,19 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       })
     : null;
 
+  const ensureSelfLearningStarted = async (): Promise<SelfLearningService | null> => {
+    if (!selfLearningService) {
+      return null;
+    }
+
+    if (!selfLearningService.status().started) {
+      await tradeLearningBootstrapPromise;
+      await selfLearningService.start();
+    }
+
+    return selfLearningService;
+  };
+
   if (selfLearningService) {
     app.addHook('onClose', async () => {
       await selfLearningStartPromise;
@@ -2947,11 +2960,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/learning/performance', async (_request, reply) => {
+    const selfLearning = (await ensureSelfLearningStarted())?.status() ?? null;
     const records = await listTradeLearningRecords();
     const performance = summarizeLearningPerformanceFromTradeRecords(records);
     const feedback = buildLearningFeedbackDatasetFromTradeRecords(records);
     const database = await tradeLearningStore.summary();
-    const selfLearning = selfLearningService?.status() ?? null;
 
     return reply.status(200).send({
       performance,
@@ -3082,7 +3095,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/trade-learning/profile', async (_request, reply) => {
-    const selfLearning = selfLearningService?.status();
+    const selfLearning = (await ensureSelfLearningStarted())?.status();
     if (!selfLearning) {
       return reply.status(200).send({
         selfLearning: {
@@ -3109,6 +3122,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/diagnostics', async (_request, reply) => {
+    const selfLearning = (await ensureSelfLearningStarted())?.status() ?? { enabled: false, started: false };
     const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
     const monitorLatestBarTimestamp =
       'latestBarTimestampBySymbol' in monitor
@@ -3138,7 +3152,6 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const reviews = await signalReviewStore.summary();
     const learningCases = buildLearningSummaryPayload(reviews);
     const tradeLearning = await tradeLearningStore.summary();
-    const selfLearning = selfLearningService?.status() ?? { enabled: false, started: false };
     const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
