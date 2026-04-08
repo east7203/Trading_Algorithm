@@ -403,6 +403,87 @@ const finalizeSummaryBuckets = (
     }))
     .sort((left, right) => right.total - left.total || right.winRate - left.winRate || left.label.localeCompare(right.label));
 
+const extractPersistedRecordObjects = (raw: string): string[] => {
+  const recordsKeyIndex = raw.indexOf('"records"');
+  if (recordsKeyIndex < 0) {
+    return [];
+  }
+
+  const arrayStartIndex = raw.indexOf('[', recordsKeyIndex);
+  if (arrayStartIndex < 0) {
+    return [];
+  }
+
+  const objects: string[] = [];
+  let objectStartIndex = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = arrayStartIndex + 1; index < raw.length; index += 1) {
+    const character = raw[index];
+
+    if (objectStartIndex < 0) {
+      if (character === '{') {
+        objectStartIndex = index;
+        depth = 1;
+      } else if (character === ']') {
+        break;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (character === '{' || character === '[') {
+      depth += 1;
+      continue;
+    }
+
+    if (character === '}' || character === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        objects.push(raw.slice(objectStartIndex, index + 1));
+        objectStartIndex = -1;
+      }
+    }
+  }
+
+  return objects;
+};
+
+const recoverRecordsFromCorruptState = (raw: string): TradeLearningRecord[] => {
+  const recovered: TradeLearningRecord[] = [];
+
+  for (const objectText of extractPersistedRecordObjects(raw)) {
+    try {
+      const parsed = JSON.parse(objectText);
+      const normalized = normalizeRecord(parsed);
+      if (normalized) {
+        recovered.push(normalized);
+      }
+    } catch {
+      // Skip malformed trailing fragments and keep any complete records we can recover.
+    }
+  }
+
+  return recovered;
+};
+
 export class TradeLearningStore {
   private started = false;
   private startPromise: Promise<void> | null = null;
@@ -410,6 +491,13 @@ export class TradeLearningStore {
   private records = new Map<string, TradeLearningRecord>();
 
   constructor(private readonly filePath: string) {}
+
+  private async backupCorruptFile(raw: string): Promise<void> {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${this.filePath}.corrupt-${timestamp}`;
+    await fs.mkdir(path.dirname(backupPath), { recursive: true });
+    await fs.writeFile(backupPath, raw, 'utf8');
+  }
 
   async start(): Promise<void> {
     if (this.started) {
@@ -675,6 +763,19 @@ export class TradeLearningStore {
         this.records.clear();
         return;
       }
+
+      if (error instanceof SyntaxError) {
+        const raw = await fs.readFile(this.filePath, 'utf8');
+        const recoveredRecords = recoverRecordsFromCorruptState(raw);
+        await this.backupCorruptFile(raw);
+        this.records = new Map(recoveredRecords.map((record) => [record.alertId, record]));
+        await this.persist();
+        console.warn(
+          `Recovered ${recoveredRecords.length} trade learning records from corrupt state at ${this.filePath}`
+        );
+        return;
+      }
+
       throw error;
     }
   }
