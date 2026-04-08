@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=52" />
+    <link rel="stylesheet" href="styles.css?v=53" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -570,6 +570,33 @@
               <article class="insight-card session-summary-item">
                 <p class="stat-label">Top Loss Reason</p>
                 <p id="learningTopLossReason" class="insight-text">--</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="session-summary-card replay-command-card">
+            <div class="section-subhead">
+              <h3>Live Engine Health</h3>
+              <span id="learningHealthChip" class="chip chip-neutral">Diagnostics --</span>
+            </div>
+            <p id="learningHealthHeadline" class="session-summary-headline">--</p>
+            <p id="learningHealthNote" class="session-summary-copy">The learn tab will flag feed, training, or database issues here before they show up elsewhere.</p>
+            <div class="session-summary-grid">
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Feed</p>
+                <p id="learningFeedHealth" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Database</p>
+                <p id="learningDatabaseHealth" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Training</p>
+                <p id="learningTrainingHealth" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Outcome Queue</p>
+                <p id="learningQueueHealth" class="insight-text">--</p>
               </article>
             </div>
           </section>

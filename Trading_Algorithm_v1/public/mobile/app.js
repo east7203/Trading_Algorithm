@@ -126,6 +126,13 @@ const reviewCompletedQueueChipEl = document.getElementById('reviewCompletedQueue
 const learningProfileChipEl = document.getElementById('learningProfileChip');
 const learningHeadlineEl = document.getElementById('learningHeadline');
 const learningContextEl = document.getElementById('learningContext');
+const learningHealthChipEl = document.getElementById('learningHealthChip');
+const learningHealthHeadlineEl = document.getElementById('learningHealthHeadline');
+const learningHealthNoteEl = document.getElementById('learningHealthNote');
+const learningFeedHealthEl = document.getElementById('learningFeedHealth');
+const learningDatabaseHealthEl = document.getElementById('learningDatabaseHealth');
+const learningTrainingHealthEl = document.getElementById('learningTrainingHealth');
+const learningQueueHealthEl = document.getElementById('learningQueueHealth');
 const learningResolvedRecordsEl = document.getElementById('learningResolvedRecords');
 const learningRefreshStateEl = document.getElementById('learningRefreshState');
 const learningTopWinReasonEl = document.getElementById('learningTopWinReason');
@@ -5761,6 +5768,11 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
 const renderReviewInsights = () => {
   const status = getSelfLearningStatus();
   const profile = getSelfLearningProfile();
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const feedState = getFeedStateMeta(diagnostics);
+  const training = diagnostics?.training ?? null;
+  const tradeLearning = diagnostics?.tradeLearning ?? null;
+  const learningCases = diagnostics?.learningCases ?? reviewSummary;
   const pendingCount = reviewSummary.pending ?? latestReviews.filter((review) => review.reviewStatus === 'PENDING').length;
   const completedCount = reviewSummary.completed ?? latestReviews.filter((review) => review.reviewStatus === 'COMPLETED').length;
   const pool = buildLearningBucketPool(profile);
@@ -5774,6 +5786,73 @@ const renderReviewInsights = () => {
     (profile?.byAutonomyThesis ?? []).map((bucket) => ({ category: 'autonomy', bucket })),
     'positive'
   ) ?? ((profile?.byAutonomyThesis?.[0] ?? null) ? { category: 'autonomy', bucket: profile.byAutonomyThesis[0] } : null);
+
+  if (learningHealthChipEl) {
+    if (!diagnostics) {
+      learningHealthChipEl.className = 'chip chip-neutral';
+      learningHealthChipEl.textContent = 'Diagnostics loading';
+    } else if (feedState.status === 'LIVE' && training?.enabled && tradeLearning?.totalRecords > 0) {
+      learningHealthChipEl.className = 'chip chip-online';
+      learningHealthChipEl.textContent = 'Healthy';
+    } else if (feedState.status === 'FROZEN' || feedState.status === 'STALE' || feedState.status === 'OFFLINE') {
+      learningHealthChipEl.className = 'chip chip-offline';
+      learningHealthChipEl.textContent = 'Feed degraded';
+    } else {
+      learningHealthChipEl.className = 'chip chip-neutral';
+      learningHealthChipEl.textContent = 'Watching closely';
+    }
+  }
+
+  if (learningHealthHeadlineEl) {
+    if (!diagnostics) {
+      learningHealthHeadlineEl.textContent = 'Waiting for live diagnostics to load.';
+    } else if (feedState.status !== 'LIVE') {
+      learningHealthHeadlineEl.textContent = `Learning is healthy enough to read history, but the live feed is ${feedState.status.toLowerCase()}.`;
+    } else if (!training?.enabled) {
+      learningHealthHeadlineEl.textContent = 'The learning database is live, but scheduled training is paused.';
+    } else if ((tradeLearning?.totalRecords ?? 0) === 0) {
+      learningHealthHeadlineEl.textContent = 'The engine is live, but the learning database has not built enough history yet.';
+    } else {
+      learningHealthHeadlineEl.textContent = 'Feed, learning database, and training loop are all healthy.';
+    }
+  }
+
+  if (learningHealthNoteEl) {
+    if (!diagnostics) {
+      learningHealthNoteEl.textContent = 'The learn tab will flag feed, training, or database issues here before they show up elsewhere.';
+    } else {
+      const awaitingOutcome = learningCases.awaitingOutcome ?? learningCases.pending ?? 0;
+      const learned = learningCases.learned ?? learningCases.completed ?? 0;
+      learningHealthNoteEl.textContent =
+        `${awaitingOutcome} case${awaitingOutcome === 1 ? '' : 's'} are still awaiting outcome, while ${learned} learned case${learned === 1 ? '' : 's'} are already shaping the model.`;
+    }
+  }
+
+  if (learningFeedHealthEl) {
+    learningFeedHealthEl.textContent = diagnostics
+      ? `${feedState.status} • ${diagnostics.latestBarTimestamp ? fmtRelativeMinutes(diagnostics.latestBarTimestamp) : 'No live bar'}`
+      : '--';
+  }
+
+  if (learningDatabaseHealthEl) {
+    learningDatabaseHealthEl.textContent = diagnostics && tradeLearning
+      ? `${tradeLearning.resolvedRecords ?? 0} resolved • ${tradeLearning.pendingRecords ?? 0} pending`
+      : '--';
+  }
+
+  if (learningTrainingHealthEl) {
+    learningTrainingHealthEl.textContent = diagnostics && training
+      ? training.enabled
+        ? `${training.started ? 'Running' : 'Starting'} • ${training.cadence?.retrainIntervalMinutes ?? '--'}m cadence`
+        : 'Paused'
+      : '--';
+  }
+
+  if (learningQueueHealthEl) {
+    learningQueueHealthEl.textContent = diagnostics
+      ? `${learningCases.awaitingOutcome ?? learningCases.pending ?? 0} awaiting • ${learningCases.learned ?? learningCases.completed ?? 0} learned`
+      : '--';
+  }
 
   if (!status?.enabled || !profile) {
     if (reviewSummaryChipEl) {
