@@ -1787,9 +1787,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const continuousTrainingEnabled = options.continuousTrainingEnabled ?? resolvedContinuousConfig.enabled;
   const resolvedSelfLearningConfig = resolveSelfLearningConfig(options.selfLearningConfig);
   const selfLearningEnabled = options.selfLearningEnabled ?? resolvedSelfLearningConfig.enabled;
+  const tradeLearningStartPromise = tradeLearningStore.start().catch((error) => {
+    app.log.error({ err: error }, 'trade learning store failed to start');
+  });
   let tradeLearningBootstrapPromise: Promise<void> = Promise.resolve();
   const listTradeLearningRecords = async () => {
-    await tradeLearningBootstrapPromise;
+    await tradeLearningStartPromise;
     return tradeLearningStore.listAllRecords();
   };
   const selfLearningService =
@@ -2092,10 +2095,6 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         app.log.error({ err: error }, 'paper trading service failed to start');
       })
     : null;
-
-  const tradeLearningStartPromise = tradeLearningStore.start().catch((error) => {
-    app.log.error({ err: error }, 'trade learning store failed to start');
-  });
 
   tradeLearningBootstrapPromise = (async () => {
     await tradeLearningStartPromise;
