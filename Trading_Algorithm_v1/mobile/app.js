@@ -123,6 +123,7 @@ const reviewPendingStatEl = document.getElementById('reviewPendingStat');
 const reviewSummaryChipEl = document.getElementById('reviewSummaryChip');
 const reviewPendingQueueChipEl = document.getElementById('reviewPendingQueueChip');
 const reviewCompletedQueueChipEl = document.getElementById('reviewCompletedQueueChip');
+const learningTrendBadgeEl = document.getElementById('learningTrendBadge');
 const learningProfileChipEl = document.getElementById('learningProfileChip');
 const learningHeadlineEl = document.getElementById('learningHeadline');
 const learningContextEl = document.getElementById('learningContext');
@@ -5723,6 +5724,41 @@ const formatPercentPoints = (value) => {
   return `${sign}${basisPoints} pts`;
 };
 
+const getLearningTrend = (profile, status) => {
+  if (!profile || !status || profile.recentResolvedRecords < status.minResolvedRecords) {
+    return {
+      label: 'Flat',
+      className: 'chip-neutral',
+      headline: 'The engine is still building a confident recent sample.'
+    };
+  }
+
+  const winDelta = Number(profile.recentVsOverallWinRateDelta) || 0;
+  const avgRDelta = Number(profile.recentVsOverallAvgRDelta) || 0;
+
+  if (winDelta >= 0.05 || avgRDelta >= 0.15) {
+    return {
+      label: 'Improving',
+      className: 'chip-online',
+      headline: `Recent learning is improving by ${formatPercentPoints(winDelta)}.`
+    };
+  }
+
+  if (winDelta <= -0.05 || avgRDelta <= -0.15) {
+    return {
+      label: 'Slipping',
+      className: 'chip-offline',
+      headline: `Recent learning is slipping by ${formatPercentPoints(winDelta)}.`
+    };
+  }
+
+  return {
+    label: 'Flat',
+    className: 'chip-neutral',
+    headline: 'Recent learning is flat versus the broader trade history.'
+  };
+};
+
 const buildLearningBucketPool = (profile) => [
   ...(profile?.bySetupSymbol ?? []).map((bucket) => ({ category: 'setupSymbol', bucket })),
   ...(profile?.bySetup ?? []).map((bucket) => ({ category: 'setup', bucket })),
@@ -5861,6 +5897,10 @@ const renderReviewInsights = () => {
   }
 
   if (!status?.enabled || !profile) {
+    if (learningTrendBadgeEl) {
+      learningTrendBadgeEl.className = 'chip chip-neutral';
+      learningTrendBadgeEl.textContent = 'Flat';
+    }
     if (reviewSummaryChipEl) {
       reviewSummaryChipEl.textContent = `${pendingCount} awaiting outcome`;
     }
@@ -5905,25 +5945,30 @@ const renderReviewInsights = () => {
   const favoring = pool
     .filter(({ bucket }) => Number(bucket.scoreAdjustment) > 0)
     .sort((left, right) => Number(right.bucket.scoreAdjustment) - Number(left.bucket.scoreAdjustment))
-    .slice(0, 4);
+    .slice(0, 3);
   const avoiding = pool
     .filter(({ bucket }) => Number(bucket.scoreAdjustment) < 0)
     .sort((left, right) => Number(left.bucket.scoreAdjustment) - Number(right.bucket.scoreAdjustment))
-    .slice(0, 4);
+    .slice(0, 3);
   const topWinReason = profile.topWinReasons?.[0] ?? null;
   const topLossReason = profile.topLossReasons?.[0] ?? null;
+  const learningTrend = getLearningTrend(profile, status);
 
   if (reviewSummaryChipEl) {
     reviewSummaryChipEl.textContent = `${profile.resolvedRecords} learned • ${pendingCount} awaiting outcome`;
+  }
+  if (learningTrendBadgeEl) {
+    learningTrendBadgeEl.className = `chip ${learningTrend.className}`;
+    learningTrendBadgeEl.textContent = learningTrend.label;
   }
   if (learningProfileChipEl) {
     learningProfileChipEl.textContent = `${profile.resolvedRecords} resolved • ${formatPercentPoints(profile.recentVsOverallWinRateDelta)} recent`;
   }
   if (learningHeadlineEl) {
-    if (profile.recentResolvedRecords >= status.minResolvedRecords && profile.recentVsOverallWinRateDelta >= 0.05) {
-      learningHeadlineEl.textContent = `Recent learning is improving by ${formatPercentPoints(profile.recentVsOverallWinRateDelta)}.`;
-    } else if (profile.recentResolvedRecords >= status.minResolvedRecords && profile.recentVsOverallWinRateDelta <= -0.05) {
-      learningHeadlineEl.textContent = `Recent learning is slipping by ${formatPercentPoints(profile.recentVsOverallWinRateDelta)}.`;
+    if (learningTrend.label !== 'Flat') {
+      learningHeadlineEl.textContent = learningTrend.headline;
+    } else if (profile.recentResolvedRecords >= status.minResolvedRecords) {
+      learningHeadlineEl.textContent = learningTrend.headline;
     } else {
       learningHeadlineEl.textContent = bestEdge
         ? `Lean into ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`

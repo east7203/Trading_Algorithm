@@ -6977,6 +6977,13 @@ select {
   gap: 12px;
 }
 
+.compact-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .learning-pattern-card {
   display: grid;
   gap: 8px;

@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=55" />
+    <link rel="stylesheet" href="styles.css?v=56" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -550,7 +550,10 @@
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
               <h3>What The Engine Is Learning</h3>
-              <span id="learningProfileChip" class="chip chip-neutral">Learning profile loading</span>
+              <div class="chip-row compact-chip-row">
+                <span id="learningTrendBadge" class="chip chip-neutral">Flat</span>
+                <span id="learningProfileChip" class="chip chip-neutral">Learning profile loading</span>
+              </div>
             </div>
             <p id="learningHeadline" class="session-summary-headline">--</p>
             <p id="learningContext" class="session-summary-copy">The system is pulling together setup, symbol, research, and autonomy outcomes from the trade-learning database.</p>
@@ -622,16 +625,16 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>What It Is Favoring</h3>
-              <span class="chip chip-neutral">Higher score = stronger learned edge</span>
+              <h3>Top 3 Learned Edges</h3>
+              <span class="chip chip-neutral">Best positive signals right now</span>
             </div>
             <div id="learningFavoringList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>What It Is Avoiding</h3>
-              <span class="chip chip-neutral">Negative score = learned drag</span>
+              <h3>Top 3 Failing Patterns</h3>
+              <span class="chip chip-neutral">Patterns the engine is fading</span>
             </div>
             <div id="learningAvoidingList" class="stack learning-pattern-list"></div>
           </section>
@@ -1504,6 +1507,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=55"></script>
+    <script type="module" src="app.js?v=56"></script>
   </body>
 </html>
