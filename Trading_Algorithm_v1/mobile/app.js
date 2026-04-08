@@ -5796,6 +5796,8 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
   entries.forEach(({ category, bucket }) => {
     const card = document.createElement('article');
     card.className = 'learning-pattern-card';
+    const scoreClass =
+      Number(bucket.scoreAdjustment) > 0 ? 'learning-pattern-metric-value-positive' : 'learning-pattern-metric-value-negative';
     card.innerHTML = `
       <div class="learning-pattern-head">
         <p class="learning-pattern-title">${escapeHtml(describeLearningBucketLabel(category, bucket))}</p>
@@ -5816,7 +5818,7 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
         </div>
         <div class="learning-pattern-metric">
           <span class="learning-pattern-metric-label">Score</span>
-          <span class="learning-pattern-metric-value">${escapeHtml(`${bucket.scoreAdjustment > 0 ? '+' : ''}${fmtNum(bucket.scoreAdjustment, 1)}`)}</span>
+          <span class="learning-pattern-metric-value ${scoreClass}">${escapeHtml(`${bucket.scoreAdjustment > 0 ? '+' : ''}${fmtNum(bucket.scoreAdjustment, 1)}`)}</span>
         </div>
       </div>
       <p class="learning-pattern-note">${escapeHtml(learningBucketNote(bucket))}</p>

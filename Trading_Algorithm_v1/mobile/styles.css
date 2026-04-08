@@ -7044,6 +7044,14 @@ select {
   color: #f8fafc;
 }
 
+.learning-pattern-metric-value-positive {
+  color: #22c55e;
+}
+
+.learning-pattern-metric-value-negative {
+  color: #f87171;
+}
+
 @media (max-width: 560px) {
   .learning-pattern-head {
     flex-direction: column;
