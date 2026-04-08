@@ -5798,6 +5798,12 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
     card.className = 'learning-pattern-card';
     const scoreClass =
       Number(bucket.scoreAdjustment) > 0 ? 'learning-pattern-metric-value-positive' : 'learning-pattern-metric-value-negative';
+    const winRateClass =
+      Number(bucket.winRate) > 0.5
+        ? 'learning-pattern-metric-positive'
+        : Number(bucket.winRate) < 0.5
+          ? 'learning-pattern-metric-negative'
+          : 'learning-pattern-metric-neutral';
     card.innerHTML = `
       <div class="learning-pattern-head">
         <p class="learning-pattern-title">${escapeHtml(describeLearningBucketLabel(category, bucket))}</p>
@@ -5808,7 +5814,7 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
           <span class="learning-pattern-metric-label">Sample</span>
           <span class="learning-pattern-metric-value">${escapeHtml(String(bucket.resolved))}</span>
         </div>
-        <div class="learning-pattern-metric">
+        <div class="learning-pattern-metric ${winRateClass}">
           <span class="learning-pattern-metric-label">Win Rate</span>
           <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(bucket.winRate * 100, 0)}%`)}</span>
         </div>

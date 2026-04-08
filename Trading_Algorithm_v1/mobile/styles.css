@@ -7030,6 +7030,21 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.learning-pattern-metric-positive {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.learning-pattern-metric-negative {
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.18);
+}
+
+.learning-pattern-metric-neutral {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
 .learning-pattern-metric-label {
   font-size: 0.64rem;
   letter-spacing: 0.08em;
