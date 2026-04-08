@@ -507,6 +507,7 @@ export class SignalMonitorService {
       await this.hydrateRecordedAlertKeys();
       await this.loadBootstrapCsv();
       await this.loadArchiveBars();
+      await this.processAutomaticLearningBacklog();
       this.startEscalationLoop();
       this.lastError = undefined;
     } catch (error) {
@@ -845,8 +846,10 @@ export class SignalMonitorService {
     return undefined;
   }
 
-  private async processAutomaticLearningOutcomes(symbol: SymbolCode): Promise<void> {
-    const symbolBars = this.barsBySymbol.get(symbol);
+  private async processAutomaticLearningOutcomesForBars(
+    symbol: SymbolCode,
+    symbolBars: OneMinuteBar[]
+  ): Promise<void> {
     if (!symbolBars || symbolBars.length < 2) {
       return;
     }
@@ -881,6 +884,41 @@ export class SignalMonitorService {
           autoLabeledAt: updated.autoLabeledAt ?? null
         }
       });
+    }
+  }
+
+  private async processAutomaticLearningOutcomes(symbol: SymbolCode): Promise<void> {
+    const symbolBars = this.barsBySymbol.get(symbol);
+    if (!symbolBars || symbolBars.length < 2) {
+      return;
+    }
+
+    await this.processAutomaticLearningOutcomesForBars(symbol, symbolBars);
+  }
+
+  private async processAutomaticLearningBacklog(): Promise<void> {
+    const reviews = await this.signalReviewStore.listAllReviews();
+    const pendingSymbols = new Set<SymbolCode>(
+      reviews
+        .filter((review) => review.reviewStatus === 'PENDING' && !review.outcome && !review.autoOutcome)
+        .map((review) => review.symbol)
+    );
+    if (pendingSymbols.size === 0) {
+      return;
+    }
+
+    const settings = this.getSettings();
+    const replayBarsBySymbol = await this.loadReplayBars(settings.enabledSymbols);
+    for (const symbol of pendingSymbols) {
+      const currentBars = this.barsBySymbol.get(symbol) ?? [];
+      const replayBars = replayBarsBySymbol.get(symbol) ?? [];
+      const merged = new Map<string, OneMinuteBar>();
+      for (const bar of [...replayBars, ...currentBars]) {
+        merged.set(bar.timestamp, bar);
+      }
+
+      const sorted = [...merged.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      await this.processAutomaticLearningOutcomesForBars(symbol, sorted);
     }
   }
 

@@ -707,6 +707,130 @@ describe('signal monitor integration', () => {
     expect(labeled.autoOutcome).toBe('WOULD_WIN');
     expect(labeled.effectiveOutcome).toBe('WOULD_WIN');
     expect(labeled.effectiveOutcomeSource).toBe('AUTO');
-    expect(labeled.reviewStatus).toBe('PENDING');
+    expect(labeled.reviewStatus).toBe('COMPLETED');
+  });
+
+  it('self-completes older pending reviews from saved replay bars on startup', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-auto-backlog-'));
+    tempDirs.push(tempDir);
+    const signalMonitorSettingsStorePath = path.join(tempDir, 'signal-monitor.json');
+    const signalReviewStorePath = path.join(tempDir, 'signal-reviews.json');
+    const archivePath = path.join(tempDir, 'one-minute-bars.ndjson');
+
+    const firstCtx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath,
+      signalReviewStorePath,
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        outcomeLookaheadBars1m: 5,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(firstCtx);
+
+    await firstCtx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    const testAlertResponse = await firstCtx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: {
+        symbol: 'NQ'
+      }
+    });
+
+    expect(testAlertResponse.statusCode).toBe(200);
+
+    const alertsResponse = await firstCtx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=5'
+    });
+    const seededAlert = alertsResponse
+      .json()
+      .alerts.find((alert) => alert.alertId === testAlertResponse.json().alert.alertId);
+    expect(seededAlert).toBeTruthy();
+    if (!seededAlert) {
+      throw new Error('Expected seeded alert to exist');
+    }
+
+    const startMs = Date.parse(seededAlert.detectedAt) + 60_000;
+    const tp = Number(seededAlert.candidate.takeProfit[0]);
+    const winBars = Array.from({ length: 5 }).map((_, index) => {
+      const close = Number((seededAlert.candidate.entry + 2 + index * 8).toFixed(2));
+      return {
+        symbol: 'NQ',
+        timestamp: new Date(startMs + index * 60_000).toISOString(),
+        open: Number((close - 1.5).toFixed(2)),
+        high: index === 4 ? tp + 2 : close + 1.5,
+        low: Number((seededAlert.candidate.entry - 1).toFixed(2)),
+        close,
+        volume: 75 + index
+      };
+    });
+
+    const archiveBars = [...buildMomentumBars(), ...winBars];
+    await fs.writeFile(
+      archivePath,
+      `${archiveBars.map((bar) => JSON.stringify(bar)).join('\n')}\n`,
+      'utf8'
+    );
+
+    await firstCtx.app.close();
+    const firstCtxIndex = contexts.indexOf(firstCtx);
+    if (firstCtxIndex >= 0) {
+      contexts.splice(firstCtxIndex, 1);
+    }
+
+    const secondCtx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath,
+      signalReviewStorePath,
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath,
+        lookbackBars1m: 60,
+        outcomeLookaheadBars1m: 5,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(secondCtx);
+
+    let resolvedReview: {
+      autoOutcome?: string;
+      effectiveOutcome?: string;
+      effectiveOutcomeSource?: string;
+      reviewStatus?: string;
+    } | undefined;
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const reviewsResponse = await secondCtx.app.inject({
+        method: 'GET',
+        path: '/signals/reviews?status=ALL&limit=20'
+      });
+      resolvedReview = reviewsResponse
+        .json()
+        .reviews.find((review) => review.alertId === seededAlert.alertId);
+
+      if (resolvedReview?.reviewStatus === 'COMPLETED' && resolvedReview.autoOutcome === 'WOULD_WIN') {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    expect(resolvedReview?.autoOutcome).toBe('WOULD_WIN');
+    expect(resolvedReview?.effectiveOutcome).toBe('WOULD_WIN');
+    expect(resolvedReview?.effectiveOutcomeSource).toBe('AUTO');
+    expect(resolvedReview?.reviewStatus).toBe('COMPLETED');
   });
 });

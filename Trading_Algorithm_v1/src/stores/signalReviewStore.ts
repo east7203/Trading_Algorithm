@@ -73,10 +73,37 @@ const resolveEffectiveOutcome = (
   };
 };
 
+const normalizeResolvedReviewState = (entry: SignalReviewEntry): SignalReviewEntry => {
+  if (entry.reviewStatus === 'COMPLETED') {
+    return entry;
+  }
+
+  if (entry.outcome) {
+    return {
+      ...entry,
+      reviewStatus: 'COMPLETED',
+      reviewedAt: entry.reviewedAt ?? entry.updatedAt,
+      reviewedBy: entry.reviewedBy ?? entry.acknowledgedBy
+    };
+  }
+
+  if (entry.autoOutcome) {
+    return {
+      ...entry,
+      reviewStatus: 'COMPLETED',
+      reviewedAt: entry.reviewedAt ?? entry.autoLabeledAt ?? entry.updatedAt,
+      reviewedBy: entry.reviewedBy ?? entry.autoLabeledBy ?? 'system-auto-reviewer'
+    };
+  }
+
+  return entry;
+};
+
 const syncAlertSnapshotState = (entry: SignalReviewEntry): SignalReviewEntry => {
-  const effective = resolveEffectiveOutcome(entry);
+  const normalizedEntry = normalizeResolvedReviewState(entry);
+  const effective = resolveEffectiveOutcome(normalizedEntry);
   const next: SignalReviewEntry = {
-    ...entry,
+    ...normalizedEntry,
     effectiveOutcome: effective.outcome,
     effectiveOutcomeSource: effective.source
   };
