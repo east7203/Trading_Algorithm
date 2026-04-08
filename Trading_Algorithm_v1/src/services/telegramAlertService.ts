@@ -17,6 +17,19 @@ export interface TelegramAlertStatus {
   lastError?: string;
 }
 
+const signalSourceLabel = (alert: SignalAlert): string => {
+  switch (alert.source) {
+    case 'MANUAL_ENGINE':
+      return 'Manual engine';
+    case 'MANUAL_TEST':
+      return 'Manual engine test';
+    case 'PAPER_AUTONOMY':
+      return 'Paper autonomy';
+    default:
+      return 'Signal engine';
+  }
+};
+
 const TELEGRAM_SEND_TIMEOUT_MS = 10_000;
 
 export class TelegramAlertService {
@@ -68,11 +81,11 @@ export class TelegramAlertService {
       : undefined;
     const text = [
       reminderLabel ? `${reminderLabel}: ${alert.title}` : `${alert.title}`,
-      `${alert.symbol} ${alert.side} • ${alert.setupType}`,
+      `${signalSourceLabel(alert)} • ${alert.symbol} ${alert.side} • ${alert.setupType}`,
       typeof alert.candidate.finalScore === 'number' ? `Score: ${alert.candidate.finalScore.toFixed(1)}` : 'Score: --',
       reminderLabel ? `${reminderLabel}: still unacknowledged` : undefined,
       alert.riskDecision.allowed
-        ? `Risk cleared at ${alert.riskDecision.finalRiskPct.toFixed(2)}%`
+        ? `Ready to take manually at ${alert.riskDecision.finalRiskPct.toFixed(2)}% risk`
         : `Blocked: ${alert.riskDecision.reasonCodes.join(', ') || 'guardrail'}`,
       nativeOpenUrl ? `Open App: ${nativeOpenUrl}` : undefined,
       webSignalUrl ? `Open: ${webSignalUrl}` : undefined

@@ -1429,6 +1429,7 @@ export class PaperAutonomyService {
       side: candidate.side,
       detectedAt: currentBar.timestamp,
       rankingModelId: 'paper-autonomy-engine',
+      source: 'PAPER_AUTONOMY',
       title: `${symbol} ${candidate.side} autonomous futures idea`,
       summary: summarizeCandidate(candidate),
       candidate,

@@ -263,6 +263,8 @@ export interface RankInput {
   candidates: SetupCandidate[];
 }
 
+export type SignalAlertSource = 'MANUAL_ENGINE' | 'MANUAL_TEST' | 'PAPER_AUTONOMY';
+
 export interface SignalAlert {
   alertId: string;
   symbol: SymbolCode;
@@ -271,6 +273,7 @@ export interface SignalAlert {
   detectedAt: string;
   rankingModelId: string;
   executionIntentId?: string;
+  source: SignalAlertSource;
   title: string;
   summary: string;
   candidate: SetupCandidate;

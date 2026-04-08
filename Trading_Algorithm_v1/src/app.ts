@@ -3416,6 +3416,24 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.get('/notifications/status', async (_request, reply) => {
+    return reply.status(200).send({
+      signalAlerts: {
+        enabled: Boolean(signalMonitorService),
+        started: signalMonitorService?.status().started ?? false,
+        alertCount: signalMonitorService?.status().alertCount ?? 0,
+        sourceLabel: 'Manual engine'
+      },
+      webPush: webPushNotificationService ? webPushNotificationService.status() : { enabled: false, ready: false, subscriberCount: 0 },
+      nativePush: nativePushNotificationService
+        ? nativePushNotificationService.status()
+        : { enabled: false, ready: false, deviceCount: 0, environment: 'production' },
+      telegram: telegramAlertService
+        ? telegramAlertService.status()
+        : { enabled: false, ready: false, chatConfigured: false }
+    });
+  });
+
   app.get('/notifications/ibkr-login-reminder/status', async (_request, reply) => {
     const status: OperationalReminderStatus | { enabled: false; started: false; timezone: string; sundayTime: string } =
       operationalReminderService
@@ -3445,6 +3463,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         symbol: alert.symbol,
         setupType: alert.setupType,
         side: alert.side,
+        source: alert.source,
+        title: alert.title,
         detectedAt: alert.detectedAt,
         finalScore: alert.candidate.finalScore ?? null
       }

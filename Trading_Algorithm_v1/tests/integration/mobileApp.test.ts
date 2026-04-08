@@ -150,6 +150,36 @@ describe('mobile app endpoints', () => {
     expect(payload.deliveries).toBeTruthy();
   });
 
+  it('reports notification readiness and the manual signal engine status', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({ method: 'GET', path: '/notifications/status' });
+    expect(response.statusCode).toBe(200);
+
+    const payload = response.json();
+    expect(payload.signalAlerts).toBeTruthy();
+    expect(payload.signalAlerts.enabled).toBe(true);
+    expect(payload.signalAlerts.sourceLabel).toBe('Manual engine');
+    expect(payload.webPush).toBeTruthy();
+    expect(payload.telegram).toBeTruthy();
+  });
+
+  it('sends a manual-engine test alert payload', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: { symbol: 'NQ' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.alert.source).toBe('MANUAL_TEST');
+    expect(payload.alert.title).toContain('manual engine test signal');
+  });
+
   it('sends a controlled research experiment notification with a short summary', async () => {
     const ctx = withApp();
 

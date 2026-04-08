@@ -55,6 +55,19 @@ const ensureParentDir = async (targetPath: string): Promise<void> => {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
 };
 
+const signalSourceLabel = (alert: SignalAlert): string => {
+  switch (alert.source) {
+    case 'MANUAL_ENGINE':
+      return 'Manual engine';
+    case 'MANUAL_TEST':
+      return 'Manual engine test';
+    case 'PAPER_AUTONOMY':
+      return 'Paper autonomy';
+    default:
+      return 'Signal engine';
+  }
+};
+
 class NativePushDeviceStore {
   private loaded = false;
   private records = new Map<string, NativePushDeviceRecord>();
@@ -193,12 +206,12 @@ export class NativePushNotificationService {
         alert: {
           title: alert.title,
           body: [
-            alert.symbol,
-            alert.side,
+            signalSourceLabel(alert),
+            `${alert.symbol} ${alert.side}`,
             typeof alert.candidate.finalScore === 'number'
               ? `Score ${alert.candidate.finalScore.toFixed(1)}`
               : 'Score --',
-            alert.riskDecision.allowed ? 'Ready to review' : alert.riskDecision.reasonCodes[0] || 'Risk blocked'
+            alert.riskDecision.allowed ? 'Ready to take manually' : alert.riskDecision.reasonCodes[0] || 'Risk blocked'
           ].join(' • ')
         },
         sound: 'default',
