@@ -3230,13 +3230,13 @@ const formatSessionLabel = (sessionKey) => {
 const buildSessionSummary = (reviews) => {
   if (!reviews.length) {
     return {
-      chip: 'Waiting on reviews',
+      chip: 'Waiting on outcomes',
       headline: 'No session summary yet',
-      context: 'The review loop will summarize the latest trading session once signals are reviewed or auto-resolved.',
-      strongest: 'Need more resolved reviews',
-      weakest: 'Need more resolved reviews',
-      tomorrow: 'Keep the review loop active so the app can learn what to tighten next.',
-      feedback: '0 manual • 0 auto'
+      context: 'The learning loop will summarize the latest trading session once signals resolve or the engine labels them automatically.',
+      strongest: 'Need more resolved cases',
+      weakest: 'Need more resolved cases',
+      tomorrow: 'Keep the engine running so the app can learn what to tighten next.',
+      feedback: '0 learned • 0 awaiting'
     };
   }
 
@@ -3307,16 +3307,16 @@ const buildSessionSummary = (reviews) => {
 
   const strongest = rankedBuckets[0]
     ? `${setupLabel(rankedBuckets[0].key)} ${Math.round(rankedBuckets[0].winRate * 100)}% (${rankedBuckets[0].wins}/${rankedBuckets[0].total})`
-    : 'Need more resolved reviews';
+    : 'Need more resolved cases';
   const weakest = rankedBuckets[rankedBuckets.length - 1]
     ? `${setupLabel(rankedBuckets[rankedBuckets.length - 1].key)} ${Math.round(rankedBuckets[rankedBuckets.length - 1].winRate * 100)}% (${rankedBuckets[rankedBuckets.length - 1].wins}/${rankedBuckets[rankedBuckets.length - 1].total})`
     : invalid > 0
       ? `${invalid} invalid setup${invalid === 1 ? '' : 's'} marked`
-      : 'Need more resolved reviews';
+      : 'Need more resolved cases';
 
-  let tomorrow = 'Keep feeding manual reviews so the ranking model learns what you actually want to trade.';
+  let tomorrow = 'Keep the engine learning from resolved outcomes so the ranking model can keep tightening edge.';
   if (pending > 0) {
-    tomorrow = `Clear ${pending} pending review${pending === 1 ? '' : 's'} before the next session so the model is not learning with blind spots.`;
+    tomorrow = `Let the engine finish ${pending} case${pending === 1 ? '' : 's'} that are still awaiting outcome before the next session.`;
   } else if (invalid >= 2) {
     tomorrow = `You rejected ${invalid} setup${invalid === 1 ? '' : 's'}. Tighten entry quality before trusting borderline signals tomorrow.`;
   } else if (blockedCount > readyCount && blockedCount > 0) {
@@ -3328,8 +3328,8 @@ const buildSessionSummary = (reviews) => {
   const sessionLabel = formatSessionLabel(sessionKey);
   const chip =
     pending > 0
-      ? `${sessionLabel} • ${pending} pending`
-      : `${sessionLabel} • ${completed} reviewed`;
+      ? `${sessionLabel} • ${pending} awaiting`
+      : `${sessionLabel} • ${completed} learned`;
   const headlineParts = [`${wins} win${wins === 1 ? '' : 's'}`, `${losses} loss${losses === 1 ? '' : 'es'}`];
   if (breakeven > 0) {
     headlineParts.push(`${breakeven} BE`);
@@ -3341,11 +3341,11 @@ const buildSessionSummary = (reviews) => {
   return {
     chip,
     headline: `${sessionLabel}: ${headlineParts.join(' • ')}`,
-    context: `${completed} reviewed • ${pending} pending • Ready ${readyCount} • Blocked ${blockedCount}`,
+    context: `${completed} learned • ${pending} awaiting • Ready ${readyCount} • Blocked ${blockedCount}`,
     strongest,
     weakest,
     tomorrow,
-    feedback: `${manualFeedback} manual • ${autoFeedback} auto`
+    feedback: `${completed} learned • ${pending} awaiting`
   };
 };
 
@@ -5777,7 +5777,7 @@ const renderReviewInsights = () => {
 
   if (!status?.enabled || !profile) {
     if (reviewSummaryChipEl) {
-      reviewSummaryChipEl.textContent = `${pendingCount} pending feedback`;
+      reviewSummaryChipEl.textContent = `${pendingCount} awaiting outcome`;
     }
     if (learningProfileChipEl) {
       learningProfileChipEl.textContent = 'Learning profile unavailable';
@@ -5829,7 +5829,7 @@ const renderReviewInsights = () => {
   const topLossReason = profile.topLossReasons?.[0] ?? null;
 
   if (reviewSummaryChipEl) {
-    reviewSummaryChipEl.textContent = `${profile.resolvedRecords} learned • ${pendingCount} pending`;
+    reviewSummaryChipEl.textContent = `${profile.resolvedRecords} learned • ${pendingCount} awaiting outcome`;
   }
   if (learningProfileChipEl) {
     learningProfileChipEl.textContent = `${profile.resolvedRecords} resolved • ${status.refreshIntervalMinutes}m refresh`;
@@ -5841,8 +5841,8 @@ const renderReviewInsights = () => {
   }
   if (learningContextEl) {
     learningContextEl.textContent = bestEdge && biggestDrag
-      ? `The model is currently favoring ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} and pulling back from ${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)}. ${pendingCount} pending review${pendingCount === 1 ? '' : 's'} can sharpen that read.`
-      : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. ${completedCount} completed review${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
+      ? `The model is currently favoring ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} and pulling back from ${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)}. ${pendingCount} case${pendingCount === 1 ? '' : 's'} are still awaiting outcome confirmation from the engine.`
+      : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. ${completedCount} completed case${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
   }
   if (learningResolvedRecordsEl) {
     learningResolvedRecordsEl.textContent = `${profile.resolvedRecords} resolved • ${profile.totalRecords} total records`;
@@ -6096,9 +6096,9 @@ const updateStats = () => {
   pendingCountEl.textContent = String(latestPending.length);
   reviewPendingStatEl.textContent = String(reviewSummary.pending);
   reviewSummaryChipEl.textContent = learningProfile
-    ? `${learningProfile.resolvedRecords} learned • ${reviewSummary.pending} pending`
-    : `${reviewSummary.pending} pending feedback`;
-  reviewPendingQueueChipEl.textContent = `${reviewSummary.pending} pending`;
+    ? `${learningProfile.resolvedRecords} learned • ${reviewSummary.pending} awaiting`
+    : `${reviewSummary.pending} awaiting outcome`;
+  reviewPendingQueueChipEl.textContent = `${reviewSummary.pending} waiting`;
   reviewCompletedQueueChipEl.textContent = learningProfile
     ? `${reviewSummary.completed} learned`
     : `${reviewSummary.completed} completed`;
@@ -6765,18 +6765,19 @@ const renderReviewCard = (review) => {
         reviewOutcomeEl.value = button.dataset.outcome ?? '';
       }
       syncReviewQuickPickState(node);
-      setStatus(`Status: feedback labeled ${button.textContent?.trim().toLowerCase()} • save to confirm`);
+      setStatus(`Status: engine note prepared ${button.textContent?.trim().toLowerCase()} • save to confirm`);
     });
   });
   reviewValidityEl?.addEventListener('change', () => syncReviewQuickPickState(node));
   reviewOutcomeEl?.addEventListener('change', () => syncReviewQuickPickState(node));
   syncReviewQuickPickState(node);
   node.querySelector('.reviewUpdatedAt').textContent = review.reviewedAt
-    ? `Reviewed ${fmtDateTime(review.reviewedAt)}`
+    ? `Resolved ${fmtDateTime(review.reviewedAt)}`
     : review.autoLabeledAt
-      ? `${isPaperLabeledReview(review) ? 'Paper result' : 'Auto-read'} ${fmtDateTime(review.autoLabeledAt)}`
-      : 'Not reviewed yet';
-  node.querySelector('.reviewedByHint').textContent = review.reviewedBy ? `by ${review.reviewedBy}` : '';
+      ? `${isPaperLabeledReview(review) ? 'Paper result tracked' : 'Engine read tracked'} ${fmtDateTime(review.autoLabeledAt)}`
+      : 'Awaiting engine outcome';
+  node.querySelector('.reviewedByHint').textContent =
+    review.reviewedBy && review.reviewedBy !== 'system-auto-reviewer' ? `by ${review.reviewedBy}` : '';
 
   const statusPill = node.querySelector('.reviewStatus');
   const statusLabel =
@@ -6787,13 +6788,18 @@ const renderReviewCard = (review) => {
         : review.autoOutcome && review.reviewStatus !== 'COMPLETED'
           ? 'AUTO'
         : review.reviewStatus === 'COMPLETED'
-          ? 'REVIEWED'
+          ? 'LEARNED'
           : 'NEW';
+  const statusToneClass = statusLabel === 'LEARNED' ? 'REVIEWED' : statusLabel;
   statusPill.textContent = statusLabel;
-  statusPill.classList.add(statusLabel);
+  statusPill.classList.add(statusToneClass);
 
+  const manualControlsEl = node.querySelector('.reviewManualControls');
+  if (manualControlsEl) {
+    manualControlsEl.hidden = true;
+  }
   const saveBtn = node.querySelector('.saveReviewBtn');
-  saveBtn.textContent = review.reviewStatus === 'COMPLETED' ? 'Update Review' : 'Save Review';
+  saveBtn.textContent = review.reviewStatus === 'COMPLETED' ? 'Update Outcome Note' : 'Save Outcome Note';
   saveBtn.addEventListener('click', () => saveReview(review, saveBtn));
 
   return node;
@@ -6818,7 +6824,7 @@ const loadReviews = async () => {
     const completed = latestReviews.filter((review) => review.reviewStatus === 'COMPLETED');
 
     if (!pending.length) {
-      renderEmpty(reviewsPendingListEl, 'No pending reviews. New signals will queue here automatically.');
+      renderEmpty(reviewsPendingListEl, 'No cases are waiting on an outcome right now. The engine will keep tracking new signals automatically.');
     } else {
       pending.forEach((review) => {
         reviewsPendingListEl.appendChild(renderReviewCard(review));

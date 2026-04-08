@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=50" />
+    <link rel="stylesheet" href="styles.css?v=51" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -233,7 +233,7 @@
               <p id="topSetupStat" class="stat-value stat-value-sm">--</p>
             </article>
             <article class="stat-card">
-              <p class="stat-label">Reviews Due</p>
+              <p class="stat-label">Awaiting Outcome</p>
               <p id="reviewPendingStat" class="stat-value">0</p>
             </article>
           </section>
@@ -286,7 +286,7 @@
             <article class="home-snapshot-card">
               <p class="stat-label">Learning Loop</p>
               <p id="homeReplayState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Resolved trades plus the feedback queue.</p>
+              <p class="home-snapshot-note">Resolved trades plus the live outcome queue.</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Model</p>
@@ -611,8 +611,8 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Needs Feedback</h3>
-              <span id="reviewPendingQueueChip" class="chip chip-neutral">0 pending</span>
+              <h3>Awaiting Outcome</h3>
+              <span id="reviewPendingQueueChip" class="chip chip-neutral">0 waiting</span>
             </div>
             <div id="reviewsPendingList" class="stack"></div>
           </section>
@@ -1338,45 +1338,47 @@
           <span>Risk <b class="signalRisk"></b></span>
           <span>1m Confidence <b class="signalConfidence"></b></span>
         </div>
-        <p class="review-section-label">Mark Your Review</p>
-        <p class="review-section-copy">Validity = was the setup actually clean? Outcome = what price likely did if you followed the plan.</p>
-        <div class="reviewQuickPickRow">
-          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="WOULD_WIN">Target First</button>
-          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="WOULD_LOSE">Stop First</button>
-          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="BREAKEVEN">Chop / B.E.</button>
-          <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="INVALID" data-outcome="WOULD_LOSE">Bad Setup</button>
-        </div>
-        <div class="review-form">
-          <label>
-            Was The Setup Valid?
-            <select class="reviewValidity">
-              <option value="">Select</option>
-              <option value="VALID">Valid</option>
-              <option value="INVALID">Invalid</option>
-              <option value="UNSURE">Unsure</option>
-            </select>
-          </label>
-          <label>
-            What Happened Next?
-            <select class="reviewOutcome">
-              <option value="">Select</option>
-              <option value="WOULD_WIN">Would Win</option>
-              <option value="WOULD_LOSE">Would Lose</option>
-              <option value="BREAKEVEN">Breakeven</option>
-              <option value="MISSED">Missed</option>
-              <option value="SKIPPED">Skipped</option>
-            </select>
-          </label>
-          <label>
-            Notes / Why?
-            <textarea class="reviewNotes" rows="3" placeholder="Why was it valid or invalid? What happened after the signal?"></textarea>
-          </label>
+        <div class="reviewManualControls">
+          <p class="review-section-label">Engine Outcome Tracking</p>
+          <p class="review-section-copy">The engine now completes these cases automatically once enough bars are saved.</p>
+          <div class="reviewQuickPickRow">
+            <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="WOULD_WIN">Target First</button>
+            <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="WOULD_LOSE">Stop First</button>
+            <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="VALID" data-outcome="BREAKEVEN">Chop / B.E.</button>
+            <button class="chip-btn secondary-btn reviewQuickPickBtn" type="button" data-validity="INVALID" data-outcome="WOULD_LOSE">Bad Setup</button>
+          </div>
+          <div class="review-form">
+            <label>
+              Was The Setup Valid?
+              <select class="reviewValidity">
+                <option value="">Select</option>
+                <option value="VALID">Valid</option>
+                <option value="INVALID">Invalid</option>
+                <option value="UNSURE">Unsure</option>
+              </select>
+            </label>
+            <label>
+              What Happened Next?
+              <select class="reviewOutcome">
+                <option value="">Select</option>
+                <option value="WOULD_WIN">Would Win</option>
+                <option value="WOULD_LOSE">Would Lose</option>
+                <option value="BREAKEVEN">Breakeven</option>
+                <option value="MISSED">Missed</option>
+                <option value="SKIPPED">Skipped</option>
+              </select>
+            </label>
+            <label>
+              Notes / Why?
+              <textarea class="reviewNotes" rows="3" placeholder="Why was it valid or invalid? What happened after the signal?"></textarea>
+            </label>
+          </div>
+          <button class="saveReviewBtn primary-btn" type="button">Save Review</button>
         </div>
         <div class="item-meta">
-          <span class="reviewUpdatedAt">Not reviewed yet</span>
+          <span class="reviewUpdatedAt">Awaiting engine outcome</span>
           <span class="reviewedByHint"></span>
         </div>
-        <button class="saveReviewBtn primary-btn" type="button">Save Review</button>
       </article>
     </template>
 
@@ -1475,6 +1477,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=50"></script>
+    <script type="module" src="app.js?v=51"></script>
   </body>
 </html>
