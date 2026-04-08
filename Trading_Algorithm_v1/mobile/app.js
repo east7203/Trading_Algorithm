@@ -539,7 +539,7 @@ const buildReplayLearningImpact = (review) => {
     engineCount: items.length,
     summary:
       details[0] ??
-      'Save a replay review with a directional outcome to feed SMC, Paper Autonomy, and Research.',
+      'Save an outcome note with a directional result to feed SMC, Paper Autonomy, and Research.',
     details
   };
 };
@@ -3095,13 +3095,13 @@ const reviewPerformanceSummary = (reviews) => {
     const blocked = diagnosticsSummary.blockedVsReady?.blockedResolved ?? 0;
 
     return {
-      bySetup: setup ? `${setup.label} ${Math.round(setup.winRate * 100)}% (${setup.wins}/${setup.total})` : 'Need more resolved reviews',
+      bySetup: setup ? `${setup.label} ${Math.round(setup.winRate * 100)}% (${setup.wins}/${setup.total})` : 'Need more learned cases',
       byTime: timeBucket
         ? `${timeBucket.label} ${Math.round(timeBucket.winRate * 100)}% (${timeBucket.wins}/${timeBucket.total})`
-        : 'Need more resolved reviews',
+        : 'Need more learned cases',
       byScore: scoreBucket
         ? `${scoreBucket.label} ${Math.round(scoreBucket.winRate * 100)}% (${scoreBucket.wins}/${scoreBucket.total})`
-        : 'Need more resolved reviews',
+        : 'Need more learned cases',
       blockedVsReady: `Ready ${ready} • Blocked ${blocked}`
     };
   }
@@ -3116,9 +3116,9 @@ const reviewPerformanceSummary = (reviews) => {
   });
   if (!resolved.length) {
     return {
-      bySetup: 'Need more resolved reviews',
-      byTime: 'Need more resolved reviews',
-      byScore: 'Need more resolved reviews',
+      bySetup: 'Need more learned cases',
+      byTime: 'Need more learned cases',
+      byScore: 'Need more learned cases',
       blockedVsReady: 'No resolved signals yet'
     };
   }
@@ -3137,7 +3137,7 @@ const reviewPerformanceSummary = (reviews) => {
       .sort((a, b) => b.ratio - a.ratio || b.total - a.total);
 
     if (!ranked.length) {
-      return 'Need more resolved reviews';
+      return 'Need more learned cases';
     }
 
     const top = ranked[0];
@@ -4445,7 +4445,7 @@ const renderChartLightboxDetails = (context) => {
         : reviewOutcomeLabel(review.outcome)
       : review.autoOutcome
         ? `Auto-labeled ${reviewOutcomeLabel(review.autoOutcome)}`
-        : 'Pending review'
+        : 'Awaiting outcome'
     : alert?.reviewState?.acknowledgedAt
       ? 'Seen on desk'
       : alertLike?.riskDecision?.allowed
@@ -4532,7 +4532,7 @@ const renderChartLightboxDetails = (context) => {
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Review State</p>
           <p class="chart-lightbox-context-value">${escapeHtml(reviewStateSummary)}</p>
-          <p class="chart-lightbox-detail-note">${escapeHtml(reviewedAt ? `Updated ${fmtDateTimeCompact(reviewedAt)}` : 'No manual review saved yet')}</p>
+          <p class="chart-lightbox-detail-note">${escapeHtml(reviewedAt ? `Updated ${fmtDateTimeCompact(reviewedAt)}` : 'No saved outcome note yet')}</p>
         </article>
         <article class="chart-lightbox-context-card">
           <p class="chart-lightbox-detail-label">Execution Read</p>
@@ -6013,10 +6013,10 @@ const renderDiagnostics = () => {
     : '--';
   diagLearningSetupEl.textContent = topSetup
     ? `${topSetup.label} ${Math.round(topSetup.winRate * 100)}%`
-    : 'Need more resolved reviews';
+    : 'Need more learned cases';
   diagLearningFrameEl.textContent = topFrame
     ? `${topFrame.label} ${Math.round(topFrame.winRate * 100)}%`
-    : 'Need more resolved reviews';
+    : 'Need more learned cases';
   diagTrainingFramesEl.textContent = analysisFrames.length ? analysisFrames.join(' • ') : '--';
   diagTrainingTriggerEl.textContent = training?.enabled
     ? training?.promotion?.alwaysPromoteLatestModel
@@ -6078,7 +6078,7 @@ const renderHero = () => {
 
   const feedState = getFeedStateMeta(diagnostics ?? null);
   heroFeedBadgeEl.textContent = `Feed ${feedState.segment}`;
-  heroPushBadgeEl.textContent = `${readyCount} ready • ${reviewSummary.pending} review`;
+  heroPushBadgeEl.textContent = `${readyCount} ready • ${reviewSummary.pending} awaiting`;
   heroLastAlertEl.textContent = diagnostics?.lastAlert
     ? `Last alert ${fmtTime(diagnostics.lastAlert.detectedAt)}`
     : 'No alert yet';
@@ -6502,7 +6502,7 @@ const saveReview = async (review, buttonEl) => {
   const reviewedBy = approvedByInput.value.trim() || localStorage.getItem(APPROVER_KEY) || '';
 
   if (!validity && !outcome && !notes) {
-    setStatus('Status: add a validity, outcome, or note before saving a review', true);
+    setStatus('Status: add an outcome, validity, or note before saving the learning case', true);
     return;
   }
 
@@ -6510,7 +6510,7 @@ const saveReview = async (review, buttonEl) => {
   buttonEl.textContent = 'Saving...';
 
   try {
-    const response = await apiFetch('/signals/reviews', {
+    const response = await apiFetch('/signals/learning', {
       method: 'POST',
       body: JSON.stringify({
         alertId: review.alertId,
@@ -6524,18 +6524,18 @@ const saveReview = async (review, buttonEl) => {
     latestReplayLearningByAlertId.set(review.alertId, response?.learning ?? null);
     const learningImpact = buildReplayLearningImpact({
       ...review,
-      ...response?.review
+      ...(response?.caseEntry ?? response?.review)
     });
     const impactLabels = learningImpact.items.map((item) => item.label).slice(0, 3).join(' • ');
 
     vibrateLight();
     await Promise.all([loadReviews(), loadTrades(), loadDiagnostics()]);
-    setStatus(impactLabels ? `Status: review saved • ${impactLabels}` : 'Status: review saved');
+    setStatus(impactLabels ? `Status: learning case saved • ${impactLabels}` : 'Status: learning case saved');
   } catch (error) {
-    setStatus(`Status: review save failed (${error.message})`, true);
+    setStatus(`Status: learning case save failed (${error.message})`, true);
   } finally {
     buttonEl.disabled = false;
-    buttonEl.textContent = 'Save Review';
+    buttonEl.textContent = 'Save Outcome Note';
   }
 };
 
@@ -6612,7 +6612,7 @@ const renderReviewCard = (review) => {
     reviewLearningSummaryEl.textContent = learningImpact.summary;
   } else {
     reviewLearningImpactRowEl.remove();
-    reviewLearningSummaryEl.textContent = 'Save a directional replay review to feed the live ranking and autonomous engines.';
+    reviewLearningSummaryEl.textContent = 'Save a directional outcome note to feed the live ranking and autonomous engines.';
   }
   const reviewChartEl = node.querySelector('.reviewSnapshotChart');
   const replayMove = isPendingReview ? summarizeReplayMove(chartSnapshot, review.alertSnapshot?.candidate) : null;
@@ -6713,7 +6713,7 @@ const renderReviewCard = (review) => {
     ? `Updated ${fmtRelativeMinutes(review.reviewedAt)}`
     : review.autoLabeledAt
       ? `${isPaperLabeledReview(review) ? 'Paper-labeled' : 'Auto-labeled'} ${fmtRelativeMinutes(review.autoLabeledAt)}`
-      : 'Waiting on your read';
+      : 'Waiting on engine outcome';
   node.querySelector('.reviewRrValue').textContent = calcRr(
     review.alertSnapshot?.candidate?.entry,
     review.alertSnapshot?.candidate?.stopLoss,
@@ -6807,9 +6807,9 @@ const renderReviewCard = (review) => {
 
 const loadReviews = async () => {
   try {
-    const { reviews, summary } = await apiFetch('/signals/reviews?status=ALL&limit=80');
-    latestReviews = reviews ?? [];
-    reviewSummary = summary ?? { pending: 0, completed: 0, total: 0 };
+    const response = await apiFetch('/signals/learning?status=ALL&limit=80');
+    latestReviews = response?.cases ?? response?.reviews ?? [];
+    reviewSummary = response?.learningSummary ?? response?.summary ?? { pending: 0, completed: 0, total: 0 };
     const activeIds = new Set(latestReviews.map((review) => review.alertId));
     [...latestReplayLearningByAlertId.keys()].forEach((alertId) => {
       if (!activeIds.has(alertId)) {
@@ -6848,7 +6848,7 @@ const loadReviews = async () => {
     renderReviewInsights();
     updateStats();
     renderPaperAccount();
-    renderEmpty(reviewsPendingListEl, `Failed to load reviews: ${error.message}`);
+    renderEmpty(reviewsPendingListEl, `Failed to load learning cases: ${error.message}`);
     renderEmpty(reviewsCompletedListEl, 'Learned cases unavailable.');
   }
 };

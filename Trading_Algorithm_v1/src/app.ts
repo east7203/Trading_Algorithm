@@ -60,7 +60,7 @@ import {
   type IbkrReconnectStateSnapshot
 } from './stores/ibkrReconnectStateStore.js';
 import { SignalMonitorSettingsStore } from './stores/signalMonitorSettingsStore.js';
-import { SignalReviewStore } from './stores/signalReviewStore.js';
+import { SignalReviewStore, type SignalReviewSummary } from './stores/signalReviewStore.js';
 import { TradeLearningStore } from './stores/tradeLearningStore.js';
 import {
   SelfLearningService,
@@ -2568,6 +2568,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         signalCount: alerts.length,
         readyCount,
         blockedCount: Math.max(0, alerts.length - readyCount),
+        awaitingOutcomeCount: reviewSummary.pending,
+        learnedCaseCount: reviewSummary.completed,
         reviewPending: reviewSummary.pending,
         modelId: context.desk.rankingModelId,
         paperAccount: paper
@@ -2695,6 +2697,37 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     };
   };
 
+  const buildLearningSummaryPayload = (summary: SignalReviewSummary) => ({
+    awaitingOutcome: summary.pending,
+    learned: summary.completed,
+    total: summary.total,
+    manualResolved: summary.manualResolved,
+    autoResolved: summary.autoResolved,
+    unresolvedOutcome: summary.pendingOutcome,
+    pending: summary.pending,
+    completed: summary.completed,
+    pendingOutcome: summary.pendingOutcome
+  });
+
+  const buildLearningCollectionPayload = (reviews: SignalReviewEntry[], summary: SignalReviewSummary) => ({
+    cases: reviews,
+    learningSummary: buildLearningSummaryPayload(summary),
+    reviews,
+    summary
+  });
+
+  const buildLearningMutationPayload = (
+    review: SignalReviewEntry,
+    summary: SignalReviewSummary,
+    extras: Record<string, unknown> = {}
+  ) => ({
+    caseEntry: review,
+    learningSummary: buildLearningSummaryPayload(summary),
+    review,
+    summary,
+    ...extras
+  });
+
   const mobileRoot = path.resolve(process.cwd(), 'public', 'mobile');
 
   app.register(fastifyStatic, {
@@ -2807,12 +2840,32 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
       return reply.status(200).send({
         ok: true,
-        review,
-        summary
+        ...buildLearningMutationPayload(review, summary)
       });
     } catch (error) {
       return reply.status(400).send({ message: safeErrorMessage(error, 'Replay export failed') });
     }
+  });
+
+  app.get('/signals/learning', async (request, reply) => {
+    const query = (request.query as { status?: string; limit?: string } | undefined) ?? {};
+    const normalizedStatus = (query.status ?? 'ALL').toUpperCase();
+    const parsedStatus = normalizedStatus === 'ALL' ? { success: true as const, data: 'ALL' as const } : signalReviewStatusSchema.safeParse(normalizedStatus);
+    const status = parsedStatus.success ? parsedStatus.data : null;
+    if (!status) {
+      return reply.status(400).send({
+        message: 'Invalid learning status filter'
+      });
+    }
+
+    const parsedLimit = Number.parseInt(query.limit ?? '40', 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 40;
+    const [reviews, summary] = await Promise.all([
+      signalReviewStore.listReviews(status as 'ALL' | 'PENDING' | 'COMPLETED', limit),
+      signalReviewStore.summary()
+    ]);
+
+    return reply.status(200).send(buildLearningCollectionPayload(reviews, summary));
   });
 
   app.get('/signals/reviews', async (request, reply) => {
@@ -2833,10 +2886,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       signalReviewStore.summary()
     ]);
 
-    return reply.status(200).send({
-      reviews,
-      summary
-    });
+    return reply.status(200).send(buildLearningCollectionPayload(reviews, summary));
   });
 
   app.post('/signals/replay-history', async (request, reply) => {
@@ -2921,8 +2971,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       });
 
       return reply.status(200).send({
-        review,
-        summary,
+        ...buildLearningMutationPayload(review, summary),
         tradeLearning: await tradeLearningStore.getRecord(review.alertId),
         learning: {
           paperAutonomy: paperAutonomyLearning ?? null,
@@ -2931,6 +2980,44 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       });
     } catch (error) {
       return reply.status(400).send({ message: safeErrorMessage(error, 'Review update failed') });
+    }
+  });
+
+  app.post('/signals/learning', async (request, reply) => {
+    try {
+      const body = parseOrThrow(signalReviewUpsertBodySchema.safeParse(request.body));
+      const review = await signalReviewStore.upsertReview(body);
+      await syncTradeLearningReview(review);
+      const summary = await signalReviewStore.summary();
+      const paperAutonomyLearning = await paperAutonomyService?.recordReplayReview(review);
+      const marketResearchLearning = await marketResearchService?.recordReplayReview(review);
+
+      journalStore.addEvent({
+        type: 'SIGNAL_REVIEWED',
+        timestamp: review.reviewedAt ?? review.updatedAt,
+        candidateId: review.candidateId,
+        symbol: review.symbol,
+        payload: {
+          alertId: review.alertId,
+          reviewId: review.reviewId,
+          reviewStatus: review.reviewStatus,
+          validity: review.validity ?? null,
+          outcome: review.outcome ?? null,
+          reviewedBy: review.reviewedBy ?? null,
+          notesPresent: Boolean(review.notes)
+        }
+      });
+
+      return reply.status(200).send({
+        ...buildLearningMutationPayload(review, summary),
+        tradeLearning: await tradeLearningStore.getRecord(review.alertId),
+        learning: {
+          paperAutonomy: paperAutonomyLearning ?? null,
+          marketResearch: marketResearchLearning ?? null
+        }
+      });
+    } catch (error) {
+      return reply.status(400).send({ message: safeErrorMessage(error, 'Learning case update failed') });
     }
   });
 
@@ -3033,6 +3120,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
       .slice(0, 8);
     const reviews = await signalReviewStore.summary();
+    const learningCases = buildLearningSummaryPayload(reviews);
     const tradeLearning = await tradeLearningStore.summary();
     const selfLearning = selfLearningService?.status() ?? { enabled: false, started: false };
     const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
@@ -3122,6 +3210,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         learningPerformance,
         tradeLearning,
         selfLearning,
+        learningCases,
         reviews,
         signalConfig,
         lastAlert: lastAlert

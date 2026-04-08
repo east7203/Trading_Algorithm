@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trading-assist-mobile-v51';
+const CACHE_NAME = 'trading-assist-mobile-v52';
 const ASSETS = [
   './',
   'index.html',

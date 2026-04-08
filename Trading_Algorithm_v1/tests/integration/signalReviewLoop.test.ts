@@ -234,17 +234,17 @@ describe('signal review loop integration', () => {
 
     const pendingResponse = await ctx.app.inject({
       method: 'GET',
-      path: '/signals/reviews?status=PENDING&limit=10'
+      path: '/signals/learning?status=PENDING&limit=10'
     });
     expect(pendingResponse.statusCode).toBe(200);
-    expect(pendingResponse.json().summary.pending).toBeGreaterThan(0);
+    expect(pendingResponse.json().learningSummary.awaitingOutcome).toBeGreaterThan(0);
 
-    const review = pendingResponse.json().reviews[0];
+    const review = pendingResponse.json().cases[0];
     expect(review.alertSnapshot.symbol).toBe('NQ');
 
     const saveResponse = await ctx.app.inject({
       method: 'POST',
-      path: '/signals/reviews',
+      path: '/signals/learning',
       payload: {
         alertId: review.alertId,
         validity: 'VALID',
@@ -255,8 +255,9 @@ describe('signal review loop integration', () => {
     });
 
     expect(saveResponse.statusCode).toBe(200);
-    expect(saveResponse.json().review.reviewStatus).toBe('COMPLETED');
-    expect(saveResponse.json().review.outcome).toBe('WOULD_WIN');
+    expect(saveResponse.json().caseEntry.reviewStatus).toBe('COMPLETED');
+    expect(saveResponse.json().caseEntry.outcome).toBe('WOULD_WIN');
+    expect(saveResponse.json().learningSummary.learned).toBeGreaterThan(0);
     expect(saveResponse.json().tradeLearning.reasoning.reviewNotes).toBe('Held the break and clean continuation.');
 
     const diagnostics = await ctx.app.inject({
@@ -308,12 +309,12 @@ describe('signal review loop integration', () => {
     const reopened = withApp(storePath, settingsPath, tradeLearningPath);
     const completedResponse = await reopened.app.inject({
       method: 'GET',
-      path: '/signals/reviews?status=COMPLETED&limit=10'
+      path: '/signals/learning?status=COMPLETED&limit=10'
     });
 
     expect(completedResponse.statusCode).toBe(200);
-    expect(completedResponse.json().reviews[0].outcome).toBe('WOULD_WIN');
-    expect(completedResponse.json().reviews[0].reviewedBy).toBe('qa-reviewer');
+    expect(completedResponse.json().cases[0].outcome).toBe('WOULD_WIN');
+    expect(completedResponse.json().cases[0].reviewedBy).toBe('qa-reviewer');
 
     const tradeLearningSummary = await reopened.app.inject({
       method: 'GET',
@@ -332,7 +333,7 @@ describe('signal review loop integration', () => {
 
     const saveResponse = await ctx.app.inject({
       method: 'POST',
-      path: '/signals/reviews',
+      path: '/signals/learning',
       payload: {
         alertId: 'replay-autonomy-learning-alert',
         validity: 'VALID',
