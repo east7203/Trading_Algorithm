@@ -6986,7 +6986,7 @@ select {
 
 .learning-pattern-card {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   padding: 15px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.035);
@@ -7015,9 +7015,42 @@ select {
   color: rgba(226, 232, 240, 0.74);
 }
 
+.learning-pattern-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.learning-pattern-metric {
+  display: grid;
+  gap: 4px;
+  padding: 10px 10px 9px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.learning-pattern-metric-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.52);
+}
+
+.learning-pattern-metric-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #f8fafc;
+}
+
 @media (max-width: 560px) {
   .learning-pattern-head {
     flex-direction: column;
+  }
+
+  .learning-pattern-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -5801,6 +5801,24 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
         <p class="learning-pattern-title">${escapeHtml(describeLearningBucketLabel(category, bucket))}</p>
         <span class="pill ${Number(bucket.scoreAdjustment) >= 0 ? 'chip-online' : 'chip-offline'}">${escapeHtml(learningBucketMeta(bucket))}</span>
       </div>
+      <div class="learning-pattern-metrics">
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Sample</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(String(bucket.resolved))}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Win Rate</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(bucket.winRate * 100, 0)}%`)}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Avg R</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(bucket.avgR, 2)}R`)}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Score</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${bucket.scoreAdjustment > 0 ? '+' : ''}${fmtNum(bucket.scoreAdjustment, 1)}`)}</span>
+        </div>
+      </div>
       <p class="learning-pattern-note">${escapeHtml(learningBucketNote(bucket))}</p>
     `;
     container.appendChild(card);
