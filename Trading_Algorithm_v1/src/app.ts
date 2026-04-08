@@ -2114,13 +2114,15 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         await tradeLearningStore.syncPaperTrade(trade, trade.closedAt ?? trade.filledAt ?? trade.submittedAt);
       }
     }
+
+    selfLearningService?.queueRefresh();
   })().catch((error) => {
     app.log.error({ err: error }, 'trade learning bootstrap failed');
   });
 
   const selfLearningStartPromise = selfLearningService
     ? (async () => {
-        await tradeLearningBootstrapPromise;
+        await tradeLearningStartPromise;
         await selfLearningService.start();
       })().catch((error) => {
         app.log.error({ err: error }, 'self-learning service failed to start');
@@ -2133,7 +2135,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
 
     if (!selfLearningService.status().started) {
-      await tradeLearningBootstrapPromise;
+      await tradeLearningStartPromise;
       await selfLearningService.start();
     }
 
