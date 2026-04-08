@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { getCmeEquitySessionState, type CmeEquitySessionState } from './domain/cmeEquityHours.js';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
-import type { SignalAlert, SignalReviewEntry, SignalReviewOutcome, SymbolCode } from './domain/types.js';
+import type { NewsEvent, SignalAlert, SignalReviewEntry, SignalReviewOutcome, SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
 import { evaluateRisk } from './services/riskEngine.js';
 import { ExecutionService } from './services/executionService.js';
@@ -375,6 +375,22 @@ const formatWinRateDelta = (value?: number): string => {
   const points = value * 100;
   const sign = points > 0 ? '+' : '';
   return `${sign}${points.toFixed(2)} pts`;
+};
+
+const listUpcomingEventsWithTimeout = async (
+  calendarClient: EconomicCalendarClient,
+  timeoutMs = 4_000
+): Promise<NewsEvent[]> => {
+  try {
+    return await Promise.race([
+      calendarClient.listUpcomingEvents(),
+      new Promise<NewsEvent[]>((resolve) => {
+        setTimeout(() => resolve([]), timeoutMs);
+      })
+    ]);
+  } catch {
+    return [];
+  }
 };
 
 const readRecentArchiveBars = async (archivePath: string | undefined, maxLines = 40): Promise<OneMinuteBar[]> => {
@@ -2306,7 +2322,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const research = marketResearchService ? marketResearchService.status() : null;
     const paper = await syncPaperSessionState();
     const lastAlert = signalMonitorService?.listAlerts(1)[0];
-    const calendarEvents = (await calendarClient.listUpcomingEvents())
+    const calendarEvents = (await listUpcomingEventsWithTimeout(calendarClient))
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
       .slice(0, 3);
     const calendarStatus = calendarClient.status();
@@ -3114,7 +3130,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         timezone: 'America/Chicago',
         sundayTime: '16:30'
       } satisfies OperationalReminderStatus);
-    const calendarEvents = await calendarClient.listUpcomingEvents();
+    const calendarEvents = await listUpcomingEventsWithTimeout(calendarClient);
     const calendarStatus = calendarClient.status();
     const upcomingCalendarEvents = calendarEvents
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
@@ -3251,7 +3267,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           ? Number.parseInt(limitParam, 10)
           : 12;
     const limit = Number.isFinite(parsedLimit) ? Math.min(50, Math.max(1, parsedLimit)) : 12;
-    const events = (await calendarClient.listUpcomingEvents())
+    const events = (await listUpcomingEventsWithTimeout(calendarClient))
       .filter((event) => Date.parse(event.startsAt) >= Date.now() - 5 * 60 * 1000)
       .slice(0, limit);
 
