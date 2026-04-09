@@ -208,16 +208,35 @@ export class OperationalReminderService {
         }
       }
 
-      await Promise.allSettled([
-        this.appNotifier?.notifyGeneric({
-          title,
-          body,
-          url: statusUrl,
-          tag: kind === 'test' ? 'ibkr-login-reminder-test' : 'ibkr-login-reminder',
-          category: 'broker-recovery',
-          priority: 'high'
-        }),
-        this.telegramNotifier?.notifyGeneric({
+      let appDelivery:
+        | {
+            attempted: number;
+            delivered: number;
+            removed: number;
+          }
+        | undefined;
+      let appError: string | undefined;
+
+      if (this.appNotifier) {
+        try {
+          appDelivery = await this.appNotifier.notifyGeneric({
+            title,
+            body,
+            url: statusUrl,
+            tag: kind === 'test' ? 'ibkr-login-reminder-test' : 'ibkr-login-reminder',
+            category: 'broker-recovery',
+            priority: 'high'
+          });
+        } catch (error) {
+          appError = (error as Error).message;
+        }
+      }
+
+      const shouldFallbackToTelegram =
+        Boolean(this.telegramNotifier) && (!this.appNotifier || appError || (appDelivery?.delivered ?? 0) === 0);
+
+      if (shouldFallbackToTelegram) {
+        await this.telegramNotifier?.notifyGeneric({
           title,
           lines: [
             body,
@@ -230,8 +249,8 @@ export class OperationalReminderService {
             { text: 'Open Status', url: statusUrl },
             { text: 'Last-Resort Website', url: this.config.ibkrMobileUrl }
           ]
-        })
-      ]);
+        });
+      }
 
       this.lastError = undefined;
       if (dayKey) {

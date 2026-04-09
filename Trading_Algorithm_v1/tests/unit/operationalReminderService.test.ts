@@ -52,11 +52,7 @@ describe('OperationalReminderService', () => {
     expect(secondSend).toBe(false);
     expect(appCalls).toHaveLength(1);
     expect(appCalls[0].url).toBe('https://example.test/mobile/?tab=status&focus=ibkr-login');
-    expect(tgCalls).toHaveLength(1);
-    expect(tgCalls[0].buttons).toEqual([
-      { text: 'Open Status', url: 'https://example.test/mobile/?tab=status&focus=ibkr-login' },
-      { text: 'Last-Resort Website', url: 'https://ndcdyn.interactivebrokers.com/sso/Login' }
-    ]);
+    expect(tgCalls).toHaveLength(0);
     expect(service.status().lastSentAt).toBeTruthy();
   });
 
@@ -96,6 +92,42 @@ describe('OperationalReminderService', () => {
     await service.sendTestReminder();
 
     expect(appCalls).toEqual([{ title: 'IBKR login reminder test', url: 'https://example.test/mobile/?tab=status&focus=ibkr-login' }]);
+    expect(tgCalls).toEqual([]);
+    expect(reminderHooks).toEqual(['test']);
+  });
+
+  it('falls back to Telegram when the app reminder does not deliver', async () => {
+    const appCalls: Array<{ title: string; url?: string }> = [];
+    const tgCalls: Array<{ title: string; buttons?: Array<{ text: string; url: string }> }> = [];
+
+    const service = new OperationalReminderService(
+      {
+        enabled: true,
+        timezone: 'America/Chicago',
+        sundayHour: 16,
+        sundayMinute: 30,
+        checkIntervalMs: 60_000,
+        appUrl: 'https://example.test',
+        ibkrTargetUrl: 'https://example.test/console',
+        ibkrMobileUrl: 'https://ndcdyn.interactivebrokers.com/sso/Login'
+      },
+      {
+        notifyGeneric: async (message) => {
+          appCalls.push({ title: message.title, url: message.url });
+          return { attempted: 1, delivered: 0, removed: 0 };
+        }
+      },
+      {
+        notifyGeneric: async (message) => {
+          tgCalls.push({ title: message.title, buttons: message.buttons });
+          return { sent: true };
+        }
+      }
+    );
+
+    await service.sendTestReminder();
+
+    expect(appCalls).toEqual([{ title: 'IBKR login reminder test', url: 'https://example.test/mobile/?tab=status&focus=ibkr-login' }]);
     expect(tgCalls).toEqual([
       {
         title: 'IBKR login reminder test',
@@ -105,6 +137,5 @@ describe('OperationalReminderService', () => {
         ]
       }
     ]);
-    expect(reminderHooks).toEqual(['test']);
   });
 });

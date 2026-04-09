@@ -26,6 +26,43 @@ afterEach(async () => {
 });
 
 describe('IBKR reconnect fallback notifications', () => {
+  it('keeps Telegram quiet when the IBKR reminder reaches app subscribers', async () => {
+    const webPushMessages: Array<Record<string, unknown>> = [];
+    const telegramMessages: Array<Record<string, unknown>> = [];
+
+    const ctx = buildApp({
+      operationalReminderEnabled: true,
+      ibkrLoginTrigger: async () => ({ ok: true }),
+      ibkrResendPushTrigger: async () => ({ ok: true }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          webPushMessages.push(message);
+          return { attempted: 1, delivered: 1, removed: 0 };
+        }
+      } as never,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          telegramMessages.push(message);
+          return { sent: true };
+        }
+      } as never
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/ibkr-login-reminder'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(webPushMessages).toHaveLength(1);
+    expect(webPushMessages[0].title).toBe('IBKR login reminder test');
+    expect(telegramMessages).toHaveLength(0);
+  });
+
   it('sends visible progress updates when manual recovery is triggered from the app', async () => {
     const webPushMessages: Array<Record<string, unknown>> = [];
     const telegramMessages: Array<Record<string, unknown>> = [];
