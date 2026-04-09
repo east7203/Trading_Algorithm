@@ -1597,6 +1597,10 @@ select:focus {
   margin-bottom: 14px;
 }
 
+.training-panel-head > div {
+  min-width: 0;
+}
+
 .training-panel-grid {
   display: grid;
   gap: 10px;
@@ -1608,6 +1612,7 @@ select:focus {
   border: 1px solid rgba(154, 198, 242, 0.1);
   border-radius: 16px;
   background: rgba(8, 17, 29, 0.66);
+  min-width: 0;
 }
 
 .training-panel-card-wide {
@@ -1619,6 +1624,8 @@ select:focus {
   font-size: 0.94rem;
   font-weight: 700;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .training-panel-value-compact {
@@ -2539,6 +2546,11 @@ h1 {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.recovery-panel-head > div {
+  min-width: 0;
 }
 
 .recovery-state-cluster {
@@ -2546,6 +2558,7 @@ h1 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  max-width: 100%;
 }
 
 .recovery-state-pill {
@@ -3210,6 +3223,8 @@ h1 {
 .recovery-event-detail,
 .insight-text {
   color: var(--text-soft);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .signal-actions .chip-btn,
@@ -3322,6 +3337,7 @@ h1 {
 
 .status-segment {
   border-radius: 18px;
+  min-width: 0;
 }
 
 .calendar-event-card,
@@ -6882,6 +6898,12 @@ select {
 /* ---- Section heads ---- */
 .section-head {
   align-items: center;
+}
+
+.section-head > div,
+.section-subhead > div,
+.status-segment-value {
+  min-width: 0;
 }
 
 .section-subhead {
