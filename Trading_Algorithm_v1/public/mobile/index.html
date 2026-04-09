@@ -657,14 +657,17 @@
         </section>
 
         <section id="view-settings" class="view view-settings">
-          <div class="section-head">
+          <div class="section-head control-section-head">
             <div>
+              <p class="section-kicker control-section-kicker">Desk Operations</p>
               <h2>Desk Control</h2>
+              <p class="control-section-copy">Tune the paper engine, alert delivery, and operator workspace from one clean control room.</p>
             </div>
           </div>
-          <section class="settings-block settings-block-accent system-summary-block">
+          <section class="settings-block settings-block-accent system-summary-block control-overview-card">
             <div class="block-head">
-              <div>
+              <div class="block-copy">
+                <p class="block-eyebrow">Control Center</p>
                 <h3>Your Desk In Plain English</h3>
                 <p class="section-kicker">A plain-language snapshot so you do not need to read raw diagnostics.</p>
               </div>
@@ -691,33 +694,40 @@
           </section>
           <section class="settings-block">
             <div class="block-head">
-              <div>
+              <div class="block-copy">
+                <p class="block-eyebrow">Paper Engine</p>
                 <h3>Paper Autonomy</h3>
                 <p class="section-kicker">Let the paper engine trade on its own. Set the cap to 0 if you want it completely unrestricted.</p>
               </div>
             </div>
-            <div class="row row-wrap">
-              <label class="inline-label" for="paperAutonomyMode">Autonomy mode</label>
-              <select id="paperAutonomyMode">
-                <option value="UNRESTRICTED">Unrestricted learning</option>
-                <option value="FOLLOW_ALLOWED_ALERTS">Follow allowed alerts only</option>
-              </select>
+            <div class="stack controls-stack">
+              <div class="control-row">
+                <label for="paperAutonomyMode">Autonomy Mode</label>
+                <select id="paperAutonomyMode">
+                  <option value="UNRESTRICTED">Unrestricted learning</option>
+                  <option value="FOLLOW_ALLOWED_ALERTS">Follow allowed alerts only</option>
+                </select>
+              </div>
+              <div class="control-row">
+                <label for="paperAutonomyRiskPct">Autonomy Risk %</label>
+                <input id="paperAutonomyRiskPct" type="number" min="0.01" max="5" step="0.01" inputmode="decimal" />
+              </div>
+              <div class="control-row">
+                <label for="paperMaxConcurrentTrades">Max Concurrent Paper Trades</label>
+                <input id="paperMaxConcurrentTrades" type="number" min="0" max="50" step="1" inputmode="numeric" />
+              </div>
             </div>
-            <div class="row row-wrap">
-              <label class="inline-label" for="paperAutonomyRiskPct">Autonomy risk %</label>
-              <input id="paperAutonomyRiskPct" type="number" min="0.01" max="5" step="0.01" inputmode="decimal" />
-            </div>
-            <div class="row row-wrap">
-              <label class="inline-label" for="paperMaxConcurrentTrades">Max concurrent paper trades</label>
-              <input id="paperMaxConcurrentTrades" type="number" min="0" max="50" step="1" inputmode="numeric" />
+            <div class="settings-inline-actions">
               <button id="savePaperSettings" class="primary-btn" type="button">Save Paper Autonomy</button>
             </div>
-            <p id="paperConfigMeta" class="hint">Paper autonomy settings are loading.</p>
+            <p id="paperConfigMeta" class="hint settings-note">Paper autonomy settings are loading.</p>
           </section>
           <section class="settings-block">
             <div class="block-head">
-              <div>
+              <div class="block-copy">
+                <p class="block-eyebrow">Routing</p>
                 <h3>Connection</h3>
+                <p class="section-kicker">Keep the desk pointed at the right server before the session starts.</p>
               </div>
             </div>
             <div class="safe-summary-card">
@@ -740,7 +750,8 @@
 
           <section class="settings-block settings-block-accent">
             <div class="block-head">
-              <div>
+              <div class="block-copy">
+                <p class="block-eyebrow">Manual Engine</p>
                 <h3>Desk Rules</h3>
                 <p class="section-kicker">Tune your morning window and what counts as a strong enough setup.</p>
               </div>
@@ -816,10 +827,59 @@
             <button id="saveSignalSettings" class="primary-btn" type="button">Save Desk Rules</button>
           </section>
 
+          <section class="settings-block settings-block-accent">
+            <div class="block-head">
+              <div class="block-copy">
+                <p class="block-eyebrow">Notifications</p>
+                <h3>Alert Delivery</h3>
+                <p class="section-kicker">Choose what can interrupt you on this device and verify it before market hours.</p>
+              </div>
+            </div>
+
+            <div class="safe-summary-card settings-summary-card">
+              <p class="stat-label">Delivery Policy</p>
+              <p class="insight-text">App push first, Telegram only if app delivery fails.</p>
+              <p class="hint">Keep Manual Trade Alerts on for immediate setups. Paper and engine updates can stay quieter.</p>
+            </div>
+
+            <div class="stack controls-stack">
+              <div class="control-row control-row-toggle">
+                <label for="notificationToggle">Allow Push Alerts</label>
+                <input id="notificationToggle" type="checkbox" />
+              </div>
+
+              <div class="control-row control-row-toggle">
+                <label for="tradeAlertsToggle">Manual Trade Alerts</label>
+                <input id="tradeAlertsToggle" type="checkbox" />
+              </div>
+
+              <div class="control-row control-row-toggle">
+                <label for="tradeActivityToggle">Paper Trade Updates</label>
+                <input id="tradeActivityToggle" type="checkbox" />
+              </div>
+
+              <div class="control-row control-row-toggle">
+                <label for="brokerRecoveryToggle">IBKR Recovery Alerts</label>
+                <input id="brokerRecoveryToggle" type="checkbox" />
+              </div>
+
+              <div class="control-row control-row-toggle">
+                <label for="engineUpdatesToggle">Engine Updates</label>
+                <input id="engineUpdatesToggle" type="checkbox" />
+              </div>
+            </div>
+
+            <div class="settings-inline-actions">
+              <button id="sendTestAppAlert" class="chip-btn secondary-btn" type="button">Test Phone Alert</button>
+            </div>
+          </section>
+
           <section class="settings-block">
             <div class="block-head">
-              <div>
-                <h3>App Preferences</h3>
+              <div class="block-copy">
+                <p class="block-eyebrow">Workspace</p>
+                <h3>Appearance &amp; Feel</h3>
+                <p class="section-kicker">Keep the control room readable and calm while you are in-session.</p>
               </div>
             </div>
 
@@ -850,43 +910,17 @@
                 <label for="reduceMotion">Reduce Motion</label>
                 <input id="reduceMotion" type="checkbox" />
               </div>
-
-              <div class="control-row control-row-toggle">
-                <label for="notificationToggle">Allow Push Alerts</label>
-                <input id="notificationToggle" type="checkbox" />
-              </div>
-
-              <div class="control-row control-row-toggle">
-                <label for="tradeAlertsToggle">Manual Trade Alerts</label>
-                <input id="tradeAlertsToggle" type="checkbox" />
-              </div>
-
-              <div class="control-row control-row-toggle">
-                <label for="tradeActivityToggle">Paper Trade Updates</label>
-                <input id="tradeActivityToggle" type="checkbox" />
-              </div>
-
-              <div class="control-row control-row-toggle">
-                <label for="brokerRecoveryToggle">IBKR Recovery Alerts</label>
-                <input id="brokerRecoveryToggle" type="checkbox" />
-              </div>
-
-              <div class="control-row control-row-toggle">
-                <label for="engineUpdatesToggle">Engine Updates</label>
-                <input id="engineUpdatesToggle" type="checkbox" />
-              </div>
             </div>
 
             <div class="settings-inline-actions">
-              <button id="sendTestAppAlert" class="chip-btn secondary-btn" type="button">Test Phone Alert</button>
+              <button id="resetUiPrefs" class="chip-btn secondary-btn" type="button">Reset Preferences</button>
             </div>
-
-            <button id="resetUiPrefs" class="chip-btn secondary-btn" type="button">Reset Preferences</button>
           </section>
 
           <section class="settings-block settings-block-accent">
             <div class="block-head">
-              <div>
+              <div class="block-copy">
+                <p class="block-eyebrow">Install &amp; Access</p>
                 <h3>Web App</h3>
                 <p class="section-kicker">Install this desk so it opens like a real app from your phone or browser.</p>
               </div>

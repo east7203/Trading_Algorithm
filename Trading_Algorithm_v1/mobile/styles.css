@@ -6999,6 +6999,107 @@ select {
   border-color: var(--rh-border);
 }
 
+.view-settings {
+  display: grid;
+  gap: 16px;
+}
+
+.view-settings .settings-block {
+  margin-top: 0;
+}
+
+.control-section-head {
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.control-section-head > div,
+.block-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.control-section-kicker,
+.block-eyebrow {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.control-section-kicker {
+  color: color-mix(in srgb, var(--rh-green) 34%, var(--rh-muted) 66%);
+}
+
+.block-eyebrow {
+  color: color-mix(in srgb, var(--rh-muted) 82%, #f8fafc 18%);
+}
+
+.control-section-copy {
+  margin: 0;
+  max-width: 38ch;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--rh-muted);
+}
+
+.control-overview-card {
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.11), transparent 34%),
+    linear-gradient(180deg, rgba(18, 30, 24, 0.98), rgba(13, 23, 18, 0.98));
+}
+
+.view-settings .block-head {
+  gap: 14px;
+}
+
+.view-settings .safe-summary-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.settings-summary-card {
+  margin-bottom: 14px;
+}
+
+.settings-note {
+  margin-top: 12px;
+}
+
+.view-settings .controls-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.view-settings .control-row {
+  gap: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015);
+}
+
+.view-settings .control-row label {
+  color: #f8fafc;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.view-settings .control-row input[type='time'],
+.view-settings .control-row input[type='number'],
+.view-settings .control-row select {
+  width: 100%;
+}
+
+.view-settings .settings-inline-actions {
+  margin-top: 16px;
+}
+
+.view-settings .settings-inline-actions .chip-btn,
+.view-settings .settings-inline-actions .primary-btn,
+.view-settings > .settings-block > .primary-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* ---- Level/evidence chips ---- */
 .level-chip-entry { background: rgba(0, 80, 200, 0.18); }
 .level-chip-stop { background: rgba(224, 87, 79, 0.18); }
