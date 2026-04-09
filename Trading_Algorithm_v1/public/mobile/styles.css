@@ -6542,10 +6542,11 @@ h2, h3 {
   max-height: min(40vh, 320px);
 }
 
+.view-signals,
 .view-learning {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 16px;
 }
 
 .replay-command-card {
@@ -6999,6 +7000,74 @@ select {
   border-color: var(--rh-border);
 }
 
+.board-section-head,
+.learning-section-head {
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.board-section-head > div,
+.learning-section-head > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.board-section-kicker,
+.learning-section-kicker,
+.board-list-kicker {
+  margin: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.board-section-kicker,
+.board-list-kicker {
+  color: color-mix(in srgb, var(--rh-green) 34%, var(--rh-muted) 66%);
+}
+
+.learning-section-kicker {
+  color: color-mix(in srgb, #7dd3fc 44%, var(--rh-muted) 56%);
+}
+
+.board-section-copy,
+.learning-section-copy {
+  margin: 0;
+  max-width: 40ch;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--rh-muted);
+}
+
+.board-workspace {
+  padding: 18px;
+  border: 1px solid var(--rh-border);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(0, 200, 5, 0.11), transparent 32%),
+    linear-gradient(180deg, rgba(18, 27, 24, 0.98), rgba(10, 16, 15, 0.98));
+  box-shadow: 0 12px 26px rgba(4, 11, 20, 0.18);
+}
+
+.board-toolbar {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.board-list-head {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.board-list-head > div {
+  display: grid;
+  gap: 4px;
+}
+
 .view-settings {
   display: grid;
   gap: 16px;
@@ -7123,6 +7192,7 @@ select {
 .learning-pattern-list {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .compact-chip-row {
@@ -7135,6 +7205,7 @@ select {
 .learning-pattern-card {
   display: grid;
   gap: 10px;
+  min-width: 0;
   padding: 15px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.035);
@@ -7146,6 +7217,11 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
+}
+
+.learning-pattern-head > * {
+  min-width: 0;
 }
 
 .learning-pattern-title {
@@ -7154,6 +7230,7 @@ select {
   font-weight: 700;
   line-height: 1.35;
   color: #f7fafc;
+  overflow-wrap: anywhere;
 }
 
 .learning-pattern-note {
@@ -7161,6 +7238,7 @@ select {
   font-size: 0.78rem;
   line-height: 1.45;
   color: rgba(226, 232, 240, 0.74);
+  overflow-wrap: anywhere;
 }
 
 .learning-pattern-metrics {
@@ -7205,6 +7283,7 @@ select {
   font-weight: 700;
   line-height: 1.2;
   color: #f8fafc;
+  overflow-wrap: anywhere;
 }
 
 .learning-pattern-metric-value-positive {
@@ -7215,7 +7294,58 @@ select {
   color: #f87171;
 }
 
+.view-learning .section-head > .chip,
+.view-learning .section-subhead > .chip,
+.view-learning .compact-chip-row .chip,
+.view-learning .reviewHeroMetaRow .chip,
+.view-learning .reviewQueueMeta,
+.view-learning .reviewLearningBadge,
+.view-learning .pill {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.view-learning .section-subhead > div,
+.view-learning .review-section,
+.view-learning .stack,
+.view-learning .stack > *,
+.view-learning .session-summary-grid,
+.view-learning .review-insights-grid,
+.view-learning .insight-card,
+.view-learning .session-summary-item,
+.view-learning .review-card,
+.view-learning .review-form,
+.view-learning .review-case-card,
+.view-learning .review-reading-card {
+  min-width: 0;
+}
+
+.view-learning .compact-chip-row {
+  justify-content: flex-start;
+}
+
+.view-learning .insight-text,
+.view-learning .session-summary-headline,
+.view-learning .session-summary-copy,
+.view-learning .reviewAfterEntryHeadline,
+.view-learning .reviewAfterEntryDetail,
+.view-learning .reviewCasePrimary,
+.view-learning .reviewCaseSecondary,
+.view-learning .review-reading-copy,
+.view-learning .training-panel-value,
+.view-learning .reviewLearningSummary {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 @media (max-width: 560px) {
+  .board-workspace,
+  .board-toolbar {
+    padding: 14px;
+  }
+
   .learning-pattern-head {
     flex-direction: column;
   }
