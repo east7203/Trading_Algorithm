@@ -15,7 +15,11 @@ const defaultUiPrefs = {
 };
 
 const defaultNotificationPrefs = {
-  enabled: true
+  enabled: true,
+  tradeAlerts: true,
+  tradeActivity: false,
+  brokerRecovery: true,
+  engineUpdates: false
 };
 
 const tradingViewSymbolMap = {
@@ -172,6 +176,10 @@ const densityPresetEl = document.getElementById('densityPreset');
 const textScaleEl = document.getElementById('textScale');
 const reduceMotionEl = document.getElementById('reduceMotion');
 const notificationToggleEl = document.getElementById('notificationToggle');
+const tradeAlertsToggleEl = document.getElementById('tradeAlertsToggle');
+const tradeActivityToggleEl = document.getElementById('tradeActivityToggle');
+const brokerRecoveryToggleEl = document.getElementById('brokerRecoveryToggle');
+const engineUpdatesToggleEl = document.getElementById('engineUpdatesToggle');
 const paperMaxConcurrentTradesEl = document.getElementById('paperMaxConcurrentTrades');
 const paperAutonomyModeEl = document.getElementById('paperAutonomyMode');
 const paperAutonomyRiskPctEl = document.getElementById('paperAutonomyRiskPct');
@@ -364,6 +372,32 @@ const chartLightboxGesture = {
 };
 let symbolDetailViewerBound = false;
 let symbolDetailViewerContext = null;
+
+const notificationPreferenceToggleMap = {
+  tradeAlerts: tradeAlertsToggleEl,
+  tradeActivity: tradeActivityToggleEl,
+  brokerRecovery: brokerRecoveryToggleEl,
+  engineUpdates: engineUpdatesToggleEl
+};
+
+const notificationCategoryCopy = {
+  tradeAlerts: {
+    full: 'trade alerts',
+    short: 'Trades'
+  },
+  tradeActivity: {
+    full: 'paper trade updates',
+    short: 'Paper'
+  },
+  brokerRecovery: {
+    full: 'IBKR recovery alerts',
+    short: 'IBKR'
+  },
+  engineUpdates: {
+    full: 'engine updates',
+    short: 'Engine'
+  }
+};
 
 const setupToggleMap = {
   LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION: setupSweepMssToggleEl,
@@ -2099,12 +2133,7 @@ const renderHomeDashboard = () => {
   homeResearchStateEl.textContent = researchTrend
     ? `${researchDirectionLabel(researchTrend.direction)} • ${Math.round(Number(researchTrend.confidence ?? 0) * 100)}%`
     : 'Research loading';
-  homeAlertStateEl.textContent =
-    getNotificationPrefs().enabled
-      ? diagnostics?.notifications?.telegramReady
-        ? 'Phone + Telegram armed'
-        : 'Phone armed'
-      : 'Phone alerts off';
+  homeAlertStateEl.textContent = describeNotificationChannelSummary(getNotificationPrefs(), diagnostics);
   homeMacroSummaryEl.textContent = nextMacroEvent
     ? `${nextMacroEvent.title} • ${fmtDateTimeCompact(nextMacroEvent.startsAt)} • ${macroRead.summary}`
     : 'No near-term macro catalyst in the current Forex Factory window.';
@@ -2251,7 +2280,7 @@ const describeDeskRules = (config) => {
 const updateSystemSummary = () => {
   const diagnostics = latestDiagnostics?.diagnostics ?? null;
   const calendarState = diagnostics?.calendar?.sourceName ? diagnostics.calendar : latestCalendar?.calendar ?? null;
-  const alertsEnabled = getNotificationPrefs().enabled;
+  const notificationPrefs = getNotificationPrefs();
   const feedState = getFeedStateMeta(diagnostics);
   const connection = diagnostics
     ? `${feedState.summary}. ${feedState.detail}`
@@ -2259,11 +2288,7 @@ const updateSystemSummary = () => {
   const rules = signalSettings
     ? `Morning window ${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ET.`
     : 'Morning rules are loading.';
-  const alerts = alertsEnabled
-    ? diagnostics?.notifications?.telegramReady
-      ? 'Phone alerts, Mac alerts, and Telegram backup are armed.'
-      : 'Phone alerts and Mac alerts are armed.'
-    : 'Phone alerts are currently off on this device.';
+  const alerts = describeNotificationPreferenceState(notificationPrefs);
   const learning = diagnostics?.training?.enabled
     ? `Learning is running every ${diagnostics.training.cadence?.retrainIntervalMinutes ?? '--'} minutes.`
     : 'Learning is currently paused.';
@@ -2659,6 +2684,8 @@ const renderStatusRail = () => {
   const notifications = diagnostics?.notifications ?? null;
   const recovery = diagnostics?.ibkrRecovery ?? null;
   const feedState = getFeedStateMeta(diagnostics);
+  const notificationPrefs = getNotificationPrefs();
+  const alertsConfigured = notificationPrefs.enabled && getEnabledNotificationCategoryKeys(notificationPrefs).length > 0;
 
   setStatusSegment(
     statusSegmentServerEl,
@@ -2682,14 +2709,14 @@ const renderStatusRail = () => {
   );
   setStatusSegment(
     statusSegmentAlertsEl,
-    getNotificationPrefs().enabled && notifications?.telegramReady
+    alertsConfigured && notifications?.telegramReady
       ? 'good'
-      : getNotificationPrefs().enabled || notifications?.telegramReady
+      : alertsConfigured || notifications?.telegramReady
         ? 'warn'
         : 'bad',
-    getNotificationPrefs().enabled && notifications?.telegramReady
+    alertsConfigured && notifications?.telegramReady
       ? 'Armed'
-      : getNotificationPrefs().enabled || notifications?.telegramReady
+      : alertsConfigured || notifications?.telegramReady
         ? 'Partial'
         : 'Off'
   );
@@ -2828,6 +2855,66 @@ const saveUiPrefs = (prefs) => {
   localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs));
 };
 
+const normalizeNotificationPrefs = (value = {}) => ({
+  enabled: value.enabled !== false,
+  tradeAlerts: value.tradeAlerts !== false,
+  tradeActivity: value.tradeActivity === true,
+  brokerRecovery: value.brokerRecovery !== false,
+  engineUpdates: value.engineUpdates === true
+});
+
+const getEnabledNotificationCategoryKeys = (prefs) =>
+  Object.keys(notificationCategoryCopy).filter((key) => Boolean(prefs[key]));
+
+const describeNotificationPreferenceState = (prefs) => {
+  if (!prefs.enabled) {
+    return 'Phone alerts are currently off on this device.';
+  }
+
+  const activeLabels = getEnabledNotificationCategoryKeys(prefs).map((key) => notificationCategoryCopy[key].full);
+  if (activeLabels.length === 0) {
+    return 'Phone alerts are permissioned, but every alert category is muted on this device.';
+  }
+
+  return `This device will surface ${activeLabels.join(', ')}.`;
+};
+
+const describeNotificationChannelSummary = (prefs, diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  if (!prefs.enabled) {
+    return 'Phone alerts off';
+  }
+
+  const categorySummary = getEnabledNotificationCategoryKeys(prefs)
+    .map((key) => notificationCategoryCopy[key].short)
+    .join(' • ');
+  const appSummary = categorySummary || 'All app alerts muted';
+  const companionChannels = [];
+
+  if (diagnostics?.notifications?.telegramReady) {
+    companionChannels.push('Telegram');
+  }
+  if (diagnostics?.notifications?.ibkrLoginReminderEnabled) {
+    companionChannels.push('Sunday');
+  }
+
+  return companionChannels.length > 0
+    ? `${appSummary} • ${companionChannels.join(' • ')}`
+    : appSummary;
+};
+
+const applyNotificationPrefsToControls = (prefs) => {
+  notificationToggleEl.checked = prefs.enabled;
+
+  Object.entries(notificationPreferenceToggleMap).forEach(([key, toggleEl]) => {
+    if (!toggleEl) {
+      return;
+    }
+
+    toggleEl.checked = Boolean(prefs[key]);
+    toggleEl.disabled = !prefs.enabled;
+  });
+};
+
 const getNotificationPrefs = () => {
   const raw = localStorage.getItem(NOTIFICATION_PREFS_KEY);
   if (!raw) {
@@ -2835,17 +2922,14 @@ const getNotificationPrefs = () => {
   }
 
   try {
-    const parsed = JSON.parse(raw);
-    return {
-      enabled: parsed.enabled !== false
-    };
+    return normalizeNotificationPrefs(JSON.parse(raw));
   } catch {
     return { ...defaultNotificationPrefs };
   }
 };
 
 const saveNotificationPrefs = (prefs) => {
-  localStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(prefs));
+  localStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(normalizeNotificationPrefs(prefs)));
 };
 
 const getSeenAlertIds = () => {
@@ -5081,14 +5165,7 @@ const bindNativePushListeners = () => {
   push.addListener('registration', async (token) => {
     saveNativePushToken(token?.value || '');
     try {
-      await apiFetch('/notifications/native/register', {
-        method: 'POST',
-        body: JSON.stringify({
-          deviceToken: token.value,
-          platform: 'ios',
-          deviceLabel: 'capacitor-ios'
-        })
-      });
+      await syncNativePushRegistration(token?.value || '', getNotificationPrefs());
     } catch (error) {
       setStatus(`Status: native push registration failed (${error.message})`, true);
     }
@@ -5170,7 +5247,7 @@ const triggerServerTestAlert = async () => {
 
 const pushSignalNotification = async (alert) => {
   const prefs = getNotificationPrefs();
-  if (!prefs.enabled) {
+  if (!prefs.enabled || !prefs.tradeAlerts) {
     return;
   }
 
@@ -5488,7 +5565,25 @@ const getPushDeviceLabel = () => {
   return `${isStandalone ? 'installed' : 'browser'}-${getPushPlatform()}`;
 };
 
-const syncRemotePushSubscription = async () => {
+const syncNativePushRegistration = async (deviceToken = getNativePushToken(), prefs = getNotificationPrefs()) => {
+  if (!deviceToken) {
+    return false;
+  }
+
+  await apiFetch('/notifications/native/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      deviceToken,
+      platform: getPushPlatform() === 'macos' ? 'macos' : 'ios',
+      deviceLabel: getPushDeviceLabel(),
+      notificationPrefs: prefs
+    })
+  });
+
+  return true;
+};
+
+const syncRemotePushSubscription = async (prefs = getNotificationPrefs()) => {
   if (!supportsRemoteWebPush()) {
     return false;
   }
@@ -5513,11 +5608,36 @@ const syncRemotePushSubscription = async () => {
     body: JSON.stringify({
       subscription: subscription.toJSON(),
       deviceLabel: getPushDeviceLabel(),
-      platform: getPushPlatform()
+      platform: getPushPlatform(),
+      notificationPrefs: prefs
     })
   });
 
   return true;
+};
+
+const syncServerNotificationPreferences = async (prefs = getNotificationPrefs()) => {
+  if (!prefs.enabled) {
+    return false;
+  }
+
+  const syncOperations = [];
+  const nativeToken = getNativePushToken();
+
+  if (nativeToken) {
+    syncOperations.push(syncNativePushRegistration(nativeToken, prefs).catch(() => false));
+  }
+
+  if (!hasNativePush() && supportsRemoteWebPush()) {
+    syncOperations.push(syncRemotePushSubscription(prefs).catch(() => false));
+  }
+
+  if (syncOperations.length === 0) {
+    return false;
+  }
+
+  const results = await Promise.all(syncOperations);
+  return results.some(Boolean);
 };
 
 const unsubscribeRemotePushSubscription = async () => {
@@ -6193,15 +6313,7 @@ const renderDiagnostics = () => {
   sysGlanceTrainingEl.textContent = training?.enabled
     ? `${cadence?.retrainIntervalMinutes ?? '--'}m cadence • ${training?.promotion?.promotions ?? 0} promoted`
     : 'Disabled';
-  sysGlanceAlertsEl.textContent = getNotificationPrefs().enabled
-    ? diagnostics.notifications?.telegramReady
-      ? diagnostics.notifications?.ibkrLoginReminderEnabled
-        ? 'Phone • Mac • Telegram • Sunday'
-        : 'Phone • Mac • Telegram'
-      : diagnostics.notifications?.ibkrLoginReminderEnabled
-      ? 'Phone • Mac • Sunday'
-      : 'Phone • Mac'
-    : 'Phone alerts off';
+  sysGlanceAlertsEl.textContent = describeNotificationChannelSummary(getNotificationPrefs(), diagnostics);
   renderQuietModeState();
   updateSystemSummary();
   renderHomeDashboard();
@@ -7182,28 +7294,47 @@ const bindUiPreferenceControls = () => {
 
 const bindNotificationControls = () => {
   const prefs = getNotificationPrefs();
-  notificationToggleEl.checked = prefs.enabled;
   const isNativeApp = Boolean(window.Capacitor?.isNativePlatform?.());
+  applyNotificationPrefsToControls(prefs);
+
+  const syncEnabledNotificationPrefs = async (nextPrefs, skipPermissionRequest = false) => {
+    const activeCategoryCount = getEnabledNotificationCategoryKeys(nextPrefs).length;
+    let granted = false;
+
+    if (skipPermissionRequest) {
+      granted = hasNativePush() ? Boolean(getNativePushToken()) : 'Notification' in window && Notification.permission === 'granted';
+    } else {
+      granted = await requestNotificationPermission();
+    }
+
+    if (granted) {
+      await syncServerNotificationPreferences(nextPrefs).catch(() => false);
+    }
+
+    const statusMessage =
+      activeCategoryCount === 0
+        ? 'Status: notification permission is on, but every app alert category is muted on this device.'
+        : granted
+          ? isNativeApp && !nativePushServerReady
+            ? `Status: ${describeNotificationPreferenceState(nextPrefs)} Server APNs are not ready yet.`
+            : `Status: ${describeNotificationPreferenceState(nextPrefs)}`
+          : 'Status: notifications are enabled in the app, but device/browser permission is still blocked.';
+
+    setStatus(statusMessage, !granted);
+    updateSystemSummary();
+    renderStatusRail();
+  };
 
   notificationToggleEl.addEventListener('change', async () => {
-    const next = { enabled: notificationToggleEl.checked };
+    const next = normalizeNotificationPrefs({
+      ...getNotificationPrefs(),
+      enabled: notificationToggleEl.checked
+    });
     saveNotificationPrefs(next);
+    applyNotificationPrefsToControls(next);
 
     if (next.enabled) {
-      const granted = await requestNotificationPermission();
-      if (granted && !hasNativePush()) {
-        await syncRemotePushSubscription().catch(() => false);
-      }
-      setStatus(
-        granted
-          ? isNativeApp && !nativePushServerReady
-            ? 'Status: native push permissions enabled. Server APNs are not ready yet.'
-            : 'Status: signal notifications enabled'
-          : 'Status: notifications blocked at device/browser level',
-        !granted
-      );
-      updateSystemSummary();
-      renderStatusRail();
+      await syncEnabledNotificationPrefs(next);
       return;
     }
 
@@ -7222,6 +7353,30 @@ const bindNotificationControls = () => {
     setStatus('Status: signal notifications disabled on this device');
     updateSystemSummary();
     renderStatusRail();
+  });
+
+  Object.entries(notificationPreferenceToggleMap).forEach(([key, toggleEl]) => {
+    if (!toggleEl) {
+      return;
+    }
+
+    toggleEl.addEventListener('change', async () => {
+      const next = normalizeNotificationPrefs({
+        ...getNotificationPrefs(),
+        [key]: toggleEl.checked
+      });
+      saveNotificationPrefs(next);
+      applyNotificationPrefsToControls(next);
+
+      if (!next.enabled) {
+        setStatus('Status: signal notifications disabled on this device');
+        updateSystemSummary();
+        renderStatusRail();
+        return;
+      }
+
+      await syncEnabledNotificationPrefs(next, true);
+    });
   });
 
   sendTestAppAlertEl?.addEventListener('click', async () => {
@@ -7561,8 +7716,8 @@ const bootstrap = async () => {
   await refreshAll();
   if (getNotificationPrefs().enabled) {
     const granted = await requestNotificationPermission();
-    if (granted && !hasNativePush()) {
-      void syncRemotePushSubscription().catch(() => false);
+    if (granted) {
+      void syncServerNotificationPreferences(getNotificationPrefs()).catch(() => false);
     }
   }
 

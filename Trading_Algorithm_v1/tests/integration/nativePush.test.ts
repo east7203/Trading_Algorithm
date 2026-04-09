@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { buildApp, type AppContext } from '../../src/app.js';
@@ -24,14 +24,15 @@ afterEach(async () => {
 });
 
 describe('native push endpoints', () => {
-  it('registers and unregisters APNs device tokens', async () => {
+  it('registers, updates, and unregisters APNs device tokens with notification preferences', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'trading-native-push-'));
     tempDirs.push(tempDir);
+    const devicesPath = path.join(tempDir, 'native-devices.json');
 
     const ctx = buildApp({
       nativePushConfig: {
         enabled: true,
-        devicesPath: path.join(tempDir, 'native-devices.json'),
+        devicesPath,
         bundleId: 'com.tradingalgo.mobile',
         useSandbox: true
       }
@@ -55,12 +56,43 @@ describe('native push endpoints', () => {
       payload: {
         deviceToken,
         platform: 'ios',
-        deviceLabel: 'test-iphone'
+        deviceLabel: 'test-iphone',
+        notificationPrefs: {
+          tradeActivity: true
+        }
       }
     });
 
     expect(register.statusCode).toBe(200);
     expect(register.json().nativePush.deviceCount).toBe(1);
+
+    const update = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/native/register',
+      payload: {
+        deviceToken,
+        platform: 'ios',
+        deviceLabel: 'test-iphone',
+        notificationPrefs: {
+          engineUpdates: true
+        }
+      }
+    });
+
+    expect(update.statusCode).toBe(200);
+    expect(update.json().nativePush.deviceCount).toBe(1);
+
+    const storedDevices = JSON.parse(await readFile(devicesPath, 'utf8')) as Array<{
+      notificationPrefs: Record<string, boolean>;
+    }>;
+    expect(storedDevices).toHaveLength(1);
+    expect(storedDevices[0].notificationPrefs).toEqual({
+      enabled: true,
+      tradeAlerts: true,
+      tradeActivity: true,
+      brokerRecovery: true,
+      engineUpdates: true
+    });
 
     const unregister = await ctx.app.inject({
       method: 'POST',

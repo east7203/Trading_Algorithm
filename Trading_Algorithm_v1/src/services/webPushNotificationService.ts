@@ -3,6 +3,15 @@ import path from 'node:path';
 import webpush from 'web-push';
 import type { SignalAlert } from '../domain/types.js';
 import type { AppNotificationMessage } from './operationalReminderService.js';
+import type {
+  AppNotificationCategory,
+  AppNotificationPreferences,
+  AppNotificationPriority
+} from './notificationPreferences.js';
+import {
+  normalizeAppNotificationPreferences,
+  shouldDeliverAppNotification
+} from './notificationPreferences.js';
 
 export interface WebPushSubscriptionPayload {
   endpoint: string;
@@ -18,6 +27,7 @@ export interface WebPushSubscriptionRecord {
   subscription: WebPushSubscriptionPayload;
   deviceLabel?: string;
   platform?: string;
+  notificationPrefs: AppNotificationPreferences;
   subscribedAt: string;
   lastSeenAt: string;
 }
@@ -40,6 +50,12 @@ export interface WebPushNotificationStatus {
 interface VapidKeysFile {
   publicKey: string;
   privateKey: string;
+}
+
+interface WebPushSubscriptionMetadata {
+  deviceLabel?: string;
+  platform?: string;
+  notificationPrefs?: Partial<AppNotificationPreferences>;
 }
 
 const WEB_PUSH_DELIVERY_TIMEOUT_MS = 10_000;
@@ -67,6 +83,54 @@ const signalSourceLabel = (alert: SignalAlert): string => {
   }
 };
 
+const resolveNotificationPriority = (
+  category: AppNotificationCategory,
+  requested?: AppNotificationPriority
+): AppNotificationPriority => {
+  if (requested) {
+    return requested;
+  }
+
+  switch (category) {
+    case 'trade-alert':
+    case 'broker-recovery':
+      return 'high';
+    case 'trade-activity':
+      return 'normal';
+    case 'engine-update':
+    default:
+      return 'low';
+  }
+};
+
+const normalizeSubscriptionRecord = (value: unknown): WebPushSubscriptionRecord | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<WebPushSubscriptionRecord>;
+  if (
+    typeof candidate.endpoint !== 'string'
+    || !candidate.subscription?.endpoint
+    || !candidate.subscription?.keys?.auth
+    || !candidate.subscription?.keys?.p256dh
+  ) {
+    return null;
+  }
+
+  return {
+    endpoint: candidate.endpoint,
+    subscription: candidate.subscription,
+    deviceLabel: typeof candidate.deviceLabel === 'string' ? candidate.deviceLabel : undefined,
+    platform: typeof candidate.platform === 'string' ? candidate.platform : undefined,
+    notificationPrefs: normalizeAppNotificationPreferences(candidate.notificationPrefs),
+    subscribedAt:
+      typeof candidate.subscribedAt === 'string' ? candidate.subscribedAt : new Date().toISOString(),
+    lastSeenAt:
+      typeof candidate.lastSeenAt === 'string' ? candidate.lastSeenAt : new Date().toISOString()
+  };
+};
+
 class WebPushSubscriptionStore {
   private loaded = false;
   private records = new Map<string, WebPushSubscriptionRecord>();
@@ -86,10 +150,11 @@ class WebPushSubscriptionStore {
 
     const raw = await fs.readFile(this.filePath, 'utf8');
     try {
-      const parsed = JSON.parse(raw) as WebPushSubscriptionRecord[];
+      const parsed = JSON.parse(raw) as unknown[];
       for (const record of parsed) {
-        if (record?.endpoint && record.subscription?.endpoint && record.subscription?.keys?.auth) {
-          this.records.set(record.endpoint, record);
+        const normalized = normalizeSubscriptionRecord(record);
+        if (normalized) {
+          this.records.set(normalized.endpoint, normalized);
         }
       }
     } catch {
@@ -105,13 +170,18 @@ class WebPushSubscriptionStore {
     return this.records.size;
   }
 
-  async upsert(record: Omit<WebPushSubscriptionRecord, 'subscribedAt' | 'lastSeenAt'>): Promise<void> {
+  async upsert(
+    record: Omit<WebPushSubscriptionRecord, 'subscribedAt' | 'lastSeenAt' | 'notificationPrefs'> & {
+      notificationPrefs?: Partial<AppNotificationPreferences>;
+    }
+  ): Promise<void> {
     await this.load();
     const existing = this.records.get(record.endpoint);
     const now = new Date().toISOString();
 
     this.records.set(record.endpoint, {
       ...record,
+      notificationPrefs: normalizeAppNotificationPreferences(record.notificationPrefs, existing?.notificationPrefs),
       subscribedAt: existing?.subscribedAt ?? now,
       lastSeenAt: now
     });
@@ -174,7 +244,7 @@ export class WebPushNotificationService {
 
   async subscribe(
     subscription: WebPushSubscriptionPayload,
-    metadata: { deviceLabel?: string; platform?: string } = {}
+    metadata: WebPushSubscriptionMetadata = {}
   ): Promise<void> {
     if (!this.config.enabled) {
       throw new Error('Web push is disabled');
@@ -185,7 +255,8 @@ export class WebPushNotificationService {
       endpoint: subscription.endpoint,
       subscription,
       deviceLabel: metadata.deviceLabel,
-      platform: metadata.platform
+      platform: metadata.platform,
+      notificationPrefs: metadata.notificationPrefs
     });
   }
 
@@ -206,7 +277,11 @@ export class WebPushNotificationService {
     }
 
     await this.start();
-    const subscriptions = this.store.list();
+    const category: AppNotificationCategory = 'trade-alert';
+    const priority = resolveNotificationPriority(category, 'high');
+    const subscriptions = this.store
+      .list()
+      .filter((record) => shouldDeliverAppNotification(record.notificationPrefs, category));
     if (subscriptions.length === 0) {
       return { attempted: 0, delivered: 0, removed: 0 };
     }
@@ -232,10 +307,12 @@ export class WebPushNotificationService {
         .filter(Boolean)
         .join(' • '),
       url: targetUrl,
-      tag: alert.alertId
+      tag: alert.alertId,
+      notificationCategory: category,
+      notificationPriority: priority
     });
 
-    return this.sendPayloadToAllSubscriptions(payload, subscriptions);
+    return this.sendPayloadToAllSubscriptions(payload, subscriptions, priority);
   }
 
   async notifyGeneric(message: AppNotificationMessage): Promise<{ attempted: number; delivered: number; removed: number }> {
@@ -244,20 +321,26 @@ export class WebPushNotificationService {
     }
 
     await this.start();
-    const subscriptions = this.store.list();
+    const category: AppNotificationCategory = message.category ?? 'engine-update';
+    const priority = resolveNotificationPriority(category, message.priority);
+    const subscriptions = this.store
+      .list()
+      .filter((record) => shouldDeliverAppNotification(record.notificationPrefs, category));
     if (subscriptions.length === 0) {
       return { attempted: 0, delivered: 0, removed: 0 };
     }
 
     const payload = JSON.stringify({
-      type: 'operational-reminder',
+      type: 'app-notification',
       title: message.title,
       body: message.body,
       url: message.url || '/mobile/?tab=status',
-      tag: message.tag || 'trading-assist-operational-reminder'
+      tag: message.tag || 'trading-assist-operational-reminder',
+      notificationCategory: category,
+      notificationPriority: priority
     });
 
-    return this.sendPayloadToAllSubscriptions(payload, subscriptions);
+    return this.sendPayloadToAllSubscriptions(payload, subscriptions, priority);
   }
 
   private async loadOrCreateKeys(): Promise<VapidKeysFile> {
@@ -284,18 +367,31 @@ export class WebPushNotificationService {
 
   private async sendPayloadToAllSubscriptions(
     payload: string,
-    subscriptions: WebPushSubscriptionRecord[]
+    subscriptions: WebPushSubscriptionRecord[],
+    priority: AppNotificationPriority
   ): Promise<{ attempted: number; delivered: number; removed: number }> {
     let delivered = 0;
     let removed = 0;
+    const urgency =
+      priority === 'high'
+        ? 'high'
+        : priority === 'normal'
+          ? 'normal'
+          : 'low';
+    const ttlSeconds =
+      priority === 'high'
+        ? 600
+        : priority === 'normal'
+          ? 300
+          : 120;
 
     const results = await Promise.all(
       subscriptions.map(async (record) => {
         try {
           await Promise.race([
             webpush.sendNotification(record.subscription as webpush.PushSubscription, payload, {
-              TTL: 300,
-              urgency: 'high'
+              TTL: ttlSeconds,
+              urgency
             }),
             new Promise<never>((_, reject) => {
               setTimeout(() => reject(new Error(`Web push timed out after ${WEB_PUSH_DELIVERY_TIMEOUT_MS}ms`)), WEB_PUSH_DELIVERY_TIMEOUT_MS);

@@ -4,6 +4,15 @@ import { connect, constants } from 'node:http2';
 import jwt from 'jsonwebtoken';
 import type { SignalAlert } from '../domain/types.js';
 import type { AppNotificationMessage } from './operationalReminderService.js';
+import type {
+  AppNotificationCategory,
+  AppNotificationPreferences,
+  AppNotificationPriority
+} from './notificationPreferences.js';
+import {
+  normalizeAppNotificationPreferences,
+  shouldDeliverAppNotification
+} from './notificationPreferences.js';
 
 export type NativePushPlatform = 'ios' | 'macos';
 
@@ -11,9 +20,11 @@ export interface NativePushDeviceRegistration {
   deviceToken: string;
   platform: NativePushPlatform;
   deviceLabel?: string;
+  notificationPrefs?: Partial<AppNotificationPreferences>;
 }
 
 export interface NativePushDeviceRecord extends NativePushDeviceRegistration {
+  notificationPrefs: AppNotificationPreferences;
   subscribedAt: string;
   lastSeenAt: string;
 }
@@ -68,6 +79,51 @@ const signalSourceLabel = (alert: SignalAlert): string => {
   }
 };
 
+const resolveNotificationPriority = (
+  category: AppNotificationCategory,
+  requested?: AppNotificationPriority
+): AppNotificationPriority => {
+  if (requested) {
+    return requested;
+  }
+
+  switch (category) {
+    case 'trade-alert':
+    case 'broker-recovery':
+      return 'high';
+    case 'trade-activity':
+      return 'normal';
+    case 'engine-update':
+    default:
+      return 'low';
+  }
+};
+
+const normalizeDeviceRecord = (value: unknown): NativePushDeviceRecord | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<NativePushDeviceRecord>;
+  if (
+    typeof candidate.deviceToken !== 'string'
+    || (candidate.platform !== 'ios' && candidate.platform !== 'macos')
+  ) {
+    return null;
+  }
+
+  return {
+    deviceToken: candidate.deviceToken,
+    platform: candidate.platform,
+    deviceLabel: typeof candidate.deviceLabel === 'string' ? candidate.deviceLabel : undefined,
+    notificationPrefs: normalizeAppNotificationPreferences(candidate.notificationPrefs),
+    subscribedAt:
+      typeof candidate.subscribedAt === 'string' ? candidate.subscribedAt : new Date().toISOString(),
+    lastSeenAt:
+      typeof candidate.lastSeenAt === 'string' ? candidate.lastSeenAt : new Date().toISOString()
+  };
+};
+
 class NativePushDeviceStore {
   private loaded = false;
   private records = new Map<string, NativePushDeviceRecord>();
@@ -87,10 +143,11 @@ class NativePushDeviceStore {
 
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw) as NativePushDeviceRecord[];
+      const parsed = JSON.parse(raw) as unknown[];
       for (const record of parsed) {
-        if (record?.deviceToken) {
-          this.records.set(record.deviceToken, record);
+        const normalized = normalizeDeviceRecord(record);
+        if (normalized) {
+          this.records.set(normalized.deviceToken, normalized);
         }
       }
     } catch {
@@ -113,6 +170,10 @@ class NativePushDeviceStore {
 
     this.records.set(registration.deviceToken, {
       ...registration,
+      notificationPrefs: normalizeAppNotificationPreferences(
+        registration.notificationPrefs,
+        existing?.notificationPrefs
+      ),
       subscribedAt: existing?.subscribedAt ?? now,
       lastSeenAt: now
     });
@@ -189,7 +250,11 @@ export class NativePushNotificationService {
     }
 
     await this.start();
-    const devices = this.store.list();
+    const category: AppNotificationCategory = 'trade-alert';
+    const priority = resolveNotificationPriority(category, 'high');
+    const devices = this.store
+      .list()
+      .filter((device) => shouldDeliverAppNotification(device.notificationPrefs, category));
     if (devices.length === 0) {
       return { attempted: 0, delivered: 0, removed: 0 };
     }
@@ -214,9 +279,14 @@ export class NativePushNotificationService {
             alert.riskDecision.allowed ? 'Ready to take manually' : alert.riskDecision.reasonCodes[0] || 'Risk blocked'
           ].join(' • ')
         },
-        sound: 'default',
+        ...(priority === 'high' ? { sound: 'default' } : {}),
         badge: 1
       },
+      type: 'signal-alert',
+      url: `/mobile/?tab=signals&alertId=${encodeURIComponent(alert.alertId)}`,
+      tag: alert.alertId,
+      notificationCategory: category,
+      notificationPriority: priority,
       signalAlertId: alert.alertId,
       symbol: alert.symbol,
       setupType: alert.setupType
@@ -226,7 +296,7 @@ export class NativePushNotificationService {
     let removed = 0;
 
     for (const device of devices) {
-      const result = await this.sendPush(device.deviceToken, providerToken, payload, alert.alertId);
+      const result = await this.sendPush(device.deviceToken, providerToken, payload, alert.alertId, priority);
       if (result.ok) {
         delivered += 1;
         continue;
@@ -255,7 +325,11 @@ export class NativePushNotificationService {
     }
 
     await this.start();
-    const devices = this.store.list();
+    const category: AppNotificationCategory = message.category ?? 'engine-update';
+    const priority = resolveNotificationPriority(category, message.priority);
+    const devices = this.store
+      .list()
+      .filter((device) => shouldDeliverAppNotification(device.notificationPrefs, category));
     if (devices.length === 0) {
       return { attempted: 0, delivered: 0, removed: 0 };
     }
@@ -273,12 +347,14 @@ export class NativePushNotificationService {
           title: message.title,
           body: message.body
         },
-        sound: 'default',
+        ...(priority === 'high' ? { sound: 'default' } : {}),
         badge: 1
       },
-      type: 'operational-reminder',
+      type: 'app-notification',
       url: message.url || '/mobile/?tab=status',
-      tag: message.tag || 'trading-assist-operational-reminder'
+      tag: message.tag || 'trading-assist-operational-reminder',
+      notificationCategory: category,
+      notificationPriority: priority
     };
 
     let delivered = 0;
@@ -286,7 +362,7 @@ export class NativePushNotificationService {
     const collapseId = message.tag || `generic-${Date.now()}`;
 
     for (const device of devices) {
-      const result = await this.sendPush(device.deviceToken, providerToken, payload, collapseId);
+      const result = await this.sendPush(device.deviceToken, providerToken, payload, collapseId, priority);
       if (result.ok) {
         delivered += 1;
         continue;
@@ -390,7 +466,8 @@ export class NativePushNotificationService {
     deviceToken: string,
     providerToken: string,
     payload: Record<string, unknown>,
-    collapseId: string
+    collapseId: string,
+    priority: AppNotificationPriority
   ): Promise<{ ok: boolean; removeToken: boolean; reason?: string }> {
     const endpoint = this.config.useSandbox ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com';
 
@@ -419,7 +496,7 @@ export class NativePushNotificationService {
         authorization: `bearer ${providerToken}`,
         'apns-topic': this.config.bundleId as string,
         'apns-push-type': 'alert',
-        'apns-priority': '10',
+        'apns-priority': priority === 'high' ? '10' : '5',
         'apns-collapse-id': collapseId,
         'content-type': 'application/json'
       });

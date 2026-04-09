@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { buildApp, type AppContext } from '../../src/app.js';
@@ -24,14 +24,15 @@ afterEach(async () => {
 });
 
 describe('web push endpoints', () => {
-  it('issues a public key and tracks subscriptions', async () => {
+  it('issues a public key and tracks subscriptions with notification preferences', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'trading-webpush-'));
     tempDirs.push(tempDir);
+    const subscriptionsPath = path.join(tempDir, 'subscriptions.json');
 
     const ctx = buildApp({
       webPushConfig: {
         enabled: true,
-        subscriptionsPath: path.join(tempDir, 'subscriptions.json'),
+        subscriptionsPath,
         vapidKeysPath: path.join(tempDir, 'vapid-keys.json'),
         vapidSubject: 'mailto:test@example.com'
       }
@@ -63,12 +64,43 @@ describe('web push endpoints', () => {
       payload: {
         subscription,
         deviceLabel: 'test-device',
-        platform: 'macos'
+        platform: 'macos',
+        notificationPrefs: {
+          engineUpdates: true
+        }
       }
     });
 
     expect(subscribeResponse.statusCode).toBe(200);
     expect(subscribeResponse.json().webPush.subscriberCount).toBe(1);
+
+    const updateResponse = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/webpush/subscribe',
+      payload: {
+        subscription,
+        deviceLabel: 'test-device',
+        platform: 'macos',
+        notificationPrefs: {
+          tradeActivity: true
+        }
+      }
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().webPush.subscriberCount).toBe(1);
+
+    const storedSubscriptions = JSON.parse(await readFile(subscriptionsPath, 'utf8')) as Array<{
+      notificationPrefs: Record<string, boolean>;
+    }>;
+    expect(storedSubscriptions).toHaveLength(1);
+    expect(storedSubscriptions[0].notificationPrefs).toEqual({
+      enabled: true,
+      tradeAlerts: true,
+      tradeActivity: true,
+      brokerRecovery: true,
+      engineUpdates: true
+    });
 
     const statusResponse = await ctx.app.inject({
       method: 'GET',

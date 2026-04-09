@@ -1544,7 +1544,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 {
                   title: `Research trend flipped ${directionLabel}`,
                   body: `${deliveryStatus.summary} • ${leadSymbol} leading • ${confidenceLabel} confidence • ${event.nextTrend.reason}`,
-                  url: '/mobile/?tab=home&focus=research-trend'
+                  url: '/mobile/?tab=home&focus=research-trend',
+                  category: 'engine-update',
+                  priority: 'low'
                 },
                 {
                   title: `Research trend flipped ${directionLabel}`,
@@ -1576,7 +1578,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   title: `Research experiment opened ${directionLabel}`,
                   body: `${deliveryStatus.summary} • Thinking ${directionLabel} because ${summary}`,
                   url: '/mobile/?tab=home&focus=research-lab',
-                  tag: 'research-experiment-opened'
+                  tag: 'research-experiment-opened',
+                  category: 'engine-update',
+                  priority: 'low'
                 },
                 {
                   title: `Research experiment opened ${directionLabel}`,
@@ -1667,7 +1671,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         title,
         body: `${deliveryStatus.summary} • ${bodyText}`,
         url: ibkrStatusUrl,
-        tag: 'ibkr-recovery-progress'
+        tag: 'ibkr-recovery-progress',
+        category: 'broker-recovery',
+        priority: 'high'
       },
       {
         title,
@@ -1705,7 +1711,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         title,
         body: `${deliveryStatus.summary} • ${bodyText}`,
         url: ibkrStatusUrl,
-        tag: 'ibkr-recovery-requested'
+        tag: 'ibkr-recovery-requested',
+        category: 'broker-recovery',
+        priority: 'high'
       },
       {
         title,
@@ -1748,7 +1756,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           title,
           body: `${deliveryStatus.summary} • ${bodyText}`,
           url: ibkrStatusUrl,
-          tag: 'ibkr-login-fallback'
+          tag: 'ibkr-login-fallback',
+          category: 'broker-recovery',
+          priority: 'high'
         },
         {
           title,
@@ -1849,7 +1859,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                     `Decision ${reason}`
                   ].join(' • '),
                   url: trainingStatusUrl,
-                  tag: 'training-retrain'
+                  tag: 'training-retrain',
+                  category: 'engine-update',
+                  priority: 'low'
                 },
                 {
                   title,
@@ -1912,7 +1924,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                         ? `${deliveryStatus.summary} • ${autonomyThesisLabel} • ${autonomyReason ?? event.trade.setupType} • Risk ${event.trade.riskPct.toFixed(2)}%`
                         : `${deliveryStatus.summary} • ${event.trade.setupType} • Entry ${event.trade.entry.toFixed(2)} • Risk ${event.trade.riskPct.toFixed(2)}%`,
                     url: '/mobile/?tab=trades',
-                    tag: `paper-open-${event.trade.paperTradeId}`
+                    tag: `paper-open-${event.trade.paperTradeId}`,
+                    category: 'trade-activity',
+                    priority: 'normal'
                   },
                   {
                     title: `Paper trade opened ${event.trade.symbol} ${event.trade.side}`,
@@ -2002,7 +2016,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                   title,
                   body,
                   url: '/mobile/?tab=trades',
-                  tag: `paper-close-${event.trade.paperTradeId}`
+                  tag: `paper-close-${event.trade.paperTradeId}`,
+                  category: 'trade-activity',
+                  priority: 'normal'
                 },
                 {
                   title,
@@ -3538,7 +3554,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         title: `Research experiment opened ${directionLabel}`,
         body: `${deliveryStatus.summary} • Thinking ${directionLabel} because ${thesis}`,
         url: '/mobile/?tab=home&focus=research-lab',
-        tag: 'research-experiment-opened-test'
+        tag: 'research-experiment-opened-test',
+        category: 'engine-update',
+        priority: 'low'
       },
       {
         title: `Research experiment opened ${directionLabel}`,
@@ -3631,8 +3649,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           stage === 'OPENED'
             ? `${deliveryStatus.summary} • ${symbol} ${directionLabel} • entry ${entry.toFixed(2)} • RR ${riskReward}`
             : `${deliveryStatus.summary} • ${symbol} ${directionLabel} • ${formatSignedUsd(pnl)} • equity ${formatUsd(equity)}`,
-        url: '/mobile/?tab=paper',
-        tag: `paper-trade-test-${stage.toLowerCase()}`
+        url: '/mobile/?tab=trades',
+        tag: `paper-trade-test-${stage.toLowerCase()}`,
+        category: 'trade-activity',
+        priority: 'normal'
       },
       {
         title: stage === 'OPENED' ? 'Paper trade opened' : 'Paper trade closed',
@@ -3745,7 +3765,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               title,
               body: `${deliveryStatus.summary} • ${bodyText}`,
               url: ibkrStatusUrl,
-              tag: 'ibkr-connected'
+              tag: 'ibkr-connected',
+              category: 'broker-recovery',
+              priority: 'high'
             },
             {
               title,
@@ -3817,7 +3839,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               title,
               body: `${deliveryStatus.summary} • ${bodyText}`,
               url: ibkrStatusUrl,
-              tag: 'ibkr-login-required'
+              tag: 'ibkr-login-required',
+              category: 'broker-recovery',
+              priority: 'high'
             },
             {
               title,
@@ -3988,7 +4012,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               title,
               body: bodyText,
               url: ibkrStatusUrl,
-              tag: 'ibkr-fallback-activated'
+              tag: 'ibkr-fallback-activated',
+              category: 'broker-recovery',
+              priority: 'high'
             },
             {
               title,
@@ -4078,7 +4104,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       const body = parseOrThrow(webPushSubscribeBodySchema.safeParse(request.body));
       await webPushNotificationService.subscribe(body.subscription, {
         deviceLabel: body.deviceLabel,
-        platform: body.platform
+        platform: body.platform,
+        notificationPrefs: body.notificationPrefs
       });
       return reply.status(200).send({
         ok: true,

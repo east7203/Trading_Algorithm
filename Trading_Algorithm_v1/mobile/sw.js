@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trading-assist-mobile-v59';
+const CACHE_NAME = 'trading-assist-mobile-v60';
 const ASSETS = [
   './',
   'index.html',
@@ -117,6 +117,16 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
       const payload = event.data?.json?.() ?? {};
+      const category =
+        payload.notificationCategory
+        || (payload.type === 'signal-alert' ? 'trade-alert' : 'engine-update');
+      const priority =
+        payload.notificationPriority
+        || (category === 'trade-alert' || category === 'broker-recovery'
+          ? 'high'
+          : category === 'trade-activity'
+            ? 'normal'
+            : 'low');
       const clientList = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true
@@ -132,7 +142,11 @@ self.addEventListener('push', (event) => {
         )
       );
 
-      const shouldShowWhenVisible = payload.type === 'operational-reminder' || payload.forceVisibleNotification === true;
+      const shouldShowWhenVisible =
+        payload.forceVisibleNotification === true
+        || category === 'trade-alert'
+        || category === 'broker-recovery'
+        || priority === 'high';
 
       if (hasVisibleClient && !shouldShowWhenVisible) {
         return;
@@ -143,8 +157,13 @@ self.addEventListener('push', (event) => {
         tag: payload.tag || 'trading-assist-signal',
         icon: 'icon.svg',
         badge: 'icon.svg',
+        silent: priority === 'low',
+        renotify: priority === 'high',
+        requireInteraction: category === 'broker-recovery',
         data: {
-          url: payload.url || '/mobile/'
+          url: payload.url || '/mobile/',
+          category,
+          priority
         }
       });
     })()

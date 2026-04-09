@@ -1,5 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type {
+  AppNotificationCategory,
+  AppNotificationPriority
+} from './notificationPreferences.js';
 
 interface OperationalReminderState {
   lastSentDayKey?: string;
@@ -11,6 +15,8 @@ export interface AppNotificationMessage {
   body: string;
   url?: string;
   tag?: string;
+  category?: AppNotificationCategory;
+  priority?: AppNotificationPriority;
 }
 
 export interface TelegramNotificationMessage {
@@ -207,7 +213,9 @@ export class OperationalReminderService {
           title,
           body,
           url: statusUrl,
-          tag: kind === 'test' ? 'ibkr-login-reminder-test' : 'ibkr-login-reminder'
+          tag: kind === 'test' ? 'ibkr-login-reminder-test' : 'ibkr-login-reminder',
+          category: 'broker-recovery',
+          priority: 'high'
         }),
         this.telegramNotifier?.notifyGeneric({
           title,

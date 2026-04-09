@@ -199,10 +199,19 @@ export const webPushSubscriptionPayloadSchema = z.object({
   })
 });
 
+export const appNotificationPreferencesSchema = z.object({
+  enabled: z.boolean().optional(),
+  tradeAlerts: z.boolean().optional(),
+  tradeActivity: z.boolean().optional(),
+  brokerRecovery: z.boolean().optional(),
+  engineUpdates: z.boolean().optional()
+});
+
 export const webPushSubscribeBodySchema = z.object({
   subscription: webPushSubscriptionPayloadSchema,
   deviceLabel: z.string().min(1).max(120).optional(),
-  platform: z.string().min(1).max(120).optional()
+  platform: z.string().min(1).max(120).optional(),
+  notificationPrefs: appNotificationPreferencesSchema.optional()
 });
 
 export const webPushUnsubscribeBodySchema = z.object({
@@ -212,7 +221,8 @@ export const webPushUnsubscribeBodySchema = z.object({
 export const nativePushRegisterBodySchema = z.object({
   deviceToken: z.string().min(16),
   platform: z.enum(['ios', 'macos']),
-  deviceLabel: z.string().min(1).max(120).optional()
+  deviceLabel: z.string().min(1).max(120).optional(),
+  notificationPrefs: appNotificationPreferencesSchema.optional()
 });
 
 export const nativePushUnregisterBodySchema = z.object({

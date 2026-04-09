@@ -46,6 +46,11 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('apple-mobile-web-app-capable');
     expect(mobile.body).toContain('Web App');
     expect(mobile.body).toContain('Install App');
+    expect(mobile.body).toContain('Allow Push Alerts');
+    expect(mobile.body).toContain('Manual Trade Alerts');
+    expect(mobile.body).toContain('Paper Trade Updates');
+    expect(mobile.body).toContain('IBKR Recovery Alerts');
+    expect(mobile.body).toContain('Engine Updates');
 
     const opener = await ctx.app.inject({ method: 'GET', path: '/mobile/open-app.html' });
     expect(opener.statusCode).toBe(200);
