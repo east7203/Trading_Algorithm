@@ -3,6 +3,7 @@ import path from 'node:path';
 import { isCmeEquitySessionOpen } from '../domain/cmeEquityHours.js';
 import type {
   Candle,
+  RiskConfig,
   SetupCandidate,
   SignalAlert,
   SignalChartSnapshot,
@@ -12,6 +13,7 @@ import type {
   SignalReviewValidity,
   SymbolCode
 } from '../domain/types.js';
+import { isWithinTradingWindow } from './tradingWindowService.js';
 import { aggregateBars, parseOneMinuteCsv, type OneMinuteBar } from '../training/historicalTrainer.js';
 import { streamNdjsonValues } from '../utils/ndjson.js';
 import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
@@ -184,6 +186,7 @@ export interface PaperAutonomyConfig {
     side: Side;
     researchDirection?: ResearchTrendDirection;
   }) => SelfLearningAutonomyAdjustment | null;
+  getTradingWindow?: () => RiskConfig['tradingWindow'];
   submitAlert: (alert: SignalAlert, source: string) => Promise<PaperTrade | null>;
 }
 
@@ -237,25 +240,6 @@ const completeCandles = (
 
 const average = (values: number[]): number =>
   values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
-
-const getMinuteOfDayInTimezone = (timestamp: string, timezone: string): number => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23'
-  });
-  const parts = formatter.formatToParts(new Date(timestamp));
-  const hour = Number(parts.find((entry) => entry.type === 'hour')?.value ?? '0');
-  const minute = Number(parts.find((entry) => entry.type === 'minute')?.value ?? '0');
-  return hour * 60 + minute;
-};
-
-const isMinuteInWindow = (
-  minuteOfDay: number,
-  startMinute: number,
-  endMinute: number
-): boolean => minuteOfDay >= startMinute && minuteOfDay <= endMinute;
 
 const calcEma = (values: number[], period: number): number[] => {
   if (values.length === 0) {
@@ -404,6 +388,17 @@ export class PaperAutonomyService {
 
   private getMaxLiveDelayMinutes(): number {
     return Number.isFinite(this.config.maxLiveDelayMinutes) ? this.config.maxLiveDelayMinutes : Number.POSITIVE_INFINITY;
+  }
+
+  private getTradingWindow(): RiskConfig['tradingWindow'] {
+    return this.config.getTradingWindow?.() ?? {
+      enabled: true,
+      timezone: this.config.timezone,
+      startHour: this.config.sessionStartHour,
+      startMinute: this.config.sessionStartMinute,
+      endHour: this.config.sessionEndHour,
+      endMinute: this.config.sessionEndMinute
+    };
   }
 
   private async loadState(): Promise<void> {
@@ -1307,11 +1302,7 @@ export class PaperAutonomyService {
     if (!isCmeEquitySessionOpen(currentBar.timestamp)) {
       return;
     }
-
-    const minuteOfDay = getMinuteOfDayInTimezone(currentBar.timestamp, this.config.timezone);
-    const sessionStartMinute = this.config.sessionStartHour * 60 + this.config.sessionStartMinute;
-    const sessionEndMinute = this.config.sessionEndHour * 60 + this.config.sessionEndMinute;
-    if (!isMinuteInWindow(minuteOfDay, sessionStartMinute, sessionEndMinute)) {
+    if (!isWithinTradingWindow(currentBar.timestamp, this.getTradingWindow())) {
       return;
     }
 
@@ -1681,6 +1672,7 @@ export class PaperAutonomyService {
         lastOpenedAt: entry.lastOpenedAt
       }));
     const symbolStatus = this.config.focusSymbols.map((symbol) => this.buildSymbolStatus(symbol));
+    const tradingWindow = this.getTradingWindow();
 
     return {
       enabled: this.config.enabled,
@@ -1692,11 +1684,11 @@ export class PaperAutonomyService {
       lastError: this.lastError,
       focusSymbols: [...this.config.focusSymbols],
       session: {
-        timezone: this.config.timezone,
-        startHour: this.config.sessionStartHour,
-        startMinute: this.config.sessionStartMinute,
-        endHour: this.config.sessionEndHour,
-        endMinute: this.config.sessionEndMinute
+        timezone: tradingWindow.timezone,
+        startHour: tradingWindow.startHour,
+        startMinute: tradingWindow.startMinute,
+        endHour: tradingWindow.endHour,
+        endMinute: tradingWindow.endMinute
       },
       totalIdeas: ideas.length,
       openIdeas: openIdeas.length,

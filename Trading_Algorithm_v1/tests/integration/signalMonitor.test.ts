@@ -230,6 +230,86 @@ describe('signal monitor integration', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('keeps the paper account flat when the manual trading window blocks the signal', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-window-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      },
+      paperTradingConfig: {
+        statePath: path.join(tempDir, 'paper-account.json'),
+        maxLiveDelayMinutes: 10_000_000,
+        autonomyMode: 'UNRESTRICTED',
+        maxConcurrentTrades: 0
+      },
+      paperAutonomyEnabled: false
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+    await confirmPolicy(ctx);
+
+    const tightenDeskWindow = await ctx.app.inject({
+      method: 'PATCH',
+      path: '/risk/config',
+      payload: {
+        tradingWindow: {
+          enabled: true,
+          timezone: 'America/New_York',
+          startHour: 10,
+          startMinute: 30,
+          endHour: 11,
+          endMinute: 30
+        }
+      }
+    });
+    expect(tightenDeskWindow.statusCode).toBe(200);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const alertsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+    expect(alertsResponse.statusCode).toBe(200);
+    expect(alertsResponse.json().alerts.length).toBeGreaterThan(0);
+    expect(
+      alertsResponse
+        .json()
+        .alerts.every((alert: { riskDecision: { blockedByTradingWindow: boolean } }) => alert.riskDecision.blockedByTradingWindow)
+    ).toBe(true);
+
+    const paperStatus = await ctx.app.inject({
+      method: 'GET',
+      path: '/paper-account/status'
+    });
+
+    expect(paperStatus.statusCode).toBe(200);
+    const paperAccount = paperStatus.json().paperAccount;
+    expect(paperAccount.pendingEntries).toBe(0);
+    expect(paperAccount.openTrades).toBe(0);
+    expect(paperAccount.closedTrades).toBe(0);
+    expect(paperAccount.canceledTrades).toBe(0);
+  });
+
   it('lets the paper engine act on observed SMC candidates even when no live alert is published', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-autonomous-'));
     tempDirs.push(tempDir);

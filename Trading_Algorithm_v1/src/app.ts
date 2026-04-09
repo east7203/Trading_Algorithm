@@ -223,6 +223,8 @@ interface PaperTradingConfigInput {
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
+  sessionEndHour: number;
+  sessionEndMinute: number;
   maxClosedTrades: number;
   maxEquityHistory: number;
 }
@@ -853,6 +855,18 @@ const resolvePaperTradingConfig = (
     sessionStartMinute: parseIntEnv(
       'PAPER_TRADING_SESSION_START_MINUTE',
       signalMonitorConfig.sessionStartMinute,
+      0,
+      59
+    ),
+    sessionEndHour: parseIntEnv(
+      'PAPER_TRADING_SESSION_END_HOUR',
+      signalMonitorConfig.sessionEndHour,
+      0,
+      23
+    ),
+    sessionEndMinute: parseIntEnv(
+      'PAPER_TRADING_SESSION_END_MINUTE',
+      signalMonitorConfig.sessionEndMinute,
       0,
       59
     ),
@@ -1860,6 +1874,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     resolvedSignalMonitorConfig,
     options.paperAutonomyConfig
   );
+  signalMonitorSettingsStore.seed({
+    timezone: resolvedSignalMonitorConfig.timezone,
+    sessionStartHour: resolvedSignalMonitorConfig.sessionStartHour,
+    sessionStartMinute: resolvedSignalMonitorConfig.sessionStartMinute,
+    sessionEndHour: resolvedSignalMonitorConfig.sessionEndHour,
+    sessionEndMinute: resolvedSignalMonitorConfig.sessionEndMinute,
+    nyRangeMinutes: resolvedSignalMonitorConfig.nyRangeMinutes,
+    minFinalScore: resolvedSignalMonitorConfig.minFinalScore
+  });
+  syncRiskTradingWindowToSignalSettings();
   const paperTradingEnabled = options.paperTradingEnabled ?? resolvedPaperTradingConfig.enabled;
   const paperTradingService =
     options.paperTradingService === undefined
@@ -1867,6 +1891,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ? new PaperTradingService({
             ...resolvedPaperTradingConfig,
             enabled: true,
+            getTradingWindow: () => riskConfigStore.get().tradingWindow,
             onTradeEvent: async (event: PaperTradeEvent) => {
               await tradeLearningStore.syncPaperTrade(event.trade, event.at);
               selfLearningService?.queueRefresh();
@@ -2036,19 +2061,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             getMarketResearchStatus: () => marketResearchService?.status() ?? null,
             getPaperTradingStatus: () => paperTradingService?.status() ?? null,
             getSelfLearningAdjustment: (input) => selfLearningService?.scoreAutonomyIdea(input) ?? null,
+            getTradingWindow: () => riskConfigStore.get().tradingWindow,
             submitAlert: async (alert, source) => submitPaperLearningAlert(alert, source)
           })
         : null
       : options.paperAutonomyService;
-  signalMonitorSettingsStore.seed({
-    timezone: resolvedSignalMonitorConfig.timezone,
-    sessionStartHour: resolvedSignalMonitorConfig.sessionStartHour,
-    sessionStartMinute: resolvedSignalMonitorConfig.sessionStartMinute,
-    sessionEndHour: resolvedSignalMonitorConfig.sessionEndHour,
-    sessionEndMinute: resolvedSignalMonitorConfig.sessionEndMinute,
-    nyRangeMinutes: resolvedSignalMonitorConfig.nyRangeMinutes,
-    minFinalScore: resolvedSignalMonitorConfig.minFinalScore
-  });
   const signalMonitorEnabled = options.signalMonitorEnabled ?? resolvedSignalMonitorConfig.enabled;
   const signalMonitorService =
     options.signalMonitorService === undefined

@@ -295,7 +295,7 @@ describe('paper trading service', () => {
     expect(status.recentClosedTrades[0].exitReason).toBe('TIME_EXIT');
   });
 
-  it('takes blocked live alerts in unrestricted autonomy mode and sizes them from paper equity', async () => {
+  it('takes blocked live alerts in unrestricted autonomy mode when the desk window is still open', async () => {
     const service = new PaperTradingService({
       enabled: true,
       initialBalance: 100_000,
@@ -306,6 +306,8 @@ describe('paper trading service', () => {
       timezone: 'America/New_York',
       sessionStartHour: 8,
       sessionStartMinute: 30,
+      sessionEndHour: 13,
+      sessionEndMinute: 0,
       maxClosedTrades: 20,
       maxEquityHistory: 24
     });
@@ -317,9 +319,9 @@ describe('paper trading service', () => {
           allowed: false,
           finalRiskPct: 0,
           positionSize: 0,
-          reasonCodes: ['OUTSIDE_ALLOWED_TRADING_WINDOW'],
-          blockedByNewsWindow: false,
-          blockedByTradingWindow: true,
+          reasonCodes: ['BLOCKED_HIGH_IMPACT_USD_NEWS'],
+          blockedByNewsWindow: true,
+          blockedByTradingWindow: false,
           blockedByPolicy: false,
           checkedAt: '2026-03-25T13:30:00.000Z'
         }
@@ -331,6 +333,45 @@ describe('paper trading service', () => {
     expect(trade?.quantity).toBeGreaterThan(0);
     expect(trade?.riskPct).toBe(0.35);
     expect(service.status().pendingEntries).toBe(1);
+  });
+
+  it('rejects paper trades outside the manual trading window even in unrestricted autonomy mode', async () => {
+    const service = new PaperTradingService({
+      enabled: true,
+      initialBalance: 100_000,
+      maxHoldMinutes: 60,
+      maxConcurrentTrades: 0,
+      autonomyMode: 'UNRESTRICTED',
+      autonomyRiskPct: 0.35,
+      timezone: 'America/New_York',
+      sessionStartHour: 8,
+      sessionStartMinute: 30,
+      sessionEndHour: 11,
+      sessionEndMinute: 30,
+      maxClosedTrades: 20,
+      maxEquityHistory: 24
+    });
+
+    await service.start();
+    const trade = await service.recordAlert(
+      buildAlert('2026-03-25T16:00:00.000Z', {
+        riskDecision: {
+          allowed: false,
+          finalRiskPct: 0,
+          positionSize: 0,
+          reasonCodes: ['OUTSIDE_ALLOWED_TRADING_WINDOW'],
+          blockedByNewsWindow: false,
+          blockedByTradingWindow: true,
+          blockedByPolicy: false,
+          checkedAt: '2026-03-25T16:00:00.000Z'
+        }
+      }),
+      'signal-monitor'
+    );
+
+    expect(trade).toBeNull();
+    expect(service.status('2026-03-25T16:00:00.000Z').pendingEntries).toBe(0);
+    expect(service.status('2026-03-25T16:00:00.000Z').openTrades).toBe(0);
   });
 
   it('accepts autonomous candidates only in unrestricted mode', async () => {

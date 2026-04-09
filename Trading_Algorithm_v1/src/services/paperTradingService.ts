@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
 import { isCmeEquitySessionOpen } from '../domain/cmeEquityHours.js';
-import type { AccountSnapshot, SetupType, SignalAlert, Side, SymbolCode } from '../domain/types.js';
+import type { AccountSnapshot, RiskConfig, SetupType, SignalAlert, Side, SymbolCode } from '../domain/types.js';
+import { isWithinTradingWindow } from './tradingWindowService.js';
 import type { OneMinuteBar } from '../training/historicalTrainer.js';
 
 type PaperTradeStatus = 'PENDING_ENTRY' | 'OPEN' | 'CLOSED' | 'CANCELED';
@@ -50,6 +51,9 @@ export interface PaperTradingConfig {
   timezone: string;
   sessionStartHour: number;
   sessionStartMinute: number;
+  sessionEndHour?: number;
+  sessionEndMinute?: number;
+  getTradingWindow?: () => RiskConfig['tradingWindow'];
   maxClosedTrades: number;
   maxEquityHistory: number;
   onTradeEvent?: (event: PaperTradeEvent) => void | Promise<void>;
@@ -296,6 +300,17 @@ export class PaperTradingService {
 
   private getMaxLiveDelayMinutes(): number {
     return Number.isFinite(this.config.maxLiveDelayMinutes) ? this.config.maxLiveDelayMinutes : Number.POSITIVE_INFINITY;
+  }
+
+  private getTradingWindow(): RiskConfig['tradingWindow'] {
+    return this.config.getTradingWindow?.() ?? {
+      enabled: true,
+      timezone: this.config.timezone,
+      startHour: this.config.sessionStartHour,
+      startMinute: this.config.sessionStartMinute,
+      endHour: this.config.sessionEndHour ?? 23,
+      endMinute: this.config.sessionEndMinute ?? 59
+    };
   }
 
   async start(): Promise<void> {
@@ -547,6 +562,12 @@ export class PaperTradingService {
       return null;
     }
     if (!isFreshEnough(alert.detectedAt, this.getMaxLiveDelayMinutes())) {
+      return null;
+    }
+    if (
+      alert.riskDecision.blockedByTradingWindow
+      || !isWithinTradingWindow(alert.detectedAt, this.getTradingWindow())
+    ) {
       return null;
     }
 
