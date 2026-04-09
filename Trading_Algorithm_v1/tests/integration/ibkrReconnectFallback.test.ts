@@ -78,9 +78,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(webPushMessages).toHaveLength(2);
     expect(webPushMessages[0].title).toBe('IBKR recovery request received');
     expect(webPushMessages[1].title).toBe('IBKR recovery started');
-    expect(telegramMessages).toHaveLength(2);
-    expect(telegramMessages[0].title).toBe('IBKR recovery request received');
-    expect(telegramMessages[1].title).toBe('IBKR recovery started');
+    expect(telegramMessages).toHaveLength(0);
 
     const diagnosticsResponse = await ctx.app.inject({
       method: 'GET',
@@ -146,17 +144,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(webPushMessages[0].url).toBe(
       'https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection'
     );
-    expect(telegramMessages).toHaveLength(1);
-    expect(telegramMessages[0].buttons).toEqual([
-      {
-        text: 'Open Status',
-        url: 'https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection'
-      },
-      {
-        text: 'Last-Resort Website',
-        url: 'https://ndcdyn.interactivebrokers.com/sso/Login'
-      }
-    ]);
+    expect(telegramMessages).toHaveLength(0);
 
     await new Promise((resolve) => {
       setTimeout(resolve, 5_500);
@@ -167,20 +155,51 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(webPushMessages).toHaveLength(2);
     expect(webPushMessages[1].title).toBe('IBKR still not connected');
     expect(webPushMessages[1].url).toBe('https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection');
-
-    expect(telegramMessages).toHaveLength(2);
-    expect(telegramMessages[1].title).toBe('IBKR still not connected');
-    expect(telegramMessages[1].buttons).toEqual([
-      {
-        text: 'Open Status',
-        url: 'https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection'
-      },
-      {
-        text: 'Last-Resort Website',
-        url: 'https://ndcdyn.interactivebrokers.com/sso/Login'
-      }
-    ]);
+    expect(telegramMessages).toHaveLength(0);
   }, 12000);
+
+  it('falls back to Telegram when app notifications do not deliver', async () => {
+    const webPushMessages: Array<Record<string, unknown>> = [];
+    const telegramMessages: Array<Record<string, unknown>> = [];
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrLoginTrigger: async () => ({ ok: true }),
+      ibkrResendPushTrigger: async () => ({ ok: true }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          webPushMessages.push(message);
+          return { attempted: 1, delivered: 0, removed: 0 };
+        }
+      } as never,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          telegramMessages.push(message);
+          return { sent: true };
+        }
+      } as never
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/login-required',
+      payload: {
+        symbols: ['NQ'],
+        source: 'manual-phone-retry',
+        reason: 'Fallback-only test',
+        fallbackDelaySeconds: 30
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(webPushMessages).toHaveLength(1);
+    expect(telegramMessages).toHaveLength(1);
+    expect(telegramMessages[0].title).toBe('IBKR login required');
+  });
 
   it('suppresses duplicate connected alerts when no reauthentication was pending', async () => {
     const webPushMessages: Array<Record<string, unknown>> = [];
@@ -220,7 +239,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(first.statusCode).toBe(200);
     expect(first.json().notifiedUsers).toBe(true);
     expect(webPushMessages).toHaveLength(1);
-    expect(telegramMessages).toHaveLength(1);
+    expect(telegramMessages).toHaveLength(0);
 
     const second = await ctx.app.inject({
       method: 'POST',
@@ -234,7 +253,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(second.statusCode).toBe(200);
     expect(second.json().notifiedUsers).toBe(false);
     expect(webPushMessages).toHaveLength(1);
-    expect(telegramMessages).toHaveLength(1);
+    expect(telegramMessages).toHaveLength(0);
   });
 
   it('sends the connected notification after a manual recovery request even when the bridge source completes the reconnect', async () => {
@@ -315,7 +334,6 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(connected.json().notifiedUsers).toBe(true);
     expect(webPushMessages).toHaveLength(1);
     expect(webPushMessages[0].title).toBe('IBKR connected');
-    expect(telegramMessages).toHaveLength(1);
-    expect(telegramMessages[0].title).toBe('IBKR connected');
+    expect(telegramMessages).toHaveLength(0);
   });
 });

@@ -176,6 +176,60 @@ describe('signal monitor integration', () => {
     expect(top.chartSnapshot.referenceLevels.some((level: { key: string }) => level.key === 'entry')).toBe(true);
   });
 
+  it('uses Telegram only when trade alerts fail to deliver through app push', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-telegram-fallback-'));
+    tempDirs.push(tempDir);
+    const webPushAlerts: Array<Record<string, unknown>> = [];
+    const telegramAlerts: Array<Record<string, unknown>> = [];
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      },
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifySignalAlert: async (alert: Record<string, unknown>) => {
+          webPushAlerts.push(alert);
+          return { attempted: 1, delivered: 0, removed: 0 };
+        },
+        notifyGeneric: async () => ({ attempted: 0, delivered: 0, removed: 0 })
+      } as never,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifySignalAlert: async (alert: Record<string, unknown>) => {
+          telegramAlerts.push(alert);
+          return { sent: true };
+        },
+        notifyGeneric: async () => ({ sent: true })
+      } as never
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+    expect(webPushAlerts.length).toBeGreaterThan(0);
+    expect(telegramAlerts.length).toBeGreaterThan(0);
+    expect(telegramAlerts.at(-1)?.title).toBe(webPushAlerts.at(-1)?.title);
+  });
+
   it('lets the paper account mirror allowed SMC candidates once the desk policy is confirmed', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-paper-'));
     tempDirs.push(tempDir);

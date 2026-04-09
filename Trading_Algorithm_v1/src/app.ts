@@ -1264,18 +1264,40 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     appMessage: AppNotificationMessage,
     telegramMessage?: { title: string; lines?: string[]; buttons?: Array<{ text: string; url: string }> }
   ) => {
-    const [appResult, telegramResult] = await Promise.allSettled([
-      tradeAssistAppNotifier?.notifyGeneric(appMessage),
-      telegramMessage ? telegramAlertService?.notifyGeneric(telegramMessage) : undefined
-    ]);
+    let appDelivery: Awaited<ReturnType<AppNotifier['notifyGeneric']>> | undefined;
+    let appError: string | undefined;
 
-    const appDelivery = appResult.status === 'fulfilled' ? appResult.value : undefined;
-    const telegramDelivery = telegramResult.status === 'fulfilled' ? telegramResult.value : undefined;
+    if (tradeAssistAppNotifier) {
+      try {
+        appDelivery = await tradeAssistAppNotifier.notifyGeneric(appMessage);
+      } catch (error) {
+        appError = (error as Error).message;
+      }
+    }
+
+    const shouldFallbackToTelegram = Boolean(
+      telegramMessage && (
+        !tradeAssistAppNotifier
+        || appError
+        || (appDelivery?.delivered ?? 0) === 0
+      )
+    );
+
+    let telegramDelivery: Awaited<ReturnType<TelegramAlertService['notifyGeneric']>> | undefined;
+    let telegramError: string | undefined;
+    if (shouldFallbackToTelegram && telegramMessage) {
+      try {
+        telegramDelivery = await telegramAlertService?.notifyGeneric(telegramMessage);
+      } catch (error) {
+        telegramError = (error as Error).message;
+      }
+    }
+
     return {
       appDelivery,
       telegramDelivery,
-      appError: appResult.status === 'rejected' ? (appResult.reason as Error).message : undefined,
-      telegramError: telegramResult.status === 'rejected' ? (telegramResult.reason as Error).message : undefined
+      appError,
+      telegramError
     };
   };
   const formatUsd = (value: number): string =>

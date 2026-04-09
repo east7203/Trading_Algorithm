@@ -81,6 +81,13 @@ interface EvaluateSymbolResult {
   skippedAlerts: number;
 }
 
+interface AppChannelDeliverySummary {
+  attempted: number;
+  delivered: number;
+  removed: number;
+  errors: string[];
+}
+
 const REPLAY_HISTORY_DIRS = [
   path.resolve(process.cwd(), 'data', 'historical', 'ibkr-auto'),
   path.resolve(process.cwd(), 'data', 'historical', 'ibkr')
@@ -1541,28 +1548,53 @@ export class SignalMonitorService {
       reminderCount: number;
     }
   ): Promise<void> {
-    if (this.nativePushNotificationService) {
-      try {
-        await this.nativePushNotificationService.notifySignalAlert(alert);
-      } catch (error) {
-        this.lastError = (error as Error).message;
-      }
+    const appDelivery = await this.notifyAppAlertChannels(alert, delivery);
+    if (appDelivery.errors.length > 0) {
+      this.lastError = appDelivery.errors.at(-1);
     }
 
-    if (this.webPushNotificationService) {
-      try {
-        await this.webPushNotificationService.notifySignalAlert(alert, delivery);
-      } catch (error) {
-        this.lastError = (error as Error).message;
-      }
-    }
+    const shouldFallbackToTelegram =
+      Boolean(this.telegramAlertService) && (
+        (!this.nativePushNotificationService && !this.webPushNotificationService)
+        || appDelivery.delivered === 0
+      );
 
-    if (this.telegramAlertService) {
+    if (shouldFallbackToTelegram && this.telegramAlertService) {
       try {
         await this.telegramAlertService.notifySignalAlert(alert, delivery);
       } catch (error) {
         this.lastError = (error as Error).message;
       }
     }
+  }
+
+  private async notifyAppAlertChannels(
+    alert: SignalAlert,
+    delivery: {
+      reason: 'initial' | 'reminder';
+      reminderCount: number;
+    }
+  ): Promise<AppChannelDeliverySummary> {
+    const deliveries = await Promise.allSettled([
+      this.nativePushNotificationService?.notifySignalAlert(alert),
+      this.webPushNotificationService?.notifySignalAlert(alert, delivery)
+    ]);
+
+    return deliveries.reduce<AppChannelDeliverySummary>(
+      (summary, result) => {
+        if (result.status !== 'fulfilled' || !result.value) {
+          if (result.status === 'rejected') {
+            summary.errors.push((result.reason as Error).message);
+          }
+          return summary;
+        }
+
+        summary.attempted += result.value.attempted ?? 0;
+        summary.delivered += result.value.delivered ?? 0;
+        summary.removed += result.value.removed ?? 0;
+        return summary;
+      },
+      { attempted: 0, delivered: 0, removed: 0, errors: [] }
+    );
   }
 }
