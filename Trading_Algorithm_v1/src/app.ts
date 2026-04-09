@@ -248,6 +248,10 @@ interface PaperAutonomyConfigInput {
   minTrendConfidence: number;
   breakoutLookbackBars5m: number;
   pullbackLookbackBars5m: number;
+  patternMinClosedIdeas: number;
+  patternDisableClosedIdeas: number;
+  explorationBudgetFraction: number;
+  maxExplorationIdeasPerDay: number;
 }
 
 interface SelfLearningConfigInput {
@@ -913,7 +917,11 @@ const resolvePaperAutonomyConfig = (
     maxHoldMinutes: parseIntEnv('PAPER_AUTONOMY_MAX_HOLD_MINUTES', 180, 5, 1_440),
     minTrendConfidence: parseFloatEnv('PAPER_AUTONOMY_MIN_TREND_CONFIDENCE', 0, 0, 1),
     breakoutLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_BREAKOUT_LOOKBACK_BARS_5M', 6, 3, 24),
-    pullbackLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_PULLBACK_LOOKBACK_BARS_5M', 8, 3, 24)
+    pullbackLookbackBars5m: parseIntEnv('PAPER_AUTONOMY_PULLBACK_LOOKBACK_BARS_5M', 8, 3, 24),
+    patternMinClosedIdeas: parseIntEnv('PAPER_AUTONOMY_PATTERN_MIN_CLOSED_IDEAS', 5, 1, 200),
+    patternDisableClosedIdeas: parseIntEnv('PAPER_AUTONOMY_PATTERN_DISABLE_CLOSED_IDEAS', 8, 2, 200),
+    explorationBudgetFraction: parseFloatEnv('PAPER_AUTONOMY_EXPLORATION_BUDGET_FRACTION', 0.2, 0, 1),
+    maxExplorationIdeasPerDay: parseIntEnv('PAPER_AUTONOMY_MAX_EXPLORATION_IDEAS_PER_DAY', 2, 0, 50)
   };
 
   return {

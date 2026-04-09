@@ -27,6 +27,9 @@ export type PaperAutonomyThesis =
   | 'FAILED_BREAKOUT_REVERSAL'
   | 'VOLATILITY_COMPRESSION_RELEASE';
 
+export type PaperAutonomyPatternState = 'PROVEN' | 'EXPERIMENTAL' | 'PROBATION' | 'DISABLED';
+export type PaperAutonomyIdeaAllocation = 'CORE' | 'EXPLORATION';
+
 const PAPER_AUTONOMY_THESES: PaperAutonomyThesis[] = [
   'TREND_BREAKOUT_EXPANSION',
   'TREND_PULLBACK_RECLAIM',
@@ -45,6 +48,10 @@ export interface PaperAutonomyIdeaRecord {
   reason: string;
   researchDirection: ResearchTrendDirection;
   researchConfidence: number;
+  exploratory?: boolean;
+  patternKey?: string;
+  patternState?: PaperAutonomyPatternState;
+  allocation?: PaperAutonomyIdeaAllocation;
   openedAt: string;
   status: 'OPEN' | 'CLOSED';
   paperTradeId?: string;
@@ -109,6 +116,29 @@ export interface PaperAutonomyActiveThesis {
   lastOpenedAt?: string;
 }
 
+export interface PaperAutonomyPatternStatus {
+  key: string;
+  thesis: PaperAutonomyThesis;
+  label: string;
+  symbol: SymbolCode;
+  researchDirection: ResearchTrendDirection;
+  exploratory: boolean;
+  state: PaperAutonomyPatternState;
+  total: number;
+  open: number;
+  closed: number;
+  wins: number;
+  losses: number;
+  flats: number;
+  winRate: number;
+  avgR: number;
+  realizedPnl: number;
+  recentLossStreak: number;
+  reason: string;
+  lastOpenedAt?: string;
+  lastClosedAt?: string;
+}
+
 export interface PaperAutonomyStatus {
   enabled: boolean;
   started: boolean;
@@ -134,6 +164,7 @@ export interface PaperAutonomyStatus {
   activeTheses: PaperAutonomyActiveThesis[];
   symbolStatus: PaperAutonomySymbolStatus[];
   thesisStats: PaperAutonomyThesisStats[];
+  patternStates: PaperAutonomyPatternStatus[];
   recentIdeas: PaperAutonomyIdeaRecord[];
   recentClosedIdeas: PaperAutonomyIdeaRecord[];
 }
@@ -178,6 +209,10 @@ export interface PaperAutonomyConfig {
   minTrendConfidence: number;
   breakoutLookbackBars5m: number;
   pullbackLookbackBars5m: number;
+  patternMinClosedIdeas?: number;
+  patternDisableClosedIdeas?: number;
+  explorationBudgetFraction?: number;
+  maxExplorationIdeasPerDay?: number;
   getMarketResearchStatus?: () => MarketResearchStatus | null;
   getPaperTradingStatus?: () => PaperTradingStatus | null;
   getSelfLearningAdjustment?: (input: {
@@ -196,6 +231,16 @@ interface PaperAutonomyPortfolioAdjustment {
   summary: string;
 }
 
+interface PaperAutonomyPatternDecision {
+  blocked: boolean;
+  allocation: PaperAutonomyIdeaAllocation;
+  status: PaperAutonomyPatternStatus;
+  scoreAdjustment: number;
+  riskMultiplier: number;
+  minimumScoreBoost: number;
+  summary: string;
+}
+
 const takeLast = <T>(items: T[], count: number): T[] =>
   items.length <= count ? items : items.slice(items.length - count);
 
@@ -209,6 +254,40 @@ const clamp = (value: number, min: number, max: number): number => {
     return max;
   }
   return value;
+};
+
+const DAY_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
+const PATTERN_STATE_RANK: Record<PaperAutonomyPatternState, number> = {
+  DISABLED: 0,
+  PROBATION: 1,
+  EXPERIMENTAL: 2,
+  PROVEN: 3
+};
+const DEFAULT_PATTERN_MIN_CLOSED_IDEAS = 5;
+const DEFAULT_PATTERN_DISABLE_CLOSED_IDEAS = 8;
+const DEFAULT_EXPLORATION_BUDGET_FRACTION = 0.2;
+const DEFAULT_MAX_EXPLORATION_IDEAS_PER_DAY = 2;
+
+const getDayFormatter = (timezone: string): Intl.DateTimeFormat => {
+  const cached = DAY_FORMATTER_CACHE.get(timezone);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  DAY_FORMATTER_CACHE.set(timezone, formatter);
+  return formatter;
+};
+
+const getLocalDayKey = (timestamp: string, timezone: string): string => {
+  const parts = getDayFormatter(timezone).formatToParts(new Date(timestamp));
+  const find = (type: Intl.DateTimeFormatPartTypes): string => parts.find((entry) => entry.type === type)?.value ?? '00';
+  return `${find('year')}-${find('month')}-${find('day')}`;
 };
 
 const isFreshEnough = (timestamp: string, maxDelayMinutes: number, nowIso = new Date().toISOString()): boolean => {
@@ -311,6 +390,16 @@ const normalizeAutonomyThesis = (value: unknown): PaperAutonomyThesis | null =>
     ? (value as PaperAutonomyThesis)
     : null;
 
+const normalizePatternState = (value: unknown): PaperAutonomyPatternState | undefined =>
+  value === 'PROVEN' || value === 'EXPERIMENTAL' || value === 'PROBATION' || value === 'DISABLED'
+    ? value
+    : undefined;
+
+const normalizeIdeaAllocation = (value: unknown): PaperAutonomyIdeaAllocation | undefined =>
+  value === 'CORE' || value === 'EXPLORATION'
+    ? value
+    : undefined;
+
 const summarizeCandidate = (candidate: SetupCandidate): string => {
   const score = typeof candidate.finalScore === 'number' ? `score ${candidate.finalScore.toFixed(1)}` : 'unscored';
   return `${candidate.symbol} ${candidate.side} • ${candidate.setupType} • ${score}`;
@@ -350,6 +439,10 @@ const normalizeIdea = (value: unknown): PaperAutonomyIdeaRecord | null => {
     reason: candidate.reason,
     researchDirection: candidate.researchDirection as ResearchTrendDirection,
     researchConfidence: round(candidate.researchConfidence, 2),
+    exploratory: candidate.exploratory === true,
+    patternKey: typeof candidate.patternKey === 'string' && candidate.patternKey.trim().length > 0 ? candidate.patternKey : undefined,
+    patternState: normalizePatternState(candidate.patternState),
+    allocation: normalizeIdeaAllocation(candidate.allocation),
     openedAt: candidate.openedAt,
     status: candidate.status,
     paperTradeId: typeof candidate.paperTradeId === 'string' ? candidate.paperTradeId : undefined,
@@ -398,6 +491,221 @@ export class PaperAutonomyService {
       startMinute: this.config.sessionStartMinute,
       endHour: this.config.sessionEndHour,
       endMinute: this.config.sessionEndMinute
+    };
+  }
+
+  private getPatternMinClosedIdeas(): number {
+    return Number.isFinite(this.config.patternMinClosedIdeas)
+      ? Math.max(1, Math.round(this.config.patternMinClosedIdeas as number))
+      : DEFAULT_PATTERN_MIN_CLOSED_IDEAS;
+  }
+
+  private getPatternDisableClosedIdeas(): number {
+    return Number.isFinite(this.config.patternDisableClosedIdeas)
+      ? Math.max(this.getPatternMinClosedIdeas() + 1, Math.round(this.config.patternDisableClosedIdeas as number))
+      : DEFAULT_PATTERN_DISABLE_CLOSED_IDEAS;
+  }
+
+  private getExplorationBudgetFraction(): number {
+    return Number.isFinite(this.config.explorationBudgetFraction)
+      ? clamp(this.config.explorationBudgetFraction as number, 0, 1)
+      : DEFAULT_EXPLORATION_BUDGET_FRACTION;
+  }
+
+  private getMaxExplorationIdeasPerDay(): number {
+    return Number.isFinite(this.config.maxExplorationIdeasPerDay)
+      ? Math.max(0, Math.round(this.config.maxExplorationIdeasPerDay as number))
+      : DEFAULT_MAX_EXPLORATION_IDEAS_PER_DAY;
+  }
+
+  private buildPatternKey(
+    thesis: PaperAutonomyThesis,
+    symbol: SymbolCode,
+    researchDirection: ResearchTrendDirection,
+    exploratory: boolean
+  ): string {
+    return `${thesis}|${symbol}|${researchDirection}|${exploratory ? 'exploratory' : 'aligned'}`;
+  }
+
+  private resolveIdeaPatternKey(idea: PaperAutonomyIdeaRecord): string {
+    return idea.patternKey ?? this.buildPatternKey(idea.thesis, idea.symbol, idea.researchDirection, idea.exploratory === true);
+  }
+
+  private listPatternIdeas(patternKey: string): PaperAutonomyIdeaRecord[] {
+    return [...this.ideas.values()].filter((idea) => this.resolveIdeaPatternKey(idea) === patternKey);
+  }
+
+  private buildPatternStatus(
+    thesis: PaperAutonomyThesis,
+    symbol: SymbolCode,
+    researchDirection: ResearchTrendDirection,
+    exploratory: boolean
+  ): PaperAutonomyPatternStatus {
+    const patternKey = this.buildPatternKey(thesis, symbol, researchDirection, exploratory);
+    const patternIdeas = this.listPatternIdeas(patternKey).sort((left, right) => right.openedAt.localeCompare(left.openedAt));
+    const openIdeas = patternIdeas.filter((idea) => idea.status === 'OPEN');
+    const closedIdeas = patternIdeas
+      .filter((idea) => idea.status === 'CLOSED')
+      .sort((left, right) => (right.closedAt ?? right.openedAt).localeCompare(left.closedAt ?? left.openedAt));
+    const wins = closedIdeas.filter((idea) => idea.outcome === 'WIN').length;
+    const losses = closedIdeas.filter((idea) => idea.outcome === 'LOSS').length;
+    const flats = closedIdeas.filter((idea) => idea.outcome === 'FLAT').length;
+    const winRate = closedIdeas.length > 0 ? wins / closedIdeas.length : 0;
+    const avgR = closedIdeas.length > 0 ? average(closedIdeas.map((idea) => idea.realizedR ?? 0)) : 0;
+    const realizedPnl = closedIdeas.reduce((sum, idea) => sum + (idea.realizedPnl ?? 0), 0);
+    const recentClosed = closedIdeas.slice(0, 4);
+    const recentAvgR = recentClosed.length > 0 ? average(recentClosed.map((idea) => idea.realizedR ?? 0)) : 0;
+    let recentLossStreak = 0;
+    for (const idea of recentClosed) {
+      if (idea.outcome === 'LOSS') {
+        recentLossStreak += 1;
+        continue;
+      }
+      break;
+    }
+
+    let state: PaperAutonomyPatternState = 'PROVEN';
+    let reason = 'Pattern has a positive expectancy and can trade at core size.';
+    if (closedIdeas.length < this.getPatternMinClosedIdeas()) {
+      state = 'EXPERIMENTAL';
+      reason = `Experimental until it reaches ${this.getPatternMinClosedIdeas()} closed samples (${closedIdeas.length}/${this.getPatternMinClosedIdeas()}).`;
+    } else if (
+      closedIdeas.length >= this.getPatternDisableClosedIdeas()
+      && (
+        avgR <= -0.25
+        || (winRate <= 0.35 && recentLossStreak >= 3)
+        || (recentClosed.length >= 3 && recentAvgR <= -0.5)
+      )
+    ) {
+      state = 'DISABLED';
+      reason = `Disabled for now after underperforming (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
+    } else if (avgR < 0 || winRate < 0.45 || recentLossStreak >= 2 || recentAvgR < -0.2) {
+      state = 'PROBATION';
+      reason = `On probation while performance stabilizes (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
+    } else if (avgR >= 0.12 || winRate >= 0.52) {
+      state = 'PROVEN';
+      reason = `Proven pattern with positive expectancy (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
+    }
+
+    return {
+      key: patternKey,
+      thesis,
+      label: thesisLabel(thesis),
+      symbol,
+      researchDirection,
+      exploratory,
+      state,
+      total: patternIdeas.length,
+      open: openIdeas.length,
+      closed: closedIdeas.length,
+      wins,
+      losses,
+      flats,
+      winRate: round(winRate, 2),
+      avgR: round(avgR, 2),
+      realizedPnl: round(realizedPnl, 2),
+      recentLossStreak,
+      reason,
+      lastOpenedAt: patternIdeas[0]?.openedAt,
+      lastClosedAt: closedIdeas[0]?.closedAt
+    };
+  }
+
+  private hasExplorationCapacity(timestamp: string): boolean {
+    const hardCap = this.getMaxExplorationIdeasPerDay();
+    if (hardCap <= 0) {
+      return false;
+    }
+
+    const dayKey = getLocalDayKey(timestamp, this.getTradingWindow().timezone);
+    const ideasToday = [...this.ideas.values()].filter(
+      (idea) => getLocalDayKey(idea.openedAt, this.getTradingWindow().timezone) === dayKey
+    );
+    const explorationIdeasToday = ideasToday.filter((idea) => idea.allocation === 'EXPLORATION').length;
+    const dynamicCap = Math.ceil(Math.max(1, ideasToday.length + 1) * this.getExplorationBudgetFraction());
+    const allowed = Math.max(1, Math.min(hardCap, dynamicCap));
+    return explorationIdeasToday < allowed;
+  }
+
+  private buildPatternDecision(input: {
+    thesis: PaperAutonomyThesis;
+    symbol: SymbolCode;
+    researchDirection: ResearchTrendDirection;
+    exploratory: boolean;
+    generatedAt: string;
+  }): PaperAutonomyPatternDecision {
+    const status = this.buildPatternStatus(
+      input.thesis,
+      input.symbol,
+      input.researchDirection,
+      input.exploratory
+    );
+    const allocation: PaperAutonomyIdeaAllocation =
+      input.exploratory || status.state === 'EXPERIMENTAL'
+        ? 'EXPLORATION'
+        : 'CORE';
+
+    if (status.state === 'DISABLED') {
+      return {
+        blocked: true,
+        allocation,
+        status,
+        scoreAdjustment: -100,
+        riskMultiplier: 0,
+        minimumScoreBoost: 100,
+        summary: status.reason
+      };
+    }
+
+    if (allocation === 'EXPLORATION' && !this.hasExplorationCapacity(input.generatedAt)) {
+      return {
+        blocked: true,
+        allocation,
+        status,
+        scoreAdjustment: -100,
+        riskMultiplier: 0,
+        minimumScoreBoost: 100,
+        summary: `Exploration budget full for this session day. ${status.reason}`
+      };
+    }
+
+    let scoreAdjustment = 0;
+    let riskMultiplier = 1;
+    let minimumScoreBoost = 0;
+
+    switch (status.state) {
+      case 'PROVEN':
+        scoreAdjustment += 2.5;
+        riskMultiplier *= 1.05;
+        break;
+      case 'PROBATION':
+        scoreAdjustment -= 4.5;
+        riskMultiplier *= 0.65;
+        minimumScoreBoost += 4;
+        break;
+      case 'EXPERIMENTAL':
+        scoreAdjustment -= 3;
+        riskMultiplier *= 0.75;
+        minimumScoreBoost += 2;
+        break;
+      default:
+        break;
+    }
+
+    if (allocation === 'EXPLORATION') {
+      scoreAdjustment -= 2.5;
+      riskMultiplier *= 0.7;
+      minimumScoreBoost += 2;
+    }
+
+    return {
+      blocked: false,
+      allocation,
+      status,
+      scoreAdjustment: round(scoreAdjustment, 2),
+      riskMultiplier: round(riskMultiplier, 2),
+      minimumScoreBoost,
+      summary: `${allocation === 'EXPLORATION' ? 'Exploration budget' : 'Core allocation'} • ${status.reason}`
     };
   }
 
@@ -1326,7 +1634,6 @@ export class PaperAutonomyService {
       this.buildCompressionReleaseIdea(symbol, candles5m, trend.direction, trend.confidence)
     ].filter((idea): idea is NonNullable<typeof idea> => Boolean(idea));
 
-    const minimumIdeaScore = trend.exploratory ? 58 : 54;
     const ideas = rawIdeas
       .map((idea) => {
         const adjustment = this.buildPortfolioAdjustment(symbol, idea.thesis, idea.side);
@@ -1337,7 +1644,20 @@ export class PaperAutonomyService {
             side: idea.side,
             researchDirection: trend.direction
           }) ?? null;
-        const adjustedScore = round(clamp(idea.score + adjustment.scoreAdjustment, 0, 100), 2);
+        const patternDecision = this.buildPatternDecision({
+          thesis: idea.thesis,
+          symbol,
+          researchDirection: trend.direction,
+          exploratory: trend.exploratory,
+          generatedAt: currentBar.timestamp
+        });
+        if (patternDecision.blocked) {
+          return null;
+        }
+        const adjustedScore = round(
+          clamp(idea.score + adjustment.scoreAdjustment + patternDecision.scoreAdjustment, 0, 100),
+          2
+        );
         const selfLearnedScore = round(
           clamp(adjustedScore + (selfLearningAdjustment?.scoreAdjustment ?? 0), 0, 100),
           2
@@ -1346,6 +1666,7 @@ export class PaperAutonomyService {
           clamp(
             this.buildAdaptiveRiskPct(idea.thesis, symbol, trend.confidence)
             * adjustment.riskMultiplier
+            * patternDecision.riskMultiplier
             * (selfLearningAdjustment?.riskMultiplier ?? 1),
             0.1,
             1.25
@@ -1358,10 +1679,15 @@ export class PaperAutonomyService {
           score: selfLearnedScore,
           adaptiveRiskPct,
           portfolioAdjustment: adjustment,
-          selfLearningAdjustment
+          selfLearningAdjustment,
+          patternDecision
         };
       })
-      .filter((idea) => idea.score >= minimumIdeaScore);
+      .filter((idea): idea is NonNullable<typeof idea> => Boolean(idea))
+      .filter((idea) => {
+        const minimumIdeaScore = (trend.exploratory ? 58 : 54) + idea.patternDecision.minimumScoreBoost;
+        return idea.score >= minimumIdeaScore;
+      });
 
     const bestIdea = ideas.sort((left, right) => right.score - left.score)[0];
     if (!bestIdea) {
@@ -1396,16 +1722,21 @@ export class PaperAutonomyService {
         autonomyThesis: bestIdea.thesis,
         autonomyReason: [
           bestIdea.reason,
+          bestIdea.patternDecision.summary,
           bestIdea.portfolioAdjustment.summary,
           bestIdea.selfLearningAdjustment?.summary
         ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(' • '),
         researchDirection: trend.direction,
         researchConfidence: trend.confidence,
         exploratory: trend.exploratory,
+        autonomyPatternState: bestIdea.patternDecision.status.state,
+        autonomyPatternAllocation: bestIdea.patternDecision.allocation,
+        autonomyPatternReason: bestIdea.patternDecision.status.reason,
         independentPaperEngine: true,
         autonomyRawScore: bestIdea.rawScore,
         autonomyAdjustedScore: bestIdea.score,
         autonomyPortfolioAdjustment: bestIdea.portfolioAdjustment.summary,
+        autonomyPatternAdjustment: bestIdea.patternDecision.summary,
         autonomySelfLearningAdjustment: bestIdea.selfLearningAdjustment?.summary ?? 'neutral self-learning',
         paperAutonomyRiskPct: bestIdea.adaptiveRiskPct,
         paperTradeExpiresAt: this.buildTradeExpiry(currentBar.timestamp)
@@ -1449,9 +1780,13 @@ export class PaperAutonomyService {
       side: candidate.side,
       thesis: bestIdea.thesis,
       score: bestIdea.score,
-      reason: `${bestIdea.reason} • ${bestIdea.portfolioAdjustment.summary}`,
+      reason: `${bestIdea.reason} • ${bestIdea.patternDecision.summary} • ${bestIdea.portfolioAdjustment.summary}`,
       researchDirection: trend.direction,
       researchConfidence: trend.confidence,
+      exploratory: trend.exploratory,
+      patternKey: bestIdea.patternDecision.status.key,
+      patternState: bestIdea.patternDecision.status.state,
+      allocation: bestIdea.patternDecision.allocation,
       openedAt: currentBar.timestamp,
       status: 'OPEN',
       paperTradeId: trade.paperTradeId
@@ -1550,6 +1885,14 @@ export class PaperAutonomyService {
     const previousStatus = this.status();
     const reviewedAt = review.reviewedAt ?? review.updatedAt;
     const realizedR = outcome === 'WIN' ? 1 : outcome === 'LOSS' ? -1 : 0;
+    const exploratory = candidateMetadata.exploratory === true;
+    const researchDirection =
+      candidateMetadata.researchDirection === 'BULLISH'
+      || candidateMetadata.researchDirection === 'BEARISH'
+      || candidateMetadata.researchDirection === 'BALANCED'
+      || candidateMetadata.researchDirection === 'STAND_ASIDE'
+        ? candidateMetadata.researchDirection
+        : existing?.researchDirection ?? 'BALANCED';
     const nextIdea: PaperAutonomyIdeaRecord = {
       alertId: review.alertId,
       candidateId: review.candidateId,
@@ -1564,17 +1907,15 @@ export class PaperAutonomyService {
         typeof candidateMetadata.autonomyReason === 'string' && candidateMetadata.autonomyReason.trim().length > 0
           ? candidateMetadata.autonomyReason.trim()
           : review.alertSnapshot?.summary ?? `${review.setupType} replay review`,
-      researchDirection:
-        candidateMetadata.researchDirection === 'BULLISH'
-        || candidateMetadata.researchDirection === 'BEARISH'
-        || candidateMetadata.researchDirection === 'BALANCED'
-        || candidateMetadata.researchDirection === 'STAND_ASIDE'
-          ? candidateMetadata.researchDirection
-          : existing?.researchDirection ?? 'BALANCED',
+      researchDirection,
       researchConfidence:
         typeof candidateMetadata.researchConfidence === 'number' && Number.isFinite(candidateMetadata.researchConfidence)
           ? round(candidateMetadata.researchConfidence, 2)
           : existing?.researchConfidence ?? 0,
+      exploratory,
+      patternKey: this.buildPatternKey(thesis, review.symbol, researchDirection, exploratory),
+      patternState: normalizePatternState(candidateMetadata.autonomyPatternState) ?? existing?.patternState,
+      allocation: exploratory ? 'EXPLORATION' : existing?.allocation ?? 'CORE',
       openedAt: existing?.openedAt ?? review.detectedAt,
       status: 'CLOSED',
       paperTradeId: existing?.paperTradeId,
@@ -1671,6 +2012,26 @@ export class PaperAutonomyService {
         totalIdeas: entry.total,
         lastOpenedAt: entry.lastOpenedAt
       }));
+    const patternStates = [...new Set(ideas.map((idea) => this.resolveIdeaPatternKey(idea)))]
+      .map((patternKey) => {
+        const seedIdea = ideas.find((idea) => this.resolveIdeaPatternKey(idea) === patternKey);
+        if (!seedIdea) {
+          return null;
+        }
+        return this.buildPatternStatus(
+          seedIdea.thesis,
+          seedIdea.symbol,
+          seedIdea.researchDirection,
+          seedIdea.exploratory === true
+        );
+      })
+      .filter((entry): entry is PaperAutonomyPatternStatus => entry !== null)
+      .sort((left, right) =>
+        PATTERN_STATE_RANK[left.state] - PATTERN_STATE_RANK[right.state]
+        || right.closed - left.closed
+        || right.total - left.total
+        || left.label.localeCompare(right.label)
+      );
     const symbolStatus = this.config.focusSymbols.map((symbol) => this.buildSymbolStatus(symbol));
     const tradingWindow = this.getTradingWindow();
 
@@ -1716,6 +2077,7 @@ export class PaperAutonomyService {
       activeTheses,
       symbolStatus,
       thesisStats,
+      patternStates,
       recentIdeas: ideas.slice(0, 12),
       recentClosedIdeas: closedIdeas.slice(0, 8)
     };
