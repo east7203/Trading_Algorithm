@@ -163,11 +163,17 @@ const stopYahooFallback = async (): Promise<void> => {
   await runCommand('pm2', ['save']);
 };
 
-const postJson = async (url: string, payload: Record<string, unknown>): Promise<void> => {
+const postJson = async (
+  url: string,
+  payload: Record<string, unknown>,
+  apiKey?: string,
+  apiKeyHeader = 'x-api-key'
+): Promise<void> => {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      ...(apiKey ? { [apiKeyHeader]: apiKey } : {})
     },
     body: JSON.stringify(payload)
   });
@@ -197,6 +203,8 @@ const run = async (): Promise<void> => {
 
   const diagnosticsUrl = `${(process.env.TRAINING_API_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')}/diagnostics`;
   const fallbackNotifyUrl = `${(process.env.TRAINING_API_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')}/notifications/ibkr/fallback-activated`;
+  const trainingApiKey = process.env.TRAINING_API_KEY?.trim() || undefined;
+  const trainingApiKeyHeader = process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key';
   const checkIntervalMs = parseIntOr(process.env.IBKR_FALLBACK_WATCHDOG_CHECK_SECONDS, 60, 5) * 1000;
   const staleThresholdMs =
     parseIntOr(process.env.IBKR_FALLBACK_WATCHDOG_STALE_MINUTES, 8, 1) * 60 * 1000;
@@ -244,13 +252,18 @@ const run = async (): Promise<void> => {
       if (decision.shouldActivateFallback && !fallbackActivated) {
         await startYahooFallback();
         fallbackActivated = true;
-        await postJson(fallbackNotifyUrl, {
-          source: 'ibkr-fallback-watchdog',
-          activatedAt: new Date().toISOString(),
-          latestBarTimestamp,
-          liveFeedStatus,
-          staleMinutes: Math.round(staleThresholdMs / (60 * 1000))
-        });
+        await postJson(
+          fallbackNotifyUrl,
+          {
+            source: 'ibkr-fallback-watchdog',
+            activatedAt: new Date().toISOString(),
+            latestBarTimestamp,
+            liveFeedStatus,
+            staleMinutes: Math.round(staleThresholdMs / (60 * 1000))
+          },
+          trainingApiKey,
+          trainingApiKeyHeader
+        );
         // eslint-disable-next-line no-console
         console.log('[ibkr-fallback-watchdog] Yahoo fallback restarted after stale feed detection.');
       }
