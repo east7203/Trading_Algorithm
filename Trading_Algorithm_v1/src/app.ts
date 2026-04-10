@@ -996,6 +996,13 @@ const resolveSignalReviewStorePath = (override?: string): string => {
     return path.resolve(process.cwd(), override);
   }
 
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true') {
+    return path.resolve(
+      os.tmpdir(),
+      `trading-algorithm-signal-reviews-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+    );
+  }
+
   const fromEnv = parseOptionalPathEnv(
     'SIGNAL_REVIEW_STORE_PATH',
     path.resolve(process.cwd(), 'data', 'reviews', 'signal-reviews.json')
