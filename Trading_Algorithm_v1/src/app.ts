@@ -1262,7 +1262,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       : null;
   const notifyTradeAssistChannels = async (
     appMessage: AppNotificationMessage,
-    telegramMessage?: { title: string; lines?: string[]; buttons?: Array<{ text: string; url: string }> }
+    telegramMessage?: { title: string; lines?: string[]; buttons?: Array<{ text: string; url: string }> },
+    options?: { telegramFallback?: boolean }
   ) => {
     let appDelivery: Awaited<ReturnType<AppNotifier['notifyGeneric']>> | undefined;
     let appError: string | undefined;
@@ -1276,7 +1277,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
 
     const shouldFallbackToTelegram = Boolean(
-      telegramMessage && (
+      options?.telegramFallback
+      && telegramAlertService
+      && telegramMessage
+      && (
         !tradeAssistAppNotifier
         || appError
         || (appDelivery?.delivered ?? 0) === 0
@@ -1720,7 +1724,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           { text: 'Open Status', url: ibkrStatusUrl },
           { text: 'Last-Resort Website', url: ibkrMobileUrl }
         ]
-      }
+      },
+      { telegramFallback: true }
     );
   };
   const notifyIbkrRecoveryRequest = async (
@@ -1755,7 +1760,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           'You will get another update when the server finishes the next recovery step.'
         ],
         buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-      }
+      },
+      { telegramFallback: true }
     );
   };
 
@@ -3809,7 +3815,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 yahooCutover.message
               ],
               buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-            }
+            },
+            { telegramFallback: true }
           )
         ]
       : [];
@@ -3891,7 +3898,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 { text: 'Open Status', url: ibkrStatusUrl },
                 { text: 'Last-Resort Website', url: ibkrMobileUrl }
               ]
-            }
+            },
+            { telegramFallback: true }
           )
         ]
       : [];
@@ -4055,7 +4063,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 body.latestBarTimestamp ? `Last IBKR bar: ${body.latestBarTimestamp}` : 'Last IBKR bar timestamp unavailable.'
               ],
               buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
-            }
+            },
+            { telegramFallback: true }
           )
         ]
       : [];
