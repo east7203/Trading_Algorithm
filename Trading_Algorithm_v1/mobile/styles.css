@@ -7218,6 +7218,22 @@ select {
   margin-top: 6px;
 }
 
+.security-health-head {
+  display: grid;
+  gap: 10px;
+}
+
+.security-health-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.security-health-title-row .chip {
+  flex-shrink: 0;
+}
+
 .notification-activity-list {
   gap: 10px;
 }
@@ -7255,6 +7271,29 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.security-timeline-panel {
+  margin-top: 16px;
+}
+
+.security-timeline-list {
+  display: grid;
+  gap: 10px;
+}
+
+.security-timeline-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 15px;
+}
+
+.security-timeline-meta {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 0.79rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 @media (min-width: 860px) {

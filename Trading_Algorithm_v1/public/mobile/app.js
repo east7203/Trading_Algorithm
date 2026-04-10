@@ -6,6 +6,7 @@ const NOTIFICATION_PREFS_KEY = 'trading_mobile_notification_prefs_v1';
 const SEEN_ALERT_IDS_KEY = 'trading_mobile_seen_alert_ids_v1';
 const NATIVE_PUSH_TOKEN_KEY = 'trading_mobile_native_push_token_v1';
 const SECURITY_REPAIR_STATE_KEY = 'trading_mobile_security_repair_state_v1';
+const SECURITY_REPAIR_HISTORY_KEY = 'trading_mobile_security_repair_history_v1';
 const TV_CHECKLISTS_KEY = 'trading_mobile_tv_checklists_v1';
 
 const defaultUiPrefs = {
@@ -214,6 +215,7 @@ const pushHealthLastAppEl = document.getElementById('pushHealthLastApp');
 const pushHealthLastAppNoteEl = document.getElementById('pushHealthLastAppNote');
 const pushHealthTelegramEl = document.getElementById('pushHealthTelegram');
 const pushHealthTelegramNoteEl = document.getElementById('pushHealthTelegramNote');
+const securityHealthBadgeEl = document.getElementById('securityHealthBadge');
 const securityHealthPostureEl = document.getElementById('securityHealthPosture');
 const securityHealthPostureNoteEl = document.getElementById('securityHealthPostureNote');
 const securityHealthInternalApiEl = document.getElementById('securityHealthInternalApi');
@@ -228,7 +230,9 @@ const securityRepairPushEl = document.getElementById('securityRepairPush');
 const securityRunBrokerRecoveryTestEl = document.getElementById('securityRunBrokerRecoveryTest');
 const securityRefreshChecksEl = document.getElementById('securityRefreshChecks');
 const securityCopySummaryEl = document.getElementById('securityCopySummary');
+const securityShareHistoryEl = document.getElementById('securityShareHistory');
 const securityRepairMetaEl = document.getElementById('securityRepairMeta');
+const securityTimelineListEl = document.getElementById('securityTimelineList');
 const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
@@ -449,6 +453,13 @@ const notificationActivityCategoryCopy = {
   'trade-activity': 'Paper Activity',
   'broker-recovery': 'IBKR Recovery',
   'engine-update': 'Engine Update'
+};
+
+const notificationActivityCategoryPrefKey = {
+  'trade-alert': 'tradeAlerts',
+  'trade-activity': 'tradeActivity',
+  'broker-recovery': 'brokerRecovery',
+  'engine-update': 'engineUpdates'
 };
 
 const notificationActivityTriggerCopy = {
@@ -3243,6 +3254,40 @@ const saveSecurityRepairState = (state) => {
   localStorage.setItem(SECURITY_REPAIR_STATE_KEY, JSON.stringify(state));
 };
 
+const getSecurityRepairHistory = () => {
+  const raw = localStorage.getItem(SECURITY_REPAIR_HISTORY_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === 'object') : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveSecurityRepairHistory = (entries) => {
+  localStorage.setItem(SECURITY_REPAIR_HISTORY_KEY, JSON.stringify(entries.slice(0, 24)));
+};
+
+const recordSecurityRepairAction = (action, ok, detail) => {
+  const entry = {
+    action,
+    ok,
+    detail,
+    at: new Date().toISOString()
+  };
+  saveSecurityRepairState(entry);
+  const nextHistory = [entry, ...getSecurityRepairHistory()]
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .slice(0, 24);
+  saveSecurityRepairHistory(nextHistory);
+  renderSecurityRepairMeta();
+  renderSecurityTimeline();
+  return entry;
+};
+
 const copyText = async (value) => {
   if (!value) {
     return false;
@@ -3277,6 +3322,21 @@ const copyText = async (value) => {
 
   textarea.remove();
   return copied;
+};
+
+const shareOrExportText = async (title, text) => {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text });
+      return 'shared';
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return 'cancelled';
+      }
+    }
+  }
+
+  return (await copyText(text)) ? 'copied' : 'failed';
 };
 
 const applyUiPrefs = (prefs) => {
@@ -3432,8 +3492,52 @@ const renderSecurityRepairMeta = () => {
   securityRepairMetaEl.textContent = `Last repair action: ${state.action} ${outcome} ${fmtRelativeMinutes(state.at)} • ${fmtDateTimeCompact(state.at)}${detail}`;
 };
 
+const getSecuritySeverity = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  if (!diagnostics) {
+    return {
+      label: 'Checking',
+      className: 'chip chip-neutral'
+    };
+  }
+
+  const warnings = Array.isArray(diagnostics?.security?.insecureDefaults)
+    ? diagnostics.security.insecureDefaults
+    : [];
+  const severeFallback = findRecentNotificationActivity(
+    (entry) => entry?.telegram?.sent === true || Boolean(entry?.app?.error),
+    diagnostics
+  );
+  const watchFallback = findRecentNotificationActivity(
+    (entry) =>
+      entry?.telegram?.fallbackRequested === true
+      || ((Number(entry?.app?.attempted) || 0) > 0 && (Number(entry?.app?.delivered) || 0) === 0),
+    diagnostics
+  );
+  const lastRepair = getSecurityRepairState();
+
+  if (warnings.length > 0 || severeFallback || (lastRepair && lastRepair.ok === false)) {
+    return {
+      label: 'Attention',
+      className: 'chip chip-offline'
+    };
+  }
+
+  if (watchFallback) {
+    return {
+      label: 'Watch',
+      className: 'chip chip-neutral'
+    };
+  }
+
+  return {
+    label: 'Healthy',
+    className: 'chip chip-online'
+  };
+};
+
 const buildSecurityDiagnosticsSummary = () => {
   const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const severity = getSecuritySeverity(diagnostics);
   const posture = getSecurityPostureHealth(diagnostics);
   const internalApi = getSecurityInternalApiHealth(diagnostics);
   const trustedClient = getSecurityTrustedClientHealth(diagnostics);
@@ -3444,6 +3548,7 @@ const buildSecurityDiagnosticsSummary = () => {
   const lines = [
     'TradeAssist Security / System Health',
     `Captured: ${fmtDateTimeCompact(new Date().toISOString())}`,
+    `Severity: ${severity.label}`,
     `Posture: ${posture.value} — ${posture.note}`,
     `Internal API: ${internalApi.value} — ${internalApi.note}`,
     `Trusted Client: ${trustedClient.value} — ${trustedClient.note}`,
@@ -3458,6 +3563,116 @@ const buildSecurityDiagnosticsSummary = () => {
       `Last Repair Action: ${repairState.action} ${repairState.ok ? 'succeeded' : 'needs review'} ${fmtRelativeMinutes(repairState.at)}${repairState.detail ? ` — ${repairState.detail}` : ''}`
     );
   }
+  return lines.join('\n');
+};
+
+const buildSecurityTimelineItems = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const repairItems = getSecurityRepairHistory().map((entry) => ({
+    at: entry.at,
+    tone: entry.ok ? 'good' : 'bad',
+    title: entry.action,
+    meta: `Repair action • ${fmtRelativeMinutes(entry.at)} • ${fmtDateTimeCompact(entry.at)}`,
+    detail: entry.detail || (entry.ok ? 'Action completed successfully.' : 'Action needs review.')
+  }));
+
+  const activity = Array.isArray(diagnostics?.notifications?.recentActivity)
+    ? diagnostics.notifications.recentActivity
+    : [];
+  const deliveryItems = activity
+    .filter((entry) => (
+      entry?.telegram?.sent === true
+      || entry?.telegram?.fallbackRequested === true
+      || Boolean(entry?.app?.error)
+      || ((Number(entry?.app?.attempted) || 0) > 0 && (Number(entry?.app?.delivered) || 0) === 0)
+    ))
+    .map((entry) => {
+      const appStatus = describeNotificationActivityApp(entry, diagnostics);
+      const telegramStatus = describeNotificationActivityTelegram(entry);
+      const categoryLabel = notificationActivityCategoryCopy[entry.category] || 'Notification';
+      const usedTelegram = entry?.telegram?.sent === true;
+      const fallbackStandby = entry?.telegram?.fallbackRequested === true && !usedTelegram;
+      return {
+        at: entry.at,
+        tone: usedTelegram || appStatus.chipClass.includes('chip-offline')
+          ? 'bad'
+          : fallbackStandby
+            ? 'warn'
+            : 'neutral',
+        title: `${categoryLabel}: ${entry.title}`,
+        meta: `${usedTelegram ? 'Telegram fallback used' : fallbackStandby ? 'Fallback standby' : appStatus.label} • ${fmtRelativeMinutes(entry.at)} • ${fmtDateTimeCompact(entry.at)}`,
+        detail: usedTelegram ? telegramStatus.detail : appStatus.detail
+      };
+    });
+
+  return [...repairItems, ...deliveryItems]
+    .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
+    .slice(0, 8);
+};
+
+const renderSecurityTimeline = () => {
+  if (!securityTimelineListEl) {
+    return;
+  }
+
+  const items = buildSecurityTimelineItems();
+  securityTimelineListEl.innerHTML = '';
+  if (!items.length) {
+    renderEmpty(securityTimelineListEl, 'No security events yet. Repair actions and fallback warnings will appear here.');
+    return;
+  }
+
+  items.forEach((item) => {
+    const toneClass = item.tone === 'good'
+      ? 'chip chip-online'
+      : item.tone === 'bad'
+        ? 'chip chip-offline'
+        : 'chip chip-neutral';
+    const card = document.createElement('article');
+    card.className = 'item-card security-timeline-item';
+    card.innerHTML = `
+      <div class="item-row notification-activity-headline-row">
+        <strong class="notification-activity-title">${escapeHtml(item.title)}</strong>
+        <span class="${toneClass}">${escapeHtml(item.tone === 'good' ? 'OK' : item.tone === 'bad' ? 'Attention' : 'Watch')}</span>
+      </div>
+      <p class="security-timeline-meta">${escapeHtml(item.meta)}</p>
+      <p class="notification-activity-summary">${escapeHtml(item.detail)}</p>
+    `;
+    securityTimelineListEl.appendChild(card);
+  });
+};
+
+const buildSecurityHistoryExportText = () => {
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const lines = [buildSecurityDiagnosticsSummary(), '', 'Recent Security Timeline'];
+  const timelineItems = buildSecurityTimelineItems(diagnostics);
+  if (timelineItems.length === 0) {
+    lines.push('- No security events recorded yet.');
+  } else {
+    timelineItems.forEach((item) => {
+      lines.push(`- ${item.title}`);
+      lines.push(`  ${item.meta}`);
+      lines.push(`  ${item.detail}`);
+    });
+  }
+
+  lines.push('', 'Recent Notification Activity');
+  const activity = Array.isArray(diagnostics?.notifications?.recentActivity)
+    ? diagnostics.notifications.recentActivity.slice(0, 8)
+    : [];
+  if (activity.length === 0) {
+    lines.push('- No notification activity recorded yet.');
+  } else {
+    activity.forEach((entry) => {
+      const appStatus = describeNotificationActivityApp(entry, diagnostics);
+      const telegramStatus = describeNotificationActivityTelegram(entry);
+      const categoryLabel = notificationActivityCategoryCopy[entry.category] || 'Notification';
+      lines.push(`- ${categoryLabel}: ${entry.title}`);
+      lines.push(`  ${fmtRelativeMinutes(entry.at)} • ${fmtDateTimeCompact(entry.at)}`);
+      lines.push(`  App: ${appStatus.label} — ${appStatus.detail}`);
+      lines.push(`  Telegram: ${telegramStatus.label} — ${telegramStatus.detail}`);
+    });
+  }
+
   return lines.join('\n');
 };
 
@@ -5770,13 +5985,7 @@ const sendTestEngineUpdateAlert = async () =>
 const repairPushRegistration = async () => {
   const prefs = getNotificationPrefs();
   if (!prefs.enabled) {
-    saveSecurityRepairState({
-      action: 'Re-register Push',
-      ok: false,
-      at: new Date().toISOString(),
-      detail: 'Allow Push Alerts is off.'
-    });
-    renderSecurityRepairMeta();
+    recordSecurityRepairAction('Re-register Push', false, 'Allow Push Alerts is off.');
     setStatus('Status: turn on Allow Push Alerts before re-registering this device.', true);
     return false;
   }
@@ -5784,13 +5993,7 @@ const repairPushRegistration = async () => {
   setStatus('Status: re-registering push on this device...');
   const granted = await requestNotificationPermission();
   if (!granted) {
-    saveSecurityRepairState({
-      action: 'Re-register Push',
-      ok: false,
-      at: new Date().toISOString(),
-      detail: 'Notification permission is blocked.'
-    });
-    renderSecurityRepairMeta();
+    recordSecurityRepairAction('Re-register Push', false, 'Notification permission is blocked.');
     setStatus('Status: notification permission is blocked, so push could not be re-registered.', true);
     void renderPushHealthPanel();
     return false;
@@ -5812,25 +6015,16 @@ const repairPushRegistration = async () => {
   renderSecurityHealthPanel();
 
   if (synced) {
-    saveSecurityRepairState({
-      action: 'Re-register Push',
-      ok: true,
-      at: new Date().toISOString()
-    });
-    renderSecurityRepairMeta();
+    recordSecurityRepairAction('Re-register Push', true);
     setStatus('Status: push registration refreshed for this device.');
     return true;
   }
 
-  saveSecurityRepairState({
-    action: 'Re-register Push',
-    ok: false,
-    at: new Date().toISOString(),
-    detail: hasNativePush()
-      ? 'Waiting for native token sync.'
-      : 'Remote subscription refresh did not complete.'
-  });
-  renderSecurityRepairMeta();
+  recordSecurityRepairAction(
+    'Re-register Push',
+    false,
+    hasNativePush() ? 'Waiting for native token sync.' : 'Remote subscription refresh did not complete.'
+  );
   setStatus(
     hasNativePush()
       ? 'Status: permission is granted. Waiting for the native push token to finish syncing.'
@@ -5844,12 +6038,7 @@ const refreshSecurityChecks = async () => {
   setStatus('Status: refreshing security diagnostics...');
   await Promise.all([loadHealth(), loadDiagnostics()]);
   renderSecurityHealthPanel();
-  saveSecurityRepairState({
-    action: 'Refresh Security Checks',
-    ok: true,
-    at: new Date().toISOString()
-  });
-  renderSecurityRepairMeta();
+  recordSecurityRepairAction('Refresh Security Checks', true);
   void renderPushHealthPanel();
   setStatus('Status: security checks refreshed.');
 };
@@ -6354,6 +6543,43 @@ const getDeviceRegistrationHealth = async (diagnostics = latestDiagnostics?.diag
   };
 };
 
+const describeZeroDeliveryReason = (entry, diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const prefs = getNotificationPrefs();
+  const prefKey = notificationActivityCategoryPrefKey[entry?.category] || null;
+  const notifications = diagnostics?.notifications ?? {};
+  const totalAppTargets = (Number(notifications.webPushSubscribers) || 0) + (Number(notifications.nativePushDevices) || 0);
+
+  if (!prefs.enabled) {
+    return {
+      label: 'Alerts off here',
+      chipClass: 'chip chip-neutral',
+      detail: 'Allow Push Alerts is off on this device, so a local app banner was not expected here.'
+    };
+  }
+
+  if (prefKey && prefs[prefKey] === false) {
+    return {
+      label: 'Muted here',
+      chipClass: 'chip chip-neutral',
+      detail: `${notificationActivityCategoryCopy[entry?.category] || 'This category'} is muted on this device, so the app staying quiet here was expected.`
+    };
+  }
+
+  if (totalAppTargets === 0) {
+    return {
+      label: 'No subscribers',
+      chipClass: 'chip chip-offline',
+      detail: 'The server had no active app subscribers or devices available for this send.'
+    };
+  }
+
+  return {
+    label: 'App missed',
+    chipClass: 'chip chip-offline',
+    detail: 'The server attempted app delivery, but 0 registered targets accepted this send.'
+  };
+};
+
 const getLastAppDeliveryHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
   const deliveredEntry = findRecentNotificationActivity((entry) => (Number(entry?.app?.delivered) || 0) > 0, diagnostics);
   if (deliveredEntry) {
@@ -6368,9 +6594,10 @@ const getLastAppDeliveryHealth = (diagnostics = latestDiagnostics?.diagnostics ?
 
   const attemptedEntry = findRecentNotificationActivity((entry) => (Number(entry?.app?.attempted) || 0) > 0, diagnostics);
   if (attemptedEntry) {
+    const zeroDelivery = describeZeroDeliveryReason(attemptedEntry, diagnostics);
     return {
-      value: 'No Success Yet',
-      note: `${attemptedEntry.title} was the latest app attempt, but it reached 0 devices (${describePushHealthTimestamp(attemptedEntry.at)}).`
+      value: zeroDelivery.label,
+      note: `${attemptedEntry.title} • ${zeroDelivery.detail} (${describePushHealthTimestamp(attemptedEntry.at)}).`
     };
   }
 
@@ -6517,7 +6744,8 @@ const getSecurityDefaultsHealth = (diagnostics = latestDiagnostics?.diagnostics 
 
 const renderSecurityHealthPanel = () => {
   if (
-    !securityHealthPostureEl
+    !securityHealthBadgeEl
+    || !securityHealthPostureEl
     || !securityHealthPostureNoteEl
     || !securityHealthInternalApiEl
     || !securityHealthInternalApiNoteEl
@@ -6537,12 +6765,16 @@ const renderSecurityHealthPanel = () => {
   const trustedClient = getSecurityTrustedClientHealth(diagnostics);
   const fallback = getSecurityFallbackHealth(diagnostics);
   const defaults = getSecurityDefaultsHealth(diagnostics);
+  const severity = getSecuritySeverity(diagnostics);
 
+  securityHealthBadgeEl.textContent = severity.label;
+  securityHealthBadgeEl.className = severity.className;
   setPushHealthCard(securityHealthPostureEl, securityHealthPostureNoteEl, posture.value, posture.note);
   setPushHealthCard(securityHealthInternalApiEl, securityHealthInternalApiNoteEl, internalApi.value, internalApi.note);
   setPushHealthCard(securityHealthTrustedClientEl, securityHealthTrustedClientNoteEl, trustedClient.value, trustedClient.note);
   setPushHealthCard(securityHealthFallbackEl, securityHealthFallbackNoteEl, fallback.value, fallback.note);
   setPushHealthCard(securityHealthDefaultsEl, securityHealthDefaultsNoteEl, defaults.value, defaults.note);
+  renderSecurityTimeline();
 };
 
 const renderPushHealthPanel = async () => {
@@ -6591,7 +6823,7 @@ const renderEmpty = (container, text) => {
   container.appendChild(empty);
 };
 
-const describeNotificationActivityApp = (entry) => {
+const describeNotificationActivityApp = (entry, diagnostics = latestDiagnostics?.diagnostics ?? null) => {
   const app = entry?.app ?? {};
   const attempted = Number(app.attempted) || 0;
   const delivered = Number(app.delivered) || 0;
@@ -6614,11 +6846,7 @@ const describeNotificationActivityApp = (entry) => {
   }
 
   if (attempted > 0) {
-    return {
-      label: 'App 0 delivered',
-      chipClass: 'chip chip-offline',
-      detail: 'The category may be muted on every device, or there were no active subscribers for this send.'
-    };
+    return describeZeroDeliveryReason(entry, diagnostics);
   }
 
   return {
@@ -6677,7 +6905,7 @@ const renderNotificationActivity = (entries) => {
   }
 
   items.forEach((entry) => {
-    const appStatus = describeNotificationActivityApp(entry);
+    const appStatus = describeNotificationActivityApp(entry, latestDiagnostics?.diagnostics ?? null);
     const telegramStatus = describeNotificationActivityTelegram(entry);
     const categoryLabel = notificationActivityCategoryCopy[entry.category] || 'Notification';
     const metaParts = [
@@ -8545,20 +8773,10 @@ const bindNotificationControls = () => {
   securityRunBrokerRecoveryTestEl?.addEventListener('click', async () => {
     try {
       await sendTestBrokerRecoveryAlert();
-      saveSecurityRepairState({
-        action: 'Run IBKR Recovery Test',
-        ok: true,
-        at: new Date().toISOString()
-      });
+      recordSecurityRepairAction('Run IBKR Recovery Test', true);
     } catch {
-      saveSecurityRepairState({
-        action: 'Run IBKR Recovery Test',
-        ok: false,
-        at: new Date().toISOString(),
-        detail: 'The recovery test request failed.'
-      });
+      recordSecurityRepairAction('Run IBKR Recovery Test', false, 'The recovery test request failed.');
     }
-    renderSecurityRepairMeta();
   });
   securityRefreshChecksEl?.addEventListener('click', async () => {
     await refreshSecurityChecks().catch(() => null);
@@ -8570,6 +8788,19 @@ const bindNotificationControls = () => {
         ? 'Status: security diagnostics summary copied.'
         : 'Status: diagnostics summary could not be copied on this device.',
       !copied
+    );
+  });
+  securityShareHistoryEl?.addEventListener('click', async () => {
+    const result = await shareOrExportText('TradeAssist security history', buildSecurityHistoryExportText());
+    setStatus(
+      result === 'shared'
+        ? 'Status: security history shared.'
+        : result === 'copied'
+          ? 'Status: security history copied for sharing.'
+          : result === 'cancelled'
+            ? 'Status: share cancelled.'
+            : 'Status: security history could not be shared on this device.',
+      result === 'failed'
     );
   });
 };

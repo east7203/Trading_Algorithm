@@ -911,10 +911,13 @@
             </div>
 
             <div class="safe-summary-card push-health-panel">
-              <div class="notification-activity-head">
-                <div>
-                  <p class="stat-label">Security / System Health</p>
-                  <p class="hint">Live backend posture for internal auth, trusted app writes, fallback policy, and weak-default checks.</p>
+              <div class="notification-activity-head security-health-head">
+                <div class="security-health-title-row">
+                  <div>
+                    <p class="stat-label">Security / System Health</p>
+                    <p class="hint">Live backend posture for internal auth, trusted app writes, fallback policy, and weak-default checks.</p>
+                  </div>
+                  <span id="securityHealthBadge" class="chip chip-neutral">Checking</span>
                 </div>
               </div>
               <div class="push-health-grid">
@@ -949,8 +952,18 @@
                 <button id="securityRunBrokerRecoveryTest" class="chip-btn secondary-btn" type="button">Run IBKR Recovery Test</button>
                 <button id="securityRefreshChecks" class="chip-btn secondary-btn" type="button">Refresh Security Checks</button>
                 <button id="securityCopySummary" class="chip-btn secondary-btn" type="button">Copy Diagnostics Summary</button>
+                <button id="securityShareHistory" class="chip-btn secondary-btn" type="button">Share / Export History</button>
               </div>
               <p id="securityRepairMeta" class="hint settings-note">Last repair action: none yet.</p>
+              <div class="notification-activity-panel security-timeline-panel">
+                <div class="notification-activity-head">
+                  <div>
+                    <p class="stat-label">Recent Security Events</p>
+                    <p class="hint">Repair actions plus fallback and delivery warnings.</p>
+                  </div>
+                </div>
+                <div id="securityTimelineList" class="notification-activity-list security-timeline-list"></div>
+              </div>
             </div>
 
             <div class="safe-summary-card push-health-panel">

@@ -52,7 +52,9 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Run IBKR Recovery Test');
     expect(mobile.body).toContain('Refresh Security Checks');
     expect(mobile.body).toContain('Copy Diagnostics Summary');
+    expect(mobile.body).toContain('Share / Export History');
     expect(mobile.body).toContain('Last repair action');
+    expect(mobile.body).toContain('Recent Security Events');
     expect(mobile.body).toContain('Manual Trade Alerts');
     expect(mobile.body).toContain('Paper Trade Updates');
     expect(mobile.body).toContain('IBKR Recovery Alerts');
