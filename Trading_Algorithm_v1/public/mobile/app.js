@@ -227,6 +227,7 @@ const securityHealthDefaultsNoteEl = document.getElementById('securityHealthDefa
 const securityRepairPushEl = document.getElementById('securityRepairPush');
 const securityRunBrokerRecoveryTestEl = document.getElementById('securityRunBrokerRecoveryTest');
 const securityRefreshChecksEl = document.getElementById('securityRefreshChecks');
+const securityCopySummaryEl = document.getElementById('securityCopySummary');
 const securityRepairMetaEl = document.getElementById('securityRepairMeta');
 const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
@@ -3242,6 +3243,42 @@ const saveSecurityRepairState = (state) => {
   localStorage.setItem(SECURITY_REPAIR_STATE_KEY, JSON.stringify(state));
 };
 
+const copyText = async (value) => {
+  if (!value) {
+    return false;
+  }
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // fall through
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  }
+
+  textarea.remove();
+  return copied;
+};
+
 const applyUiPrefs = (prefs) => {
   document.documentElement.dataset.theme = prefs.theme;
   document.documentElement.dataset.density = prefs.density;
@@ -3393,6 +3430,35 @@ const renderSecurityRepairMeta = () => {
   const outcome = state.ok ? 'succeeded' : 'needs review';
   const detail = state.detail ? ` • ${state.detail}` : '';
   securityRepairMetaEl.textContent = `Last repair action: ${state.action} ${outcome} ${fmtRelativeMinutes(state.at)} • ${fmtDateTimeCompact(state.at)}${detail}`;
+};
+
+const buildSecurityDiagnosticsSummary = () => {
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const posture = getSecurityPostureHealth(diagnostics);
+  const internalApi = getSecurityInternalApiHealth(diagnostics);
+  const trustedClient = getSecurityTrustedClientHealth(diagnostics);
+  const fallback = getSecurityFallbackHealth(diagnostics);
+  const defaults = getSecurityDefaultsHealth(diagnostics);
+  const lastApp = getLastAppDeliveryHealth(diagnostics);
+  const lastTelegram = getLastTelegramHealth(diagnostics);
+  const lines = [
+    'TradeAssist Security / System Health',
+    `Captured: ${fmtDateTimeCompact(new Date().toISOString())}`,
+    `Posture: ${posture.value} — ${posture.note}`,
+    `Internal API: ${internalApi.value} — ${internalApi.note}`,
+    `Trusted Client: ${trustedClient.value} — ${trustedClient.note}`,
+    `Fallback Policy: ${fallback.value} — ${fallback.note}`,
+    `Defaults: ${defaults.value} — ${defaults.note}`,
+    `Last App Delivery: ${lastApp.value} — ${lastApp.note}`,
+    `Telegram Backup: ${lastTelegram.value} — ${lastTelegram.note}`
+  ];
+  const repairState = getSecurityRepairState();
+  if (repairState?.action && repairState?.at) {
+    lines.push(
+      `Last Repair Action: ${repairState.action} ${repairState.ok ? 'succeeded' : 'needs review'} ${fmtRelativeMinutes(repairState.at)}${repairState.detail ? ` — ${repairState.detail}` : ''}`
+    );
+  }
+  return lines.join('\n');
 };
 
 const fmtNum = (value, decimals = 2) => {
@@ -8496,6 +8562,15 @@ const bindNotificationControls = () => {
   });
   securityRefreshChecksEl?.addEventListener('click', async () => {
     await refreshSecurityChecks().catch(() => null);
+  });
+  securityCopySummaryEl?.addEventListener('click', async () => {
+    const copied = await copyText(buildSecurityDiagnosticsSummary());
+    setStatus(
+      copied
+        ? 'Status: security diagnostics summary copied.'
+        : 'Status: diagnostics summary could not be copied on this device.',
+      !copied
+    );
   });
 };
 
