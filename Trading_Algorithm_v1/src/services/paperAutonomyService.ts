@@ -135,8 +135,21 @@ export interface PaperAutonomyPatternStatus {
   realizedPnl: number;
   recentLossStreak: number;
   reason: string;
+  cooldownSummary: string;
   lastOpenedAt?: string;
   lastClosedAt?: string;
+}
+
+export interface PaperAutonomyExplorationBudgetStatus {
+  fraction: number;
+  hardCap: number;
+  allowedToday: number;
+  usedToday: number;
+  remainingToday: number;
+  totalIdeasToday: number;
+  sessionDay: string;
+  available: boolean;
+  summary: string;
 }
 
 export interface PaperAutonomyStatus {
@@ -164,6 +177,7 @@ export interface PaperAutonomyStatus {
   activeTheses: PaperAutonomyActiveThesis[];
   symbolStatus: PaperAutonomySymbolStatus[];
   thesisStats: PaperAutonomyThesisStats[];
+  explorationBudget: PaperAutonomyExplorationBudgetStatus;
   patternStates: PaperAutonomyPatternStatus[];
   recentIdeas: PaperAutonomyIdeaRecord[];
   recentClosedIdeas: PaperAutonomyIdeaRecord[];
@@ -555,6 +569,8 @@ export class PaperAutonomyService {
     const realizedPnl = closedIdeas.reduce((sum, idea) => sum + (idea.realizedPnl ?? 0), 0);
     const recentClosed = closedIdeas.slice(0, 4);
     const recentAvgR = recentClosed.length > 0 ? average(recentClosed.map((idea) => idea.realizedR ?? 0)) : 0;
+    const probationTriggers: string[] = [];
+    const disableTriggers: string[] = [];
     let recentLossStreak = 0;
     for (const idea of recentClosed) {
       if (idea.outcome === 'LOSS') {
@@ -564,11 +580,34 @@ export class PaperAutonomyService {
       break;
     }
 
+    if (avgR < 0) {
+      probationTriggers.push(`${round(avgR, 2)}R expectancy is below zero`);
+    }
+    if (winRate < 0.45) {
+      probationTriggers.push(`${Math.round(winRate * 100)}% win rate slipped below the 45% guardrail`);
+    }
+    if (recentLossStreak >= 2) {
+      probationTriggers.push(`${recentLossStreak} straight losses tripped the cooldown lane`);
+    }
+    if (recentClosed.length >= 2 && recentAvgR < -0.2) {
+      probationTriggers.push(`${round(recentAvgR, 2)}R recent expectancy is fading`);
+    }
+
+    if (avgR <= -0.25) {
+      disableTriggers.push(`${round(avgR, 2)}R expectancy broke the -0.25R hard stop`);
+    }
+    if (winRate <= 0.35 && recentLossStreak >= 3) {
+      disableTriggers.push(`${Math.round(winRate * 100)}% win rate plus ${recentLossStreak} straight losses triggered a full pause`);
+    }
+    if (recentClosed.length >= 3 && recentAvgR <= -0.5) {
+      disableTriggers.push(`${round(recentAvgR, 2)}R recent expectancy broke the -0.50R shutdown line`);
+    }
+
     let state: PaperAutonomyPatternState = 'PROVEN';
-    let reason = 'Pattern has a positive expectancy and can trade at core size.';
+    let reason = 'Promoted to the core lane on positive expectancy.';
     if (closedIdeas.length < this.getPatternMinClosedIdeas()) {
       state = 'EXPERIMENTAL';
-      reason = `Experimental until it reaches ${this.getPatternMinClosedIdeas()} closed samples (${closedIdeas.length}/${this.getPatternMinClosedIdeas()}).`;
+      reason = `Probe only until it reaches ${this.getPatternMinClosedIdeas()} closed samples (${closedIdeas.length}/${this.getPatternMinClosedIdeas()}).`;
     } else if (
       closedIdeas.length >= this.getPatternDisableClosedIdeas()
       && (
@@ -578,14 +617,25 @@ export class PaperAutonomyService {
       )
     ) {
       state = 'DISABLED';
-      reason = `Disabled for now after underperforming (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
+      reason = `Paused after underperforming. ${disableTriggers[0] ?? `${Math.round(winRate * 100)}% win rate and ${round(avgR, 2)}R expectancy are both below the safe lane.`}`;
     } else if (avgR < 0 || winRate < 0.45 || recentLossStreak >= 2 || recentAvgR < -0.2) {
       state = 'PROBATION';
-      reason = `On probation while performance stabilizes (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
+      reason = `Reduced to probation while performance stabilizes. ${probationTriggers[0] ?? `${Math.round(winRate * 100)}% win rate and ${round(avgR, 2)}R expectancy need to recover.`}`;
     } else if (avgR >= 0.12 || winRate >= 0.52) {
       state = 'PROVEN';
-      reason = `Proven pattern with positive expectancy (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
+      reason = `Promoted to core after clearing the evidence threshold (${Math.round(winRate * 100)}% win rate • ${round(avgR, 2)}R avg).`;
     }
+
+    const lossesUntilProbation = Math.max(0, 2 - recentLossStreak);
+    const lossesUntilDisable = Math.max(0, 3 - recentLossStreak);
+    const cooldownSummary =
+      state === 'DISABLED'
+        ? `Cooldown tripped: ${recentLossStreak}/3 straight losses hit the disable guardrail.`
+        : state === 'PROBATION'
+          ? `Cooldown active: ${recentLossStreak}/2 straight losses hit probation. ${lossesUntilDisable} more loss${lossesUntilDisable === 1 ? '' : 'es'} would force a full pause.`
+          : recentLossStreak > 0
+            ? `Cooldown watch: ${recentLossStreak}/2 straight losses. ${lossesUntilProbation} more loss${lossesUntilProbation === 1 ? '' : 'es'} triggers probation.`
+            : 'Cooldown clear: probation starts at 2 straight losses and disable starts at 3.';
 
     return {
       key: patternKey,
@@ -606,25 +656,48 @@ export class PaperAutonomyService {
       realizedPnl: round(realizedPnl, 2),
       recentLossStreak,
       reason,
+      cooldownSummary,
       lastOpenedAt: patternIdeas[0]?.openedAt,
       lastClosedAt: closedIdeas[0]?.closedAt
     };
   }
 
-  private hasExplorationCapacity(timestamp: string): boolean {
+  private getExplorationBudgetStatus(timestamp: string): PaperAutonomyExplorationBudgetStatus {
     const hardCap = this.getMaxExplorationIdeasPerDay();
-    if (hardCap <= 0) {
-      return false;
-    }
-
+    const fraction = this.getExplorationBudgetFraction();
     const dayKey = getLocalDayKey(timestamp, this.getTradingWindow().timezone);
     const ideasToday = [...this.ideas.values()].filter(
       (idea) => getLocalDayKey(idea.openedAt, this.getTradingWindow().timezone) === dayKey
     );
-    const explorationIdeasToday = ideasToday.filter((idea) => idea.allocation === 'EXPLORATION').length;
-    const dynamicCap = Math.ceil(Math.max(1, ideasToday.length + 1) * this.getExplorationBudgetFraction());
-    const allowed = Math.max(1, Math.min(hardCap, dynamicCap));
-    return explorationIdeasToday < allowed;
+    const usedToday = ideasToday.filter((idea) => idea.allocation === 'EXPLORATION').length;
+    const dynamicCap = hardCap > 0
+      ? Math.ceil(Math.max(1, ideasToday.length + 1) * fraction)
+      : 0;
+    const allowedToday = hardCap > 0 ? Math.max(1, Math.min(hardCap, dynamicCap)) : 0;
+    const remainingToday = Math.max(0, allowedToday - usedToday);
+    const available = hardCap > 0 && remainingToday > 0;
+    const summary =
+      hardCap <= 0
+        ? 'Exploration is disabled by config.'
+        : remainingToday > 0
+          ? `${usedToday}/${allowedToday} exploratory ideas used today • ${remainingToday} slot${remainingToday === 1 ? '' : 's'} left.`
+          : `${usedToday}/${allowedToday} exploratory ideas used today • budget full.`;
+
+    return {
+      fraction: round(fraction, 2),
+      hardCap,
+      allowedToday,
+      usedToday,
+      remainingToday,
+      totalIdeasToday: ideasToday.length,
+      sessionDay: dayKey,
+      available,
+      summary
+    };
+  }
+
+  private hasExplorationCapacity(timestamp: string): boolean {
+    return this.getExplorationBudgetStatus(timestamp).available;
   }
 
   private buildPatternDecision(input: {
@@ -2034,6 +2107,7 @@ export class PaperAutonomyService {
       );
     const symbolStatus = this.config.focusSymbols.map((symbol) => this.buildSymbolStatus(symbol));
     const tradingWindow = this.getTradingWindow();
+    const explorationBudget = this.getExplorationBudgetStatus(ideas[0]?.openedAt ?? new Date().toISOString());
 
     return {
       enabled: this.config.enabled,
@@ -2077,6 +2151,7 @@ export class PaperAutonomyService {
       activeTheses,
       symbolStatus,
       thesisStats,
+      explorationBudget,
       patternStates,
       recentIdeas: ideas.slice(0, 12),
       recentClosedIdeas: closedIdeas.slice(0, 8)

@@ -151,6 +151,7 @@ const learningAutonomyEdgeEl = document.getElementById('learningAutonomyEdge');
 const learningAutonomyStateChipEl = document.getElementById('learningAutonomyStateChip');
 const learningAutonomyHeadlineEl = document.getElementById('learningAutonomyHeadline');
 const learningAutonomyContextEl = document.getElementById('learningAutonomyContext');
+const learningAutonomyBudgetEl = document.getElementById('learningAutonomyBudget');
 const learningAutonomyLeaderEl = document.getElementById('learningAutonomyLeader');
 const learningAutonomyExplorationEl = document.getElementById('learningAutonomyExploration');
 const learningAutonomyGuardrailEl = document.getElementById('learningAutonomyGuardrail');
@@ -181,6 +182,7 @@ const paperPatternProvenEl = document.getElementById('paperPatternProven');
 const paperPatternExperimentalEl = document.getElementById('paperPatternExperimental');
 const paperPatternProbationEl = document.getElementById('paperPatternProbation');
 const paperPatternDisabledEl = document.getElementById('paperPatternDisabled');
+const paperPatternBudgetMetaEl = document.getElementById('paperPatternBudgetMeta');
 const paperPatternStateListEl = document.getElementById('paperPatternStateList');
 const paperOpenChipEl = document.getElementById('paperOpenChip');
 const paperClosedChipEl = document.getElementById('paperClosedChip');
@@ -1452,6 +1454,11 @@ const getPaperAutonomyPatternStates = () => {
   return Array.isArray(autonomy?.patternStates) ? autonomy.patternStates : [];
 };
 
+const getPaperAutonomyExplorationBudget = () => {
+  const autonomy = getPaperAutonomyStatus();
+  return autonomy?.explorationBudget ?? null;
+};
+
 const describePaperAutonomyPatternState = (item) => {
   if (!item) {
     return '--';
@@ -1464,6 +1471,44 @@ const describePaperAutonomyPatternState = (item) => {
     item.lastOpenedAt ? `last idea ${fmtRelativeMinutes(item.lastOpenedAt)}` : null
   ].filter(Boolean);
   return parts.join(' • ');
+};
+
+const summarizePaperAutonomyExplorationLane = (items, budget) => {
+  const matching = sortPaperAutonomyPatternStates(
+    (Array.isArray(items) ? items : []).filter((item) => item.state === 'EXPERIMENTAL'),
+    'paper'
+  );
+  const used = Number(budget?.usedToday ?? 0);
+  const allowed = Number(budget?.allowedToday ?? 0);
+  const remaining = Number(budget?.remainingToday ?? 0);
+  const budgetLead =
+    allowed > 0
+      ? `${used}/${allowed} used • ${remaining} left`
+      : 'Probes off';
+
+  if (!matching.length) {
+    return `${budgetLead} • no active probe lane.`;
+  }
+
+  const leader = matching[0];
+  const leaderLabel = leader.label ?? paperAutonomyThesisLabel(leader.thesis);
+  return `${budgetLead} • ${leaderLabel} probing ${leader.symbol}.`;
+};
+
+const describePaperAutonomyBudgetMeta = (budget) => {
+  if (!budget) {
+    return 'Exploration budget is loading.';
+  }
+
+  if (Number(budget.hardCap) <= 0) {
+    return 'Exploration is disabled by config, so the engine will only use proven or probation lanes.';
+  }
+
+  const totalIdeas = Number(budget.totalIdeasToday ?? 0);
+  const scopeText = `${Number(budget.usedToday ?? 0)}/${Number(budget.allowedToday ?? 0)} exploratory ideas used across ${totalIdeas} total idea${totalIdeas === 1 ? '' : 's'} today.`;
+  return Number(budget.remainingToday ?? 0) > 0
+    ? `${scopeText} ${Number(budget.remainingToday ?? 0)} probe slot${Number(budget.remainingToday ?? 0) === 1 ? '' : 's'} left before the lane locks.`
+    : `${scopeText} Probe budget is fully allocated for this session day.`;
 };
 
 const summarizePaperAutonomyPatternBucket = (items, state) => {
@@ -1494,9 +1539,9 @@ const summarizePaperAutonomyPatternBucket = (items, state) => {
     case 'EXPERIMENTAL':
       return `${matching.length} exploratory • ${leaderLabel} is still probing ${leader.symbol}.`;
     case 'PROBATION':
-      return `${matching.length} cooling off • ${leaderLabel} is reduced after ${leader.recentLossStreak ?? 0} recent losses.`;
+      return `${matching.length} cooling off • ${leaderLabel} is reduced. ${leader.cooldownSummary ?? ''}`.trim();
     case 'DISABLED':
-      return `${matching.length} benched • ${leaderLabel} is paused until results recover.`;
+      return `${matching.length} benched • ${leaderLabel} is paused. ${leader.cooldownSummary ?? ''}`.trim();
     default:
       return `${matching.length} tracked pattern${matching.length === 1 ? '' : 's'}.`;
   }
@@ -1531,11 +1576,9 @@ const renderPaperAutonomyPatternCards = (container, items, emptyText, mode = 'pa
           ? 'learning-pattern-metric-value-negative'
           : '';
     const stateLabel = paperAutonomyPatternStateLabel(item.state);
-    const streakLabel =
-      Number(item.recentLossStreak) > 0 ? `${item.recentLossStreak}L streak` : 'No loss streak';
-    const noteParts = [
+    const performanceParts = [
       Number.isFinite(Number(item.realizedPnl)) ? `${fmtSignedUsd(Number(item.realizedPnl))} realized` : null,
-      typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim() : null
+      item.lastClosedAt ? `last close ${fmtRelativeMinutes(item.lastClosedAt)}` : null
     ].filter(Boolean);
 
     card.innerHTML = `
@@ -1558,11 +1601,15 @@ const renderPaperAutonomyPatternCards = (container, items, emptyText, mode = 'pa
           <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(item.avgR ?? 0, 2)}R`)}</span>
         </div>
         <div class="learning-pattern-metric">
-          <span class="learning-pattern-metric-label">${escapeHtml(Number(item.recentLossStreak) > 0 ? 'Loss Streak' : 'Realized')}</span>
-          <span class="learning-pattern-metric-value ${Number(item.recentLossStreak) > 0 ? 'learning-pattern-metric-value-negative' : pnlClass}">${escapeHtml(Number(item.recentLossStreak) > 0 ? streakLabel : fmtSignedUsd(Number(item.realizedPnl) || 0))}</span>
+          <span class="learning-pattern-metric-label">Realized</span>
+          <span class="learning-pattern-metric-value ${pnlClass}">${escapeHtml(fmtSignedUsd(Number(item.realizedPnl) || 0))}</span>
         </div>
       </div>
-      <p class="learning-pattern-note">${escapeHtml(noteParts.join(' • ') || 'Autonomy is still collecting more evidence on this pattern.')}</p>
+      <p class="learning-pattern-note">${escapeHtml((typeof item.reason === 'string' && item.reason.trim()) || 'Autonomy is still collecting more evidence on this pattern.')}</p>
+      <p class="learning-pattern-note">${escapeHtml([
+        typeof item.cooldownSummary === 'string' && item.cooldownSummary.trim().length > 0 ? item.cooldownSummary.trim() : null,
+        ...performanceParts
+      ].filter(Boolean).join(' • ') || 'Cooldown visibility will appear here once enough trades are logged.')}</p>
     `;
     container.appendChild(card);
   });
@@ -1571,10 +1618,11 @@ const renderPaperAutonomyPatternCards = (container, items, emptyText, mode = 'pa
 const renderPaperAutonomyTransparency = () => {
   const autonomy = getPaperAutonomyStatus();
   const patternStates = getPaperAutonomyPatternStates();
+  const explorationBudget = getPaperAutonomyExplorationBudget();
 
   if (paperPatternStateChipEl) {
     paperPatternStateChipEl.textContent = autonomy?.enabled
-      ? `${patternStates.length} tracked`
+      ? `${patternStates.length} tracked • ${Number(explorationBudget?.usedToday ?? 0)}/${Number(explorationBudget?.allowedToday ?? 0)} probes`
       : 'Autonomy off';
     paperPatternStateChipEl.className = `chip ${autonomy?.enabled ? 'chip-neutral' : 'chip-neutral'}`;
   }
@@ -1585,7 +1633,7 @@ const renderPaperAutonomyTransparency = () => {
   }
   if (paperPatternExperimentalEl) {
     paperPatternExperimentalEl.textContent = autonomy?.enabled
-      ? summarizePaperAutonomyPatternBucket(patternStates, 'EXPERIMENTAL')
+      ? summarizePaperAutonomyExplorationLane(patternStates, explorationBudget)
       : '--';
   }
   if (paperPatternProbationEl) {
@@ -1597,6 +1645,11 @@ const renderPaperAutonomyTransparency = () => {
     paperPatternDisabledEl.textContent = autonomy?.enabled
       ? summarizePaperAutonomyPatternBucket(patternStates, 'DISABLED')
       : '--';
+  }
+  if (paperPatternBudgetMetaEl) {
+    paperPatternBudgetMetaEl.textContent = autonomy?.enabled
+      ? describePaperAutonomyBudgetMeta(explorationBudget)
+      : 'Enable paper autonomy to start tracking how much exploration budget is left.';
   }
 
   renderPaperAutonomyPatternCards(
@@ -7233,6 +7286,7 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
 const renderLearningAutonomyPlaybook = () => {
   const autonomy = getPaperAutonomyStatus();
   const patternStates = getPaperAutonomyPatternStates();
+  const explorationBudget = getPaperAutonomyExplorationBudget();
   const byAttention = sortPaperAutonomyPatternStates(patternStates, 'attention');
   const byPaper = sortPaperAutonomyPatternStates(patternStates, 'paper');
   const provenLeader = byPaper.find((item) => item.state === 'PROVEN') ?? null;
@@ -7250,6 +7304,9 @@ const renderLearningAutonomyPlaybook = () => {
     }
     if (learningAutonomyContextEl) {
       learningAutonomyContextEl.textContent = 'Once the paper engine is enabled and starts taking trades, this section will show which setups are core, exploratory, cooling off, or fully benched.';
+    }
+    if (learningAutonomyBudgetEl) {
+      learningAutonomyBudgetEl.textContent = '--';
     }
     if (learningAutonomyLeaderEl) {
       learningAutonomyLeaderEl.textContent = '--';
@@ -7274,7 +7331,7 @@ const renderLearningAutonomyPlaybook = () => {
 
   if (learningAutonomyStateChipEl) {
     learningAutonomyStateChipEl.className = 'chip chip-neutral';
-    learningAutonomyStateChipEl.textContent = `${patternStates.length} tracked • ${autonomy.openIdeas ?? 0} live`;
+    learningAutonomyStateChipEl.textContent = `${patternStates.length} tracked • ${autonomy.openIdeas ?? 0} live • ${Number(explorationBudget?.usedToday ?? 0)}/${Number(explorationBudget?.allowedToday ?? 0)} probes`;
   }
   if (learningAutonomyHeadlineEl) {
     learningAutonomyHeadlineEl.textContent = provenLeader
@@ -7289,24 +7346,27 @@ const renderLearningAutonomyPlaybook = () => {
     const disabledCount = patternStates.filter((item) => item.state === 'DISABLED').length;
     learningAutonomyContextEl.textContent = `${patternStates.length} pattern buckets are being tracked across thesis, symbol, and research direction. ${experimentalCount} are exploratory, ${probationCount} are cooling off, and ${disabledCount} are fully benched until performance improves.`;
   }
+  if (learningAutonomyBudgetEl) {
+    learningAutonomyBudgetEl.textContent = describePaperAutonomyBudgetMeta(explorationBudget);
+  }
   if (learningAutonomyLeaderEl) {
     learningAutonomyLeaderEl.textContent = provenLeader
-      ? `${provenLeader.label} • ${fmtNum((Number(provenLeader.winRate) || 0) * 100, 0)}% win • ${fmtNum(provenLeader.avgR ?? 0, 2)}R avg`
+      ? `${provenLeader.label} • ${fmtNum((Number(provenLeader.winRate) || 0) * 100, 0)}% win • ${fmtNum(provenLeader.avgR ?? 0, 2)}R avg • ${provenLeader.cooldownSummary}`
       : 'No core pattern yet.';
   }
   if (learningAutonomyExplorationEl) {
     learningAutonomyExplorationEl.textContent = explorationLeader
-      ? `${explorationLeader.label} • ${describePaperAutonomyPatternState(explorationLeader)}`
-      : 'No exploratory lane is active.';
+      ? summarizePaperAutonomyExplorationLane(patternStates, explorationBudget)
+      : summarizePaperAutonomyExplorationLane(patternStates, explorationBudget);
   }
   if (learningAutonomyGuardrailEl) {
     learningAutonomyGuardrailEl.textContent = probationLeader
-      ? `${probationLeader.label} • ${probationLeader.reason}`
+      ? `${probationLeader.label} • ${probationLeader.reason} • ${probationLeader.cooldownSummary}`
       : 'No pattern is on probation right now.';
   }
   if (learningAutonomyDisabledEl) {
     learningAutonomyDisabledEl.textContent = disabledLeader
-      ? `${disabledLeader.label} • ${disabledLeader.reason}`
+      ? `${disabledLeader.label} • ${disabledLeader.reason} • ${disabledLeader.cooldownSummary}`
       : 'No pattern is fully disabled right now.';
   }
 
