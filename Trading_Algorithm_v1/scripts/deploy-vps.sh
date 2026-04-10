@@ -46,7 +46,7 @@ rsync -az --delete \
 ssh -i "${SSH_KEY}" -p "${SSH_PORT}" "${REMOTE_HOST}" "
   set -euo pipefail
   cd '${REMOTE_PATH}'
-  npm ci
+  npm ci --include=dev
   npm run build
   chmod +x \
     scripts/launch-ibgateway-vps.sh \
