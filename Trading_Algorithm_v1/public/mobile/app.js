@@ -146,6 +146,14 @@ const learningBestEdgeEl = document.getElementById('learningBestEdge');
 const learningBiggestDragEl = document.getElementById('learningBiggestDrag');
 const learningResearchEdgeEl = document.getElementById('learningResearchEdge');
 const learningAutonomyEdgeEl = document.getElementById('learningAutonomyEdge');
+const learningAutonomyStateChipEl = document.getElementById('learningAutonomyStateChip');
+const learningAutonomyHeadlineEl = document.getElementById('learningAutonomyHeadline');
+const learningAutonomyContextEl = document.getElementById('learningAutonomyContext');
+const learningAutonomyLeaderEl = document.getElementById('learningAutonomyLeader');
+const learningAutonomyExplorationEl = document.getElementById('learningAutonomyExploration');
+const learningAutonomyGuardrailEl = document.getElementById('learningAutonomyGuardrail');
+const learningAutonomyDisabledEl = document.getElementById('learningAutonomyDisabled');
+const learningAutonomyPatternListEl = document.getElementById('learningAutonomyPatternList');
 const learningFavoringListEl = document.getElementById('learningFavoringList');
 const learningAvoidingListEl = document.getElementById('learningAvoidingList');
 const setupMixEl = document.getElementById('setupMix');
@@ -166,6 +174,12 @@ const paperHitRateEl = document.getElementById('paperHitRate');
 const paperOpenCountEl = document.getElementById('paperOpenCount');
 const paperClosedCountEl = document.getElementById('paperClosedCount');
 const paperHeroMetaEl = document.getElementById('paperHeroMeta');
+const paperPatternStateChipEl = document.getElementById('paperPatternStateChip');
+const paperPatternProvenEl = document.getElementById('paperPatternProven');
+const paperPatternExperimentalEl = document.getElementById('paperPatternExperimental');
+const paperPatternProbationEl = document.getElementById('paperPatternProbation');
+const paperPatternDisabledEl = document.getElementById('paperPatternDisabled');
+const paperPatternStateListEl = document.getElementById('paperPatternStateList');
 const paperOpenChipEl = document.getElementById('paperOpenChip');
 const paperClosedChipEl = document.getElementById('paperClosedChip');
 const paperOpenPositionsListEl = document.getElementById('paperOpenPositionsList');
@@ -1354,6 +1368,218 @@ const renderPaperAutonomySymbolCards = (container, items, emptyText) => {
   });
 };
 
+const PAPER_AUTONOMY_PATTERN_RANK = {
+  PROVEN: 0,
+  EXPERIMENTAL: 1,
+  PROBATION: 2,
+  DISABLED: 3
+};
+
+const PAPER_AUTONOMY_PATTERN_ATTENTION_RANK = {
+  DISABLED: 0,
+  PROBATION: 1,
+  EXPERIMENTAL: 2,
+  PROVEN: 3
+};
+
+const paperAutonomyPatternStateLabel = (state) => {
+  switch (state) {
+    case 'PROVEN':
+      return 'Core';
+    case 'EXPERIMENTAL':
+      return 'Exploration';
+    case 'PROBATION':
+      return 'Probation';
+    case 'DISABLED':
+      return 'Disabled';
+    default:
+      return state ?? 'State';
+  }
+};
+
+const paperAutonomyPatternStateClass = (state) => {
+  switch (state) {
+    case 'PROVEN':
+      return 'chip chip-online';
+    case 'DISABLED':
+      return 'chip chip-offline';
+    case 'EXPERIMENTAL':
+    case 'PROBATION':
+    default:
+      return 'chip chip-neutral';
+  }
+};
+
+const sortPaperAutonomyPatternStates = (items, mode = 'paper') => {
+  const rank = mode === 'attention' ? PAPER_AUTONOMY_PATTERN_ATTENTION_RANK : PAPER_AUTONOMY_PATTERN_RANK;
+  return [...(Array.isArray(items) ? items : [])].sort((left, right) =>
+    (rank[left.state] ?? 99) - (rank[right.state] ?? 99)
+    || Number(right.closed ?? 0) - Number(left.closed ?? 0)
+    || Number(right.total ?? 0) - Number(left.total ?? 0)
+    || String(left.label ?? '').localeCompare(String(right.label ?? ''))
+  );
+};
+
+const getPaperAutonomyPatternStates = () => {
+  const autonomy = getPaperAutonomyStatus();
+  return Array.isArray(autonomy?.patternStates) ? autonomy.patternStates : [];
+};
+
+const describePaperAutonomyPatternState = (item) => {
+  if (!item) {
+    return '--';
+  }
+
+  const parts = [
+    item.symbol ? `${item.symbol}` : null,
+    item.researchDirection ? researchDirectionLabel(item.researchDirection) : null,
+    item.exploratory ? 'exploratory' : 'aligned',
+    item.lastOpenedAt ? `last idea ${fmtRelativeMinutes(item.lastOpenedAt)}` : null
+  ].filter(Boolean);
+  return parts.join(' • ');
+};
+
+const summarizePaperAutonomyPatternBucket = (items, state) => {
+  const matching = sortPaperAutonomyPatternStates(
+    (Array.isArray(items) ? items : []).filter((item) => item.state === state),
+    state === 'PROVEN' ? 'paper' : 'attention'
+  );
+  if (!matching.length) {
+    switch (state) {
+      case 'PROVEN':
+        return '0 core patterns right now.';
+      case 'EXPERIMENTAL':
+        return '0 exploratory probes right now.';
+      case 'PROBATION':
+        return '0 cooling-off patterns right now.';
+      case 'DISABLED':
+        return '0 benched patterns right now.';
+      default:
+        return 'No pattern state data yet.';
+    }
+  }
+
+  const leader = matching[0];
+  const leaderLabel = leader.label ?? paperAutonomyThesisLabel(leader.thesis);
+  switch (state) {
+    case 'PROVEN':
+      return `${matching.length} core • ${leaderLabel} leads ${leader.symbol} with ${fmtNum((Number(leader.winRate) || 0) * 100, 0)}% win.`;
+    case 'EXPERIMENTAL':
+      return `${matching.length} exploratory • ${leaderLabel} is still probing ${leader.symbol}.`;
+    case 'PROBATION':
+      return `${matching.length} cooling off • ${leaderLabel} is reduced after ${leader.recentLossStreak ?? 0} recent losses.`;
+    case 'DISABLED':
+      return `${matching.length} benched • ${leaderLabel} is paused until results recover.`;
+    default:
+      return `${matching.length} tracked pattern${matching.length === 1 ? '' : 's'}.`;
+  }
+};
+
+const renderPaperAutonomyPatternCards = (container, items, emptyText, mode = 'paper') => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  const sorted = sortPaperAutonomyPatternStates(items, mode);
+  if (!sorted.length) {
+    renderEmpty(container, emptyText);
+    return;
+  }
+
+  sorted.slice(0, 6).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'learning-pattern-card autonomy-pattern-card';
+    const label = item.label ?? paperAutonomyThesisLabel(item.thesis);
+    const winRateClass =
+      Number(item.winRate) > 0.5
+        ? 'learning-pattern-metric-positive'
+        : Number(item.winRate) < 0.5
+          ? 'learning-pattern-metric-negative'
+          : 'learning-pattern-metric-neutral';
+    const pnlClass =
+      Number(item.realizedPnl) > 0
+        ? 'learning-pattern-metric-value-positive'
+        : Number(item.realizedPnl) < 0
+          ? 'learning-pattern-metric-value-negative'
+          : '';
+    const stateLabel = paperAutonomyPatternStateLabel(item.state);
+    const streakLabel =
+      Number(item.recentLossStreak) > 0 ? `${item.recentLossStreak}L streak` : 'No loss streak';
+    const noteParts = [
+      Number.isFinite(Number(item.realizedPnl)) ? `${fmtSignedUsd(Number(item.realizedPnl))} realized` : null,
+      typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim() : null
+    ].filter(Boolean);
+
+    card.innerHTML = `
+      <div class="learning-pattern-head">
+        <p class="learning-pattern-title">${escapeHtml(label)}</p>
+        <span class="${paperAutonomyPatternStateClass(item.state)}">${escapeHtml(stateLabel)}</span>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(describePaperAutonomyPatternState(item))}</p>
+      <div class="learning-pattern-metrics">
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Closed</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(String(item.closed ?? 0))}</span>
+        </div>
+        <div class="learning-pattern-metric ${winRateClass}">
+          <span class="learning-pattern-metric-label">Win Rate</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum((Number(item.winRate) || 0) * 100, 0)}%`)}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Avg R</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(item.avgR ?? 0, 2)}R`)}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">${escapeHtml(Number(item.recentLossStreak) > 0 ? 'Loss Streak' : 'Realized')}</span>
+          <span class="learning-pattern-metric-value ${Number(item.recentLossStreak) > 0 ? 'learning-pattern-metric-value-negative' : pnlClass}">${escapeHtml(Number(item.recentLossStreak) > 0 ? streakLabel : fmtSignedUsd(Number(item.realizedPnl) || 0))}</span>
+        </div>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(noteParts.join(' • ') || 'Autonomy is still collecting more evidence on this pattern.')}</p>
+    `;
+    container.appendChild(card);
+  });
+};
+
+const renderPaperAutonomyTransparency = () => {
+  const autonomy = getPaperAutonomyStatus();
+  const patternStates = getPaperAutonomyPatternStates();
+
+  if (paperPatternStateChipEl) {
+    paperPatternStateChipEl.textContent = autonomy?.enabled
+      ? `${patternStates.length} tracked`
+      : 'Autonomy off';
+    paperPatternStateChipEl.className = `chip ${autonomy?.enabled ? 'chip-neutral' : 'chip-neutral'}`;
+  }
+  if (paperPatternProvenEl) {
+    paperPatternProvenEl.textContent = autonomy?.enabled
+      ? summarizePaperAutonomyPatternBucket(patternStates, 'PROVEN')
+      : '--';
+  }
+  if (paperPatternExperimentalEl) {
+    paperPatternExperimentalEl.textContent = autonomy?.enabled
+      ? summarizePaperAutonomyPatternBucket(patternStates, 'EXPERIMENTAL')
+      : '--';
+  }
+  if (paperPatternProbationEl) {
+    paperPatternProbationEl.textContent = autonomy?.enabled
+      ? summarizePaperAutonomyPatternBucket(patternStates, 'PROBATION')
+      : '--';
+  }
+  if (paperPatternDisabledEl) {
+    paperPatternDisabledEl.textContent = autonomy?.enabled
+      ? summarizePaperAutonomyPatternBucket(patternStates, 'DISABLED')
+      : '--';
+  }
+
+  renderPaperAutonomyPatternCards(
+    paperPatternStateListEl,
+    patternStates,
+    autonomy?.enabled ? 'No autonomy pattern states yet.' : 'Paper autonomy is disabled on this desk.',
+    'paper'
+  );
+};
+
 const renderHomePaperAutonomy = () => {
   const autonomy = latestHomeDeck?.deck?.paperAutonomy ?? latestDiagnostics?.diagnostics?.paperAutonomy ?? null;
   const latestIdea = autonomy?.latestIdea ?? autonomy?.recentIdeas?.[0] ?? null;
@@ -1747,6 +1973,7 @@ const renderPaperAccount = () => {
     'No closed paper trades yet.',
     'closed'
   );
+  renderPaperAutonomyTransparency();
   renderPaperConfig();
 };
 
@@ -6433,6 +6660,94 @@ const renderLearningBucketList = (container, entries, emptyMessage) => {
   });
 };
 
+const renderLearningAutonomyPlaybook = () => {
+  const autonomy = getPaperAutonomyStatus();
+  const patternStates = getPaperAutonomyPatternStates();
+  const byAttention = sortPaperAutonomyPatternStates(patternStates, 'attention');
+  const byPaper = sortPaperAutonomyPatternStates(patternStates, 'paper');
+  const provenLeader = byPaper.find((item) => item.state === 'PROVEN') ?? null;
+  const explorationLeader = byPaper.find((item) => item.state === 'EXPERIMENTAL') ?? null;
+  const probationLeader = byAttention.find((item) => item.state === 'PROBATION') ?? null;
+  const disabledLeader = byAttention.find((item) => item.state === 'DISABLED') ?? null;
+
+  if (!autonomy?.enabled) {
+    if (learningAutonomyStateChipEl) {
+      learningAutonomyStateChipEl.className = 'chip chip-neutral';
+      learningAutonomyStateChipEl.textContent = 'Autonomy off';
+    }
+    if (learningAutonomyHeadlineEl) {
+      learningAutonomyHeadlineEl.textContent = 'Paper autonomy is disabled, so no pattern-state playbook is active.';
+    }
+    if (learningAutonomyContextEl) {
+      learningAutonomyContextEl.textContent = 'Once the paper engine is enabled and starts taking trades, this section will show which setups are core, exploratory, cooling off, or fully benched.';
+    }
+    if (learningAutonomyLeaderEl) {
+      learningAutonomyLeaderEl.textContent = '--';
+    }
+    if (learningAutonomyExplorationEl) {
+      learningAutonomyExplorationEl.textContent = '--';
+    }
+    if (learningAutonomyGuardrailEl) {
+      learningAutonomyGuardrailEl.textContent = '--';
+    }
+    if (learningAutonomyDisabledEl) {
+      learningAutonomyDisabledEl.textContent = '--';
+    }
+    renderPaperAutonomyPatternCards(
+      learningAutonomyPatternListEl,
+      [],
+      'Enable paper autonomy to start building a pattern-state playbook.',
+      'attention'
+    );
+    return;
+  }
+
+  if (learningAutonomyStateChipEl) {
+    learningAutonomyStateChipEl.className = 'chip chip-neutral';
+    learningAutonomyStateChipEl.textContent = `${patternStates.length} tracked • ${autonomy.openIdeas ?? 0} live`;
+  }
+  if (learningAutonomyHeadlineEl) {
+    learningAutonomyHeadlineEl.textContent = provenLeader
+      ? `${provenLeader.label} is the current core pattern, while ${disabledLeader?.label ?? probationLeader?.label ?? 'weaker setups'} stay under tighter control.`
+      : explorationLeader
+        ? `${explorationLeader.label} is still exploratory while the engine looks for a stronger core edge.`
+        : 'The paper engine is active, but it is still collecting enough evidence to separate core patterns from weak ones.';
+  }
+  if (learningAutonomyContextEl) {
+    const experimentalCount = patternStates.filter((item) => item.state === 'EXPERIMENTAL').length;
+    const probationCount = patternStates.filter((item) => item.state === 'PROBATION').length;
+    const disabledCount = patternStates.filter((item) => item.state === 'DISABLED').length;
+    learningAutonomyContextEl.textContent = `${patternStates.length} pattern buckets are being tracked across thesis, symbol, and research direction. ${experimentalCount} are exploratory, ${probationCount} are cooling off, and ${disabledCount} are fully benched until performance improves.`;
+  }
+  if (learningAutonomyLeaderEl) {
+    learningAutonomyLeaderEl.textContent = provenLeader
+      ? `${provenLeader.label} • ${fmtNum((Number(provenLeader.winRate) || 0) * 100, 0)}% win • ${fmtNum(provenLeader.avgR ?? 0, 2)}R avg`
+      : 'No core pattern yet.';
+  }
+  if (learningAutonomyExplorationEl) {
+    learningAutonomyExplorationEl.textContent = explorationLeader
+      ? `${explorationLeader.label} • ${describePaperAutonomyPatternState(explorationLeader)}`
+      : 'No exploratory lane is active.';
+  }
+  if (learningAutonomyGuardrailEl) {
+    learningAutonomyGuardrailEl.textContent = probationLeader
+      ? `${probationLeader.label} • ${probationLeader.reason}`
+      : 'No pattern is on probation right now.';
+  }
+  if (learningAutonomyDisabledEl) {
+    learningAutonomyDisabledEl.textContent = disabledLeader
+      ? `${disabledLeader.label} • ${disabledLeader.reason}`
+      : 'No pattern is fully disabled right now.';
+  }
+
+  renderPaperAutonomyPatternCards(
+    learningAutonomyPatternListEl,
+    byAttention,
+    'The paper engine has not logged any pattern-state history yet.',
+    'attention'
+  );
+};
+
 const renderReviewInsights = () => {
   const status = getSelfLearningStatus();
   const profile = getSelfLearningProfile();
@@ -6563,6 +6878,7 @@ const renderReviewInsights = () => {
     if (learningAutonomyEdgeEl) {
       learningAutonomyEdgeEl.textContent = '--';
     }
+    renderLearningAutonomyPlaybook();
     renderLearningBucketList(learningFavoringListEl, [], 'No learned edge is strong enough yet.');
     renderLearningBucketList(learningAvoidingListEl, [], 'No learned drag is strong enough yet.');
     return;
@@ -6641,6 +6957,7 @@ const renderReviewInsights = () => {
       : 'Autonomy thesis edge is still forming.';
   }
 
+  renderLearningAutonomyPlaybook();
   renderLearningBucketList(learningFavoringListEl, favoring, 'No learned edge is strong enough yet.');
   renderLearningBucketList(learningAvoidingListEl, avoiding, 'Nothing is being penalized hard yet.');
 };

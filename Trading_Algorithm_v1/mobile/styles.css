@@ -7384,6 +7384,10 @@ select {
   overflow-wrap: anywhere;
 }
 
+.autonomy-pattern-card {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .learning-pattern-metric-value-positive {
   color: #22c55e;
 }
@@ -7422,6 +7426,22 @@ select {
 
 .view-learning .compact-chip-row {
   justify-content: flex-start;
+}
+
+.view-trades .section-subhead > div,
+.view-trades .learning-pattern-list,
+.view-trades .learning-pattern-card,
+.view-trades .learning-pattern-head,
+.view-trades .learning-pattern-metrics,
+.view-trades .insight-card {
+  min-width: 0;
+}
+
+.view-trades .learning-pattern-title,
+.view-trades .learning-pattern-note,
+.view-trades .insight-text {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .view-learning .insight-text,

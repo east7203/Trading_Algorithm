@@ -501,6 +501,35 @@
             <p id="paperHeroMeta" class="paper-hero-meta">Paper account details are loading.</p>
           </section>
 
+          <section class="paper-section paper-section-muted">
+            <div class="section-subhead">
+              <div>
+                <h3>Autonomy Playbook</h3>
+                <p class="hint">See which paper-engine patterns are core, exploratory, cooling off, or fully benched.</p>
+              </div>
+              <span id="paperPatternStateChip" class="chip chip-neutral">Tracking --</span>
+            </div>
+            <section class="insights-grid">
+              <article class="insight-card">
+                <p class="stat-label">Core Patterns</p>
+                <p id="paperPatternProven" class="insight-text">--</p>
+              </article>
+              <article class="insight-card">
+                <p class="stat-label">Exploration</p>
+                <p id="paperPatternExperimental" class="insight-text">--</p>
+              </article>
+              <article class="insight-card">
+                <p class="stat-label">On Probation</p>
+                <p id="paperPatternProbation" class="insight-text">--</p>
+              </article>
+              <article class="insight-card">
+                <p class="stat-label">Disabled</p>
+                <p id="paperPatternDisabled" class="insight-text">--</p>
+              </article>
+            </section>
+            <div id="paperPatternStateList" class="stack learning-pattern-list"></div>
+          </section>
+
           <section class="paper-section">
             <div class="section-subhead">
               <h3>Open Positions</h3>
@@ -641,6 +670,41 @@
               <span class="chip chip-neutral">Patterns the engine is fading</span>
             </div>
             <div id="learningAvoidingList" class="stack learning-pattern-list"></div>
+          </section>
+
+          <section class="session-summary-card replay-command-card">
+            <div class="section-subhead">
+              <h3>Autonomy Playbook</h3>
+              <span id="learningAutonomyStateChip" class="chip chip-neutral">Autonomy --</span>
+            </div>
+            <p id="learningAutonomyHeadline" class="session-summary-headline">--</p>
+            <p id="learningAutonomyContext" class="session-summary-copy">This section will explain which paper-engine patterns are trusted, exploratory, cooling off, or fully benched.</p>
+            <div class="session-summary-grid">
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Core Leader</p>
+                <p id="learningAutonomyLeader" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Exploration Lane</p>
+                <p id="learningAutonomyExploration" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">On Probation</p>
+                <p id="learningAutonomyGuardrail" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Disabled</p>
+                <p id="learningAutonomyDisabled" class="insight-text">--</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="review-section">
+            <div class="section-subhead">
+              <h3>Paper Engine State Board</h3>
+              <span class="chip chip-neutral">Why the autonomy engine is trusting or benching setups</span>
+            </div>
+            <div id="learningAutonomyPatternList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="review-section">
