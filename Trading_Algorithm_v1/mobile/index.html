@@ -913,6 +913,42 @@
             <div class="safe-summary-card push-health-panel">
               <div class="notification-activity-head">
                 <div>
+                  <p class="stat-label">Security / System Health</p>
+                  <p class="hint">Live backend posture for internal auth, trusted app writes, fallback policy, and weak-default checks.</p>
+                </div>
+              </div>
+              <div class="push-health-grid">
+                <article class="push-health-card">
+                  <p class="stat-label">Posture</p>
+                  <p id="securityHealthPosture" class="push-health-value">Checking...</p>
+                  <p id="securityHealthPostureNote" class="push-health-note">Waiting for security diagnostics.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Internal API</p>
+                  <p id="securityHealthInternalApi" class="push-health-value">Checking...</p>
+                  <p id="securityHealthInternalApiNote" class="push-health-note">Checking bridge and watchdog authentication.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Trusted Client</p>
+                  <p id="securityHealthTrustedClient" class="push-health-value">Checking...</p>
+                  <p id="securityHealthTrustedClientNote" class="push-health-note">Checking same-origin app write protections.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Fallback Policy</p>
+                  <p id="securityHealthFallback" class="push-health-value">Checking...</p>
+                  <p id="securityHealthFallbackNote" class="push-health-note">Checking notification escalation policy.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Defaults</p>
+                  <p id="securityHealthDefaults" class="push-health-value">Checking...</p>
+                  <p id="securityHealthDefaultsNote" class="push-health-note">Checking for weak defaults that still need attention.</p>
+                </article>
+              </div>
+            </div>
+
+            <div class="safe-summary-card push-health-panel">
+              <div class="notification-activity-head">
+                <div>
                   <p class="stat-label">Push Health</p>
                   <p class="hint">Live readiness checks for this device plus the most recent delivery outcomes.</p>
                 </div>

@@ -1155,6 +1155,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     process.env.IBKR_NOTIFY_LOGIN_REQUIRED_API_KEY_HEADER ?? process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key',
     process.env.IBKR_NOTIFY_CONNECTED_API_KEY ?? process.env.TRAINING_API_KEY
   );
+  const explicitAppOriginsConfigured = Boolean(normalizeOrigin(process.env.APP_BASE_URL) || normalizeOrigin(process.env.TELEGRAM_APP_URL));
+  const securityWarnings: string[] = [];
+  if (internalApiKeys.size === 0) {
+    securityWarnings.push('Internal API key auth is not configured for bridge and watchdog traffic.');
+  }
+  if (!explicitAppOriginsConfigured) {
+    securityWarnings.push('Public app origin is relying on the built-in fallback host.');
+  }
 
   const isTrustedBrowserRequest = (request: FastifyRequest): boolean => {
     const clientValue = parseHeaderValue(request.headers[trustedClientHeader])?.trim().toLowerCase();
@@ -3388,9 +3396,33 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           nativePushReadyReason: nativePush.readyReason,
           nativePushMissingConfigFields: nativePush.missingConfigFields ?? [],
           telegramReady: telegram.ready,
+          telegramFallbackMode: 'broker-recovery-only',
           ibkrLoginReminderEnabled: operationalReminder.enabled,
           ibkrLoginReminderStarted: operationalReminder.started,
           recentActivity: notificationActivityStore.list(12)
+        },
+        security: {
+          remoteGuardEnabled: true,
+          loopbackBypassEnabled: true,
+          internalApiAuth: {
+            enabled: internalApiKeys.size > 0,
+            headerCount: internalApiKeys.size,
+            headers: [...internalApiKeys.keys()]
+          },
+          trustedClient: {
+            header: trustedClientHeader,
+            allowedClients: [...trustedClientValues],
+            allowedOriginCount: allowedOrigins.size
+          },
+          defensiveHeaders: {
+            contentTypeOptions: 'nosniff',
+            frameOptions: 'DENY',
+            referrerPolicy: 'strict-origin-when-cross-origin',
+            crossOriginOpenerPolicy: 'same-origin',
+            crossOriginResourcePolicy: 'same-origin',
+            hstsOnHttpsOnly: true
+          },
+          insecureDefaults: securityWarnings
         },
         calendar: {
           ...calendarStatus,

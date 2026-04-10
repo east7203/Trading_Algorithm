@@ -213,6 +213,16 @@ const pushHealthLastAppEl = document.getElementById('pushHealthLastApp');
 const pushHealthLastAppNoteEl = document.getElementById('pushHealthLastAppNote');
 const pushHealthTelegramEl = document.getElementById('pushHealthTelegram');
 const pushHealthTelegramNoteEl = document.getElementById('pushHealthTelegramNote');
+const securityHealthPostureEl = document.getElementById('securityHealthPosture');
+const securityHealthPostureNoteEl = document.getElementById('securityHealthPostureNote');
+const securityHealthInternalApiEl = document.getElementById('securityHealthInternalApi');
+const securityHealthInternalApiNoteEl = document.getElementById('securityHealthInternalApiNote');
+const securityHealthTrustedClientEl = document.getElementById('securityHealthTrustedClient');
+const securityHealthTrustedClientNoteEl = document.getElementById('securityHealthTrustedClientNote');
+const securityHealthFallbackEl = document.getElementById('securityHealthFallback');
+const securityHealthFallbackNoteEl = document.getElementById('securityHealthFallbackNote');
+const securityHealthDefaultsEl = document.getElementById('securityHealthDefaults');
+const securityHealthDefaultsNoteEl = document.getElementById('securityHealthDefaultsNote');
 const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
@@ -6203,6 +6213,144 @@ const getLastTelegramHealth = (diagnostics = latestDiagnostics?.diagnostics ?? n
   };
 };
 
+const getSecurityPostureHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const security = diagnostics?.security ?? null;
+  if (!security) {
+    return {
+      value: 'Waiting',
+      note: 'Security diagnostics have not loaded yet.'
+    };
+  }
+
+  const warnings = Array.isArray(security.insecureDefaults) ? security.insecureDefaults : [];
+  if (warnings.length > 0) {
+    return {
+      value: `${warnings.length} Review Item${warnings.length === 1 ? '' : 's'}`,
+      note: 'Remote access protections are active, but there are still configuration defaults worth tightening.'
+    };
+  }
+
+  return {
+    value: 'Hardened',
+    note: 'Remote requests are blocked unless they come from localhost, a valid internal API key, or the trusted same-origin app.'
+  };
+};
+
+const getSecurityInternalApiHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const internalApiAuth = diagnostics?.security?.internalApiAuth ?? null;
+  if (!internalApiAuth) {
+    return {
+      value: 'Waiting',
+      note: 'Internal bridge authentication diagnostics are not available yet.'
+    };
+  }
+
+  if (!internalApiAuth.enabled) {
+    return {
+      value: 'Disabled',
+      note: 'No internal API key is configured right now. Bridge and watchdog traffic must rely on localhost access.'
+    };
+  }
+
+  const headers = Array.isArray(internalApiAuth.headers) ? internalApiAuth.headers : [];
+  return {
+    value: `${internalApiAuth.headerCount || headers.length} Header${(internalApiAuth.headerCount || headers.length) === 1 ? '' : 's'}`,
+    note: `Internal bridge traffic is authenticated with ${headers.join(', ')}.`
+  };
+};
+
+const getSecurityTrustedClientHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const trustedClient = diagnostics?.security?.trustedClient ?? null;
+  if (!trustedClient) {
+    return {
+      value: 'Waiting',
+      note: 'Trusted app write diagnostics are not available yet.'
+    };
+  }
+
+  const clients = Array.isArray(trustedClient.allowedClients) ? trustedClient.allowedClients : [];
+  return {
+    value: 'Same-Origin',
+    note: `Browser writes require ${trustedClient.header || 'x-tradeassist-client'} plus same-origin checks. Allowed app clients: ${clients.join(', ')}.`
+  };
+};
+
+const getSecurityFallbackHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const notifications = diagnostics?.notifications ?? null;
+  if (!notifications) {
+    return {
+      value: 'Waiting',
+      note: 'Notification fallback diagnostics are not available yet.'
+    };
+  }
+
+  const mode = notifications.telegramFallbackMode === 'broker-recovery-only'
+    ? 'Broker Only'
+    : notifications.telegramFallbackMode
+      ? String(notifications.telegramFallbackMode)
+      : 'App First';
+  const readiness = notifications.telegramReady
+    ? 'Telegram is armed if app delivery misses for IBKR recovery.'
+    : 'Telegram is not ready, so IBKR recovery will stay app-only until it is configured.';
+  return {
+    value: mode,
+    note: `App push stays primary. ${readiness}`
+  };
+};
+
+const getSecurityDefaultsHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const security = diagnostics?.security ?? null;
+  if (!security) {
+    return {
+      value: 'Waiting',
+      note: 'Weak-default checks have not loaded yet.'
+    };
+  }
+
+  const warnings = Array.isArray(security.insecureDefaults) ? security.insecureDefaults : [];
+  if (warnings.length > 0) {
+    return {
+      value: 'Needs Review',
+      note: warnings.join(' ')
+    };
+  }
+
+  return {
+    value: 'No Weak Defaults',
+    note: `Defensive headers are active (${security.defensiveHeaders?.frameOptions || 'DENY'}, ${security.defensiveHeaders?.contentTypeOptions || 'nosniff'}). HSTS is added automatically on HTTPS requests.`
+  };
+};
+
+const renderSecurityHealthPanel = () => {
+  if (
+    !securityHealthPostureEl
+    || !securityHealthPostureNoteEl
+    || !securityHealthInternalApiEl
+    || !securityHealthInternalApiNoteEl
+    || !securityHealthTrustedClientEl
+    || !securityHealthTrustedClientNoteEl
+    || !securityHealthFallbackEl
+    || !securityHealthFallbackNoteEl
+    || !securityHealthDefaultsEl
+    || !securityHealthDefaultsNoteEl
+  ) {
+    return;
+  }
+
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const posture = getSecurityPostureHealth(diagnostics);
+  const internalApi = getSecurityInternalApiHealth(diagnostics);
+  const trustedClient = getSecurityTrustedClientHealth(diagnostics);
+  const fallback = getSecurityFallbackHealth(diagnostics);
+  const defaults = getSecurityDefaultsHealth(diagnostics);
+
+  setPushHealthCard(securityHealthPostureEl, securityHealthPostureNoteEl, posture.value, posture.note);
+  setPushHealthCard(securityHealthInternalApiEl, securityHealthInternalApiNoteEl, internalApi.value, internalApi.note);
+  setPushHealthCard(securityHealthTrustedClientEl, securityHealthTrustedClientNoteEl, trustedClient.value, trustedClient.note);
+  setPushHealthCard(securityHealthFallbackEl, securityHealthFallbackNoteEl, fallback.value, fallback.note);
+  setPushHealthCard(securityHealthDefaultsEl, securityHealthDefaultsNoteEl, defaults.value, defaults.note);
+};
+
 const renderPushHealthPanel = async () => {
   if (
     !pushHealthPermissionEl
@@ -7007,6 +7155,7 @@ const renderDiagnostics = () => {
     sysGlanceTrainingEl.textContent = '--';
     sysGlanceAlertsEl.textContent = '--';
     renderNotificationActivity([]);
+    renderSecurityHealthPanel();
     void renderPushHealthPanel();
     updateSystemSummary();
     return;
@@ -7063,6 +7212,7 @@ const renderDiagnostics = () => {
     ? `${research.performance.totalPredictions ?? 0} total • ${research.performance.openPredictions ?? 0} open`
     : '--';
   renderNotificationActivity(diagnostics.notifications?.recentActivity ?? []);
+  renderSecurityHealthPanel();
   void renderPushHealthPanel();
   diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
   renderResearchDiagnostics(research);

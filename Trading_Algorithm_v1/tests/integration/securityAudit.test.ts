@@ -121,6 +121,24 @@ describe('security hardening', () => {
     expect(response.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
   });
 
+  it('reports security posture in diagnostics', async () => {
+    process.env.TRAINING_API_KEY = 'security-test-key';
+    process.env.TRAINING_API_KEY_HEADER = 'x-api-key';
+    const ctx = withApp(buildApp());
+
+    const response = await ctx.app.inject({
+      method: 'GET',
+      path: '/diagnostics'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().diagnostics.notifications.telegramFallbackMode).toBe('broker-recovery-only');
+    expect(response.json().diagnostics.security.remoteGuardEnabled).toBe(true);
+    expect(response.json().diagnostics.security.internalApiAuth.enabled).toBe(true);
+    expect(response.json().diagnostics.security.internalApiAuth.headers).toContain('x-api-key');
+    expect(response.json().diagnostics.security.trustedClient.header).toBe('x-tradeassist-client');
+  });
+
   it('does not leak raw error objects in invalid request responses', async () => {
     const ctx = withApp(buildApp());
 
