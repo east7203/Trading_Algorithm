@@ -223,6 +223,9 @@ const securityHealthFallbackEl = document.getElementById('securityHealthFallback
 const securityHealthFallbackNoteEl = document.getElementById('securityHealthFallbackNote');
 const securityHealthDefaultsEl = document.getElementById('securityHealthDefaults');
 const securityHealthDefaultsNoteEl = document.getElementById('securityHealthDefaultsNote');
+const securityRepairPushEl = document.getElementById('securityRepairPush');
+const securityRunBrokerRecoveryTestEl = document.getElementById('securityRunBrokerRecoveryTest');
+const securityRefreshChecksEl = document.getElementById('securityRefreshChecks');
 const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
@@ -5660,6 +5663,58 @@ const sendTestEngineUpdateAlert = async () =>
     failureLabel: 'engine update test'
   });
 
+const repairPushRegistration = async () => {
+  const prefs = getNotificationPrefs();
+  if (!prefs.enabled) {
+    setStatus('Status: turn on Allow Push Alerts before re-registering this device.', true);
+    return false;
+  }
+
+  setStatus('Status: re-registering push on this device...');
+  const granted = await requestNotificationPermission();
+  if (!granted) {
+    setStatus('Status: notification permission is blocked, so push could not be re-registered.', true);
+    void renderPushHealthPanel();
+    return false;
+  }
+
+  let synced = false;
+  if (!hasNativePush() && supportsRemoteWebPush()) {
+    await unsubscribeRemotePushSubscription().catch(() => false);
+    synced = await syncRemotePushSubscription(prefs).catch(() => false);
+  } else {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+    synced = await syncServerNotificationPreferences(prefs).catch(() => false);
+  }
+
+  await loadDiagnostics().catch(() => null);
+  void renderPushHealthPanel();
+  renderSecurityHealthPanel();
+
+  if (synced) {
+    setStatus('Status: push registration refreshed for this device.');
+    return true;
+  }
+
+  setStatus(
+    hasNativePush()
+      ? 'Status: permission is granted. Waiting for the native push token to finish syncing.'
+      : 'Status: push permission is granted, but this browser context could not refresh the remote subscription.',
+    true
+  );
+  return false;
+};
+
+const refreshSecurityChecks = async () => {
+  setStatus('Status: refreshing security diagnostics...');
+  await Promise.all([loadHealth(), loadDiagnostics()]);
+  renderSecurityHealthPanel();
+  void renderPushHealthPanel();
+  setStatus('Status: security checks refreshed.');
+};
+
 const syncSeenAlerts = async (alerts) => {
   const seenIds = getSeenAlertIds();
   const known = new Set(seenIds);
@@ -8344,6 +8399,15 @@ const bindNotificationControls = () => {
   });
   sendTestEngineUpdateAlertEl?.addEventListener('click', async () => {
     await sendTestEngineUpdateAlert().catch(() => null);
+  });
+  securityRepairPushEl?.addEventListener('click', async () => {
+    await repairPushRegistration().catch(() => null);
+  });
+  securityRunBrokerRecoveryTestEl?.addEventListener('click', async () => {
+    await sendTestBrokerRecoveryAlert().catch(() => null);
+  });
+  securityRefreshChecksEl?.addEventListener('click', async () => {
+    await refreshSecurityChecks().catch(() => null);
   });
 };
 
