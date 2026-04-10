@@ -846,6 +846,42 @@
               <p class="hint">Manual trade alerts, paper updates, and engine updates stay in the app. IBKR recovery can escalate to Telegram if app delivery fails.</p>
             </div>
 
+            <div class="safe-summary-card push-health-panel">
+              <div class="notification-activity-head">
+                <div>
+                  <p class="stat-label">Push Health</p>
+                  <p class="hint">Live readiness checks for this device plus the most recent delivery outcomes.</p>
+                </div>
+              </div>
+              <div class="push-health-grid">
+                <article class="push-health-card">
+                  <p class="stat-label">Permission</p>
+                  <p id="pushHealthPermission" class="push-health-value">Checking...</p>
+                  <p id="pushHealthPermissionNote" class="push-health-note">Inspecting device notification permission.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Install Mode</p>
+                  <p id="pushHealthInstall" class="push-health-value">Checking...</p>
+                  <p id="pushHealthInstallNote" class="push-health-note">Determining whether this is running as an app or browser tab.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">This Device</p>
+                  <p id="pushHealthRegistration" class="push-health-value">Checking...</p>
+                  <p id="pushHealthRegistrationNote" class="push-health-note">Checking whether this device is registered for app push.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Last App Delivery</p>
+                  <p id="pushHealthLastApp" class="push-health-value">Waiting...</p>
+                  <p id="pushHealthLastAppNote" class="push-health-note">No app delivery has been recorded yet.</p>
+                </article>
+                <article class="push-health-card">
+                  <p class="stat-label">Telegram Backup</p>
+                  <p id="pushHealthTelegram" class="push-health-value">Waiting...</p>
+                  <p id="pushHealthTelegramNote" class="push-health-note">No Telegram fallback has been used yet.</p>
+                </article>
+              </div>
+            </div>
+
             <div class="stack controls-stack">
               <div class="control-row control-row-toggle">
                 <label for="notificationToggle">Allow Push Alerts</label>

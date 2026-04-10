@@ -7132,6 +7132,43 @@ select {
   margin-bottom: 14px;
 }
 
+.push-health-panel {
+  margin-bottom: 14px;
+}
+
+.push-health-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.push-health-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.push-health-value {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.push-health-note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .settings-note {
   margin-top: 12px;
 }
@@ -7218,6 +7255,16 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+@media (min-width: 860px) {
+  .push-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .push-health-card:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ---- Level/evidence chips ---- */

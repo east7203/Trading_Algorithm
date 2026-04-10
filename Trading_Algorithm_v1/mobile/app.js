@@ -186,6 +186,16 @@ const paperAutonomyRiskPctEl = document.getElementById('paperAutonomyRiskPct');
 const savePaperSettingsEl = document.getElementById('savePaperSettings');
 const paperConfigMetaEl = document.getElementById('paperConfigMeta');
 const sendTestAppAlertEl = document.getElementById('sendTestAppAlert');
+const pushHealthPermissionEl = document.getElementById('pushHealthPermission');
+const pushHealthPermissionNoteEl = document.getElementById('pushHealthPermissionNote');
+const pushHealthInstallEl = document.getElementById('pushHealthInstall');
+const pushHealthInstallNoteEl = document.getElementById('pushHealthInstallNote');
+const pushHealthRegistrationEl = document.getElementById('pushHealthRegistration');
+const pushHealthRegistrationNoteEl = document.getElementById('pushHealthRegistrationNote');
+const pushHealthLastAppEl = document.getElementById('pushHealthLastApp');
+const pushHealthLastAppNoteEl = document.getElementById('pushHealthLastAppNote');
+const pushHealthTelegramEl = document.getElementById('pushHealthTelegram');
+const pushHealthTelegramNoteEl = document.getElementById('pushHealthTelegramNote');
 const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
@@ -326,6 +336,7 @@ let latestRiskConfig = null;
 let latestHealth = null;
 let latestSelfLearningStatus = null;
 let lastSyncAt = null;
+let pushHealthRenderToken = 0;
 const latestReplayLearningByAlertId = new Map();
 let serviceWorkerRegistrationPromise = null;
 let serviceWorkerMessageListenerBound = false;
@@ -5186,11 +5197,13 @@ const bindNativePushListeners = () => {
     } catch (error) {
       setStatus(`Status: native push registration failed (${error.message})`, true);
     }
+    void renderPushHealthPanel();
   });
 
   push.addListener('registrationError', (error) => {
     const message = error?.error || error?.message || 'native push registration error';
     setStatus(`Status: ${message}`, true);
+    void renderPushHealthPanel();
   });
 
   push.addListener('pushNotificationReceived', () => {
@@ -5677,6 +5690,288 @@ const unsubscribeRemotePushSubscription = async () => {
 
   await subscription.unsubscribe().catch(() => false);
   return true;
+};
+
+const setPushHealthCard = (valueEl, noteEl, value, note) => {
+  if (valueEl) {
+    valueEl.textContent = value;
+  }
+  if (noteEl) {
+    noteEl.textContent = note;
+  }
+};
+
+const describePushHealthTimestamp = (timestamp) =>
+  timestamp ? `${fmtRelativeMinutes(timestamp)} • ${fmtDateTimeCompact(timestamp)}` : 'Never recorded';
+
+const findRecentNotificationActivity = (predicate, diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const activity = diagnostics?.notifications?.recentActivity;
+  if (!Array.isArray(activity)) {
+    return null;
+  }
+
+  return activity.find((entry) => predicate(entry)) ?? null;
+};
+
+const getNotificationPermissionHealth = async () => {
+  const isNativeApp = Boolean(window.Capacitor?.isNativePlatform?.());
+  const nativePush = getNativePushPlugin();
+
+  if (isNativeApp && nativePush?.checkPermissions) {
+    try {
+      const permission = await nativePush.checkPermissions();
+      if (permission?.receive === 'granted') {
+        return {
+          value: 'Granted',
+          note: getNativePushToken()
+            ? 'iPhone push permission is granted and a native token is already saved on this device.'
+            : 'iPhone push permission is granted. The app is ready to complete registration.'
+        };
+      }
+      if (permission?.receive === 'denied') {
+        return {
+          value: 'Blocked',
+          note: 'iPhone push permission is blocked for this app. Re-enable it in Settings to receive alerts.'
+        };
+      }
+      if (permission?.receive === 'prompt') {
+        return {
+          value: 'Needs Prompt',
+          note: 'Turn Allow Push Alerts on and approve the iPhone permission prompt to finish setup.'
+        };
+      }
+    } catch {
+      // Fall through to local/browser permission checks.
+    }
+  }
+
+  const localNotifications = getLocalNotificationsPlugin();
+  if (isNativeApp && localNotifications?.checkPermissions) {
+    try {
+      const permission = await localNotifications.checkPermissions();
+      if (permission?.display === 'granted') {
+        return {
+          value: 'Granted',
+          note: 'Local notification permission is available on this device.'
+        };
+      }
+      if (permission?.display === 'denied') {
+        return {
+          value: 'Blocked',
+          note: 'Local notification permission is blocked for this app.'
+        };
+      }
+    } catch {
+      // Fall through to browser permission checks.
+    }
+  }
+
+  if (!('Notification' in window)) {
+    return {
+      value: 'Unavailable',
+      note: 'This device does not expose browser notification permissions.'
+    };
+  }
+
+  if (Notification.permission === 'granted') {
+    return {
+      value: 'Granted',
+      note: 'Browser notification permission is granted for this web app.'
+    };
+  }
+
+  if (Notification.permission === 'denied') {
+    return {
+      value: 'Blocked',
+      note: 'Browser notification permission is blocked for this site.'
+    };
+  }
+
+  return {
+    value: 'Needs Prompt',
+    note: 'Turn Allow Push Alerts on and approve the browser prompt to finish setup.'
+  };
+};
+
+const getInstallModeHealth = () => {
+  if (Boolean(window.Capacitor?.isNativePlatform?.())) {
+    return {
+      value: 'Native App',
+      note: 'This device is running the Capacitor app, so native push is the primary path.'
+    };
+  }
+
+  if (isStandaloneWebApp()) {
+    return {
+      value: 'Standalone',
+      note: 'This device opened TradeAssist from the Home Screen like an installed app.'
+    };
+  }
+
+  if (deferredInstallPrompt) {
+    return {
+      value: 'Install Ready',
+      note: 'This browser can install the app directly from the current page.'
+    };
+  }
+
+  if (isIosBrowser()) {
+    return {
+      value: 'Browser Tab',
+      note: 'For reliable iPhone web push, launch this from the Home Screen instead of Safari.'
+    };
+  }
+
+  return {
+    value: 'Browser',
+    note: 'This session is running in a regular browser tab.'
+  };
+};
+
+const getDeviceRegistrationHealth = async (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const notifications = diagnostics?.notifications ?? {};
+  const webSubscribers = Number(notifications.webPushSubscribers) || 0;
+  const nativeDevices = Number(notifications.nativePushDevices) || 0;
+
+  if (hasNativePush()) {
+    const nativeToken = getNativePushToken();
+    if (!nativeToken) {
+      return {
+        value: 'Not Registered',
+        note: nativeDevices > 0
+          ? `No native token is saved on this device yet. The server currently tracks ${nativeDevices} native device${nativeDevices === 1 ? '' : 's'}.`
+          : 'No native token is saved on this device yet.'
+      };
+    }
+
+    if (notifications.nativePushReady) {
+      return {
+        value: 'Registered',
+        note: `Native push is registered on this device. The server currently tracks ${nativeDevices} native device${nativeDevices === 1 ? '' : 's'}.`
+      };
+    }
+
+    return {
+      value: 'Pending Server',
+      note: notifications.nativePushReadyReason
+        ? `A native token is saved here, but the APNs path is not ready yet (${notifications.nativePushReadyReason}).`
+        : 'A native token is saved here, but the APNs path is not ready yet.'
+    };
+  }
+
+  if (!supportsRemoteWebPush()) {
+    return {
+      value: 'Unavailable',
+      note: 'Remote web push is not available in this browser context.'
+    };
+  }
+
+  const registration = await registerServiceWorker();
+  const subscription = await registration?.pushManager?.getSubscription().catch(() => null);
+  if (subscription?.endpoint) {
+    return {
+      value: 'Registered',
+      note: `A web push subscription is active on this device. The server currently tracks ${webSubscribers} web subscriber${webSubscribers === 1 ? '' : 's'}.`
+    };
+  }
+
+  return {
+    value: 'Not Registered',
+    note: webSubscribers > 0
+      ? `This device is not currently subscribed. The server still tracks ${webSubscribers} web subscriber${webSubscribers === 1 ? '' : 's'} overall.`
+      : 'No web push subscription is active on this device yet.'
+  };
+};
+
+const getLastAppDeliveryHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const deliveredEntry = findRecentNotificationActivity((entry) => (Number(entry?.app?.delivered) || 0) > 0, diagnostics);
+  if (deliveredEntry) {
+    const delivered = Number(deliveredEntry.app?.delivered) || 0;
+    const attempted = Math.max(Number(deliveredEntry.app?.attempted) || 0, delivered);
+    const categoryLabel = notificationActivityCategoryCopy[deliveredEntry.category] || 'Notification';
+    return {
+      value: fmtRelativeMinutes(deliveredEntry.at),
+      note: `${categoryLabel}: ${deliveredEntry.title} • ${delivered}/${attempted} app deliveries • ${fmtDateTimeCompact(deliveredEntry.at)}`
+    };
+  }
+
+  const attemptedEntry = findRecentNotificationActivity((entry) => (Number(entry?.app?.attempted) || 0) > 0, diagnostics);
+  if (attemptedEntry) {
+    return {
+      value: 'No Success Yet',
+      note: `${attemptedEntry.title} was the latest app attempt, but it reached 0 devices (${describePushHealthTimestamp(attemptedEntry.at)}).`
+    };
+  }
+
+  return {
+    value: 'Waiting',
+    note: 'No app delivery has been recorded yet.'
+  };
+};
+
+const getLastTelegramHealth = (diagnostics = latestDiagnostics?.diagnostics ?? null) => {
+  const telegramEntry = findRecentNotificationActivity((entry) => entry?.telegram?.sent === true, diagnostics);
+  if (telegramEntry) {
+    const triggerDetail =
+      notificationActivityTriggerCopy[telegramEntry.telegram?.triggerReason] || 'Telegram fallback was used for this event.';
+    return {
+      value: fmtRelativeMinutes(telegramEntry.at),
+      note: `${telegramEntry.title} • ${triggerDetail} • ${fmtDateTimeCompact(telegramEntry.at)}`
+    };
+  }
+
+  const standbyEntry = findRecentNotificationActivity((entry) => entry?.telegram?.fallbackRequested === true, diagnostics);
+  if (standbyEntry) {
+    const triggerDetail =
+      notificationActivityTriggerCopy[standbyEntry.telegram?.triggerReason] || 'Telegram fallback is standing by.';
+    return {
+      value: 'Standby',
+      note: triggerDetail
+    };
+  }
+
+  return {
+    value: 'Idle',
+    note: 'Telegram fallback has not been used recently.'
+  };
+};
+
+const renderPushHealthPanel = async () => {
+  if (
+    !pushHealthPermissionEl
+    || !pushHealthPermissionNoteEl
+    || !pushHealthInstallEl
+    || !pushHealthInstallNoteEl
+    || !pushHealthRegistrationEl
+    || !pushHealthRegistrationNoteEl
+    || !pushHealthLastAppEl
+    || !pushHealthLastAppNoteEl
+    || !pushHealthTelegramEl
+    || !pushHealthTelegramNoteEl
+  ) {
+    return;
+  }
+
+  const renderToken = ++pushHealthRenderToken;
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const [permission, registration] = await Promise.all([
+    getNotificationPermissionHealth(),
+    getDeviceRegistrationHealth(diagnostics)
+  ]);
+
+  if (renderToken !== pushHealthRenderToken) {
+    return;
+  }
+
+  const install = getInstallModeHealth();
+  const lastApp = getLastAppDeliveryHealth(diagnostics);
+  const lastTelegram = getLastTelegramHealth(diagnostics);
+
+  setPushHealthCard(pushHealthPermissionEl, pushHealthPermissionNoteEl, permission.value, permission.note);
+  setPushHealthCard(pushHealthInstallEl, pushHealthInstallNoteEl, install.value, install.note);
+  setPushHealthCard(pushHealthRegistrationEl, pushHealthRegistrationNoteEl, registration.value, registration.note);
+  setPushHealthCard(pushHealthLastAppEl, pushHealthLastAppNoteEl, lastApp.value, lastApp.note);
+  setPushHealthCard(pushHealthTelegramEl, pushHealthTelegramNoteEl, lastTelegram.value, lastTelegram.note);
 };
 
 const renderEmpty = (container, text) => {
@@ -6355,6 +6650,7 @@ const renderDiagnostics = () => {
     sysGlanceTrainingEl.textContent = '--';
     sysGlanceAlertsEl.textContent = '--';
     renderNotificationActivity([]);
+    void renderPushHealthPanel();
     updateSystemSummary();
     return;
   }
@@ -6410,6 +6706,7 @@ const renderDiagnostics = () => {
     ? `${research.performance.totalPredictions ?? 0} total • ${research.performance.openPredictions ?? 0} open`
     : '--';
   renderNotificationActivity(diagnostics.notifications?.recentActivity ?? []);
+  void renderPushHealthPanel();
   diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
   renderResearchDiagnostics(research);
   renderPaperAutonomyDiagnostics(diagnostics.paperAutonomy ?? null);
@@ -7470,6 +7767,7 @@ const bindNotificationControls = () => {
     setStatus(statusMessage, !granted);
     updateSystemSummary();
     renderStatusRail();
+    void renderPushHealthPanel();
   };
 
   notificationToggleEl.addEventListener('change', async () => {
@@ -7500,6 +7798,7 @@ const bindNotificationControls = () => {
     setStatus('Status: signal notifications disabled on this device');
     updateSystemSummary();
     renderStatusRail();
+    void renderPushHealthPanel();
   });
 
   Object.entries(notificationPreferenceToggleMap).forEach(([key, toggleEl]) => {
@@ -7519,6 +7818,7 @@ const bindNotificationControls = () => {
         setStatus('Status: signal notifications disabled on this device');
         updateSystemSummary();
         renderStatusRail();
+        void renderPushHealthPanel();
         return;
       }
 
@@ -7541,6 +7841,7 @@ const updateWebAppInstallUi = () => {
     webAppInstallHintEl.textContent = 'This desk is already opening like an app on this device.';
     installWebAppEl.hidden = true;
     installWebAppEl.disabled = true;
+    void renderPushHealthPanel();
     return;
   }
 
@@ -7550,6 +7851,7 @@ const updateWebAppInstallUi = () => {
     installWebAppEl.hidden = false;
     installWebAppEl.disabled = false;
     installWebAppEl.textContent = 'Install App';
+    void renderPushHealthPanel();
     return;
   }
 
@@ -7559,6 +7861,7 @@ const updateWebAppInstallUi = () => {
       'In Safari, tap Share and then Add to Home Screen. After that, it will launch like a dedicated app.';
     installWebAppEl.hidden = true;
     installWebAppEl.disabled = true;
+    void renderPushHealthPanel();
     return;
   }
 
@@ -7567,6 +7870,7 @@ const updateWebAppInstallUi = () => {
     'If your browser has not offered install yet, keep using the app a bit longer and the prompt should appear.';
   installWebAppEl.hidden = true;
   installWebAppEl.disabled = true;
+  void renderPushHealthPanel();
 };
 
 const bindWebAppInstallControls = () => {
