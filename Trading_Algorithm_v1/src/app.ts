@@ -2804,6 +2804,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               openIdeas: paperAutonomy.openIdeas,
               closedIdeas: paperAutonomy.closedIdeas,
               winRate: Number(paperAutonomy.winRate.toFixed(3)),
+              session: {
+                timezone: paperAutonomy.session.timezone,
+                startHour: paperAutonomy.session.startHour,
+                startMinute: paperAutonomy.session.startMinute,
+                endHour: paperAutonomy.session.endHour,
+                endMinute: paperAutonomy.session.endMinute
+              },
               performance: {
                 realizedPnl: Number(paperAutonomy.performance.realizedPnl.toFixed(2)),
                 realizedR: Number(paperAutonomy.performance.realizedR.toFixed(2)),
@@ -2823,12 +2830,46 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                     realizedPnl: Number(paperAutonomy.bestThesis.realizedPnl.toFixed(2))
                   }
                 : null,
+              explorationBudget: {
+                fraction: Number(paperAutonomy.explorationBudget.fraction.toFixed(2)),
+                hardCap: paperAutonomy.explorationBudget.hardCap,
+                allowedToday: paperAutonomy.explorationBudget.allowedToday,
+                usedToday: paperAutonomy.explorationBudget.usedToday,
+                remainingToday: paperAutonomy.explorationBudget.remainingToday,
+                totalIdeasToday: paperAutonomy.explorationBudget.totalIdeasToday,
+                sessionDay: paperAutonomy.explorationBudget.sessionDay,
+                available: paperAutonomy.explorationBudget.available,
+                summary: compactText(paperAutonomy.explorationBudget.summary, 140)
+              },
               activeTheses: paperAutonomy.activeTheses.slice(0, 4).map((entry) => ({
                 thesis: entry.thesis,
                 label: entry.label,
                 openIdeas: entry.openIdeas,
                 totalIdeas: entry.totalIdeas,
                 lastOpenedAt: entry.lastOpenedAt ?? null
+              })),
+              patternStates: paperAutonomy.patternStates.slice(0, 8).map((entry) => ({
+                key: entry.key,
+                thesis: entry.thesis,
+                label: entry.label,
+                symbol: entry.symbol,
+                researchDirection: entry.researchDirection,
+                exploratory: entry.exploratory,
+                state: entry.state,
+                total: entry.total,
+                open: entry.open,
+                closed: entry.closed,
+                wins: entry.wins,
+                losses: entry.losses,
+                flats: entry.flats,
+                winRate: Number(entry.winRate.toFixed(3)),
+                avgR: Number(entry.avgR.toFixed(2)),
+                realizedPnl: Number(entry.realizedPnl.toFixed(2)),
+                recentLossStreak: entry.recentLossStreak,
+                reason: compactText(entry.reason, 160),
+                cooldownSummary: compactText(entry.cooldownSummary, 160),
+                lastOpenedAt: entry.lastOpenedAt ?? null,
+                lastClosedAt: entry.lastClosedAt ?? null
               })),
               symbolStatus: paperAutonomy.symbolStatus.map((entry) => ({
                 symbol: entry.symbol,
@@ -2853,7 +2894,25 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                     openedAt: paperAutonomy.recentIdeas[0].openedAt,
                     reason: compactText(paperAutonomy.recentIdeas[0].reason, 140)
                   }
-                : null
+                : null,
+              recentDecisions: paperAutonomy.recentDecisions.slice(0, 8).map((entry) => ({
+                id: entry.id,
+                timestamp: entry.timestamp,
+                symbol: entry.symbol,
+                side: entry.side,
+                thesis: entry.thesis,
+                researchDirection: entry.researchDirection,
+                exploratory: entry.exploratory,
+                patternState: entry.patternState,
+                allocation: entry.allocation,
+                outcome: entry.outcome,
+                score: Number(entry.score.toFixed(1)),
+                finalScore: Number(entry.finalScore.toFixed(1)),
+                riskPct: Number(entry.riskPct.toFixed(2)),
+                summary: compactText(entry.summary, 140),
+                reason: compactText(entry.reason, 180),
+                cooldownSummary: compactText(entry.cooldownSummary, 160)
+              }))
             }
           : null,
         researchLab: research

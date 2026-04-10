@@ -278,6 +278,7 @@ describe('paper autonomy service', () => {
     expect(disabledPattern?.state).toBe('DISABLED');
     expect(disabledPattern?.reason).toContain('Paused after underperforming');
     expect(disabledPattern?.cooldownSummary).toContain('disable guardrail');
+    expect(disabledService.status().recentDecisions.some((entry) => entry.outcome === 'BLOCKED')).toBe(true);
     expect(disabledAlerts.some((alert) => String(alert.candidate.metadata.autonomyThesis) === failingThesis)).toBe(false);
   });
 
@@ -318,5 +319,6 @@ describe('paper autonomy service', () => {
     expect(exploratoryService.status().explorationBudget.allowedToday).toBe(1);
     expect(exploratoryService.status().explorationBudget.remainingToday).toBe(0);
     expect(exploratoryService.status().explorationBudget.available).toBe(false);
+    expect(exploratoryService.status().recentDecisions.length).toBeGreaterThan(0);
   });
 });

@@ -152,6 +152,27 @@ export interface PaperAutonomyExplorationBudgetStatus {
   summary: string;
 }
 
+export type PaperAutonomyDecisionOutcome = 'ACCEPTED' | 'REDUCED' | 'BLOCKED';
+
+export interface PaperAutonomyDecisionRecord {
+  id: string;
+  timestamp: string;
+  symbol: SymbolCode;
+  side: Side;
+  thesis: PaperAutonomyThesis;
+  researchDirection: ResearchTrendDirection;
+  exploratory: boolean;
+  patternState: PaperAutonomyPatternState;
+  allocation: PaperAutonomyIdeaAllocation;
+  outcome: PaperAutonomyDecisionOutcome;
+  score: number;
+  finalScore: number;
+  riskPct: number;
+  summary: string;
+  reason: string;
+  cooldownSummary: string;
+}
+
 export interface PaperAutonomyStatus {
   enabled: boolean;
   started: boolean;
@@ -179,6 +200,7 @@ export interface PaperAutonomyStatus {
   thesisStats: PaperAutonomyThesisStats[];
   explorationBudget: PaperAutonomyExplorationBudgetStatus;
   patternStates: PaperAutonomyPatternStatus[];
+  recentDecisions: PaperAutonomyDecisionRecord[];
   recentIdeas: PaperAutonomyIdeaRecord[];
   recentClosedIdeas: PaperAutonomyIdeaRecord[];
 }
@@ -202,6 +224,7 @@ export interface PaperAutonomyLearningUpdate {
 
 interface PersistedPaperAutonomyState {
   ideas: PaperAutonomyIdeaRecord[];
+  recentDecisions?: PaperAutonomyDecisionRecord[];
 }
 
 export interface PaperAutonomyConfig {
@@ -414,6 +437,11 @@ const normalizeIdeaAllocation = (value: unknown): PaperAutonomyIdeaAllocation | 
     ? value
     : undefined;
 
+const normalizeDecisionOutcome = (value: unknown): PaperAutonomyDecisionOutcome | null =>
+  value === 'ACCEPTED' || value === 'REDUCED' || value === 'BLOCKED'
+    ? value
+    : null;
+
 const summarizeCandidate = (candidate: SetupCandidate): string => {
   const score = typeof candidate.finalScore === 'number' ? `score ${candidate.finalScore.toFixed(1)}` : 'unscored';
   return `${candidate.symbol} ${candidate.side} • ${candidate.setupType} • ${score}`;
@@ -467,6 +495,59 @@ const normalizeIdea = (value: unknown): PaperAutonomyIdeaRecord | null => {
   };
 };
 
+const normalizeDecision = (value: unknown): PaperAutonomyDecisionRecord | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<PaperAutonomyDecisionRecord>;
+  const thesis = normalizeAutonomyThesis(candidate.thesis);
+  const outcome = normalizeDecisionOutcome(candidate.outcome);
+  const allocation = normalizeIdeaAllocation(candidate.allocation);
+  const patternState = normalizePatternState(candidate.patternState);
+  if (
+    typeof candidate.id !== 'string'
+    || typeof candidate.timestamp !== 'string'
+    || (candidate.symbol !== 'NQ' && candidate.symbol !== 'ES')
+    || (candidate.side !== 'LONG' && candidate.side !== 'SHORT')
+    || thesis === null
+    || (candidate.researchDirection !== 'BULLISH'
+      && candidate.researchDirection !== 'BEARISH'
+      && candidate.researchDirection !== 'BALANCED'
+      && candidate.researchDirection !== 'STAND_ASIDE')
+    || allocation === undefined
+    || patternState === undefined
+    || outcome === null
+    || typeof candidate.score !== 'number'
+    || typeof candidate.finalScore !== 'number'
+    || typeof candidate.riskPct !== 'number'
+    || typeof candidate.summary !== 'string'
+    || typeof candidate.reason !== 'string'
+    || typeof candidate.cooldownSummary !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    timestamp: candidate.timestamp,
+    symbol: candidate.symbol,
+    side: candidate.side,
+    thesis,
+    researchDirection: candidate.researchDirection,
+    exploratory: candidate.exploratory === true,
+    patternState,
+    allocation,
+    outcome,
+    score: round(candidate.score, 2),
+    finalScore: round(candidate.finalScore, 2),
+    riskPct: round(candidate.riskPct, 2),
+    summary: candidate.summary,
+    reason: candidate.reason,
+    cooldownSummary: candidate.cooldownSummary
+  };
+};
+
 const listCsvFiles = async (dirPath: string, recursive: boolean): Promise<string[]> => {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   const files = await Promise.all(
@@ -489,6 +570,7 @@ export class PaperAutonomyService {
   private barsBySymbol = new Map<SymbolCode, OneMinuteBar[]>();
   private barKeys = new Set<string>();
   private ideas = new Map<string, PaperAutonomyIdeaRecord>();
+  private recentDecisions: PaperAutonomyDecisionRecord[] = [];
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly config: PaperAutonomyConfig) {}
@@ -782,6 +864,43 @@ export class PaperAutonomyService {
     };
   }
 
+  private buildDecisionRecord(input: {
+    timestamp: string;
+    symbol: SymbolCode;
+    side: Side;
+    thesis: PaperAutonomyThesis;
+    researchDirection: ResearchTrendDirection;
+    exploratory: boolean;
+    patternState: PaperAutonomyPatternState;
+    allocation: PaperAutonomyIdeaAllocation;
+    outcome: PaperAutonomyDecisionOutcome;
+    score: number;
+    finalScore: number;
+    riskPct: number;
+    summary: string;
+    reason: string;
+    cooldownSummary: string;
+  }): PaperAutonomyDecisionRecord {
+    return {
+      id: `${input.timestamp}|${input.symbol}|${input.thesis}|${input.side}|${input.outcome}|${input.patternState}|${input.allocation}`,
+      timestamp: input.timestamp,
+      symbol: input.symbol,
+      side: input.side,
+      thesis: input.thesis,
+      researchDirection: input.researchDirection,
+      exploratory: input.exploratory,
+      patternState: input.patternState,
+      allocation: input.allocation,
+      outcome: input.outcome,
+      score: round(input.score, 2),
+      finalScore: round(input.finalScore, 2),
+      riskPct: round(input.riskPct, 2),
+      summary: input.summary,
+      reason: input.reason,
+      cooldownSummary: input.cooldownSummary
+    };
+  }
+
   private async loadState(): Promise<void> {
     if (!this.config.statePath) {
       return;
@@ -795,12 +914,20 @@ export class PaperAutonomyService {
           .filter((idea): idea is PaperAutonomyIdeaRecord => idea !== null)
           .map((idea) => [idea.alertId, idea])
       );
+      this.recentDecisions = takeLast(
+        (Array.isArray(parsed.recentDecisions) ? parsed.recentDecisions : [])
+          .map((entry) => normalizeDecision(entry))
+          .filter((entry): entry is PaperAutonomyDecisionRecord => entry !== null)
+          .sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+        30
+      );
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err.code !== 'ENOENT') {
         this.lastError = err.message;
       }
       this.ideas.clear();
+      this.recentDecisions = [];
     }
   }
 
@@ -811,13 +938,22 @@ export class PaperAutonomyService {
     const snapshot: PersistedPaperAutonomyState = {
       ideas: [...this.ideas.values()]
         .sort((left, right) => left.openedAt.localeCompare(right.openedAt))
-        .slice(-this.config.maxIdeas)
+        .slice(-this.config.maxIdeas),
+      recentDecisions: [...this.recentDecisions]
     };
     this.writeChain = this.writeChain.then(async () => {
       await fs.mkdir(path.dirname(this.config.statePath as string), { recursive: true });
       await fs.writeFile(this.config.statePath as string, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
     });
     await this.writeChain;
+  }
+
+  private recordDecision(entry: PaperAutonomyDecisionRecord): void {
+    this.recentDecisions = takeLast(
+      [...this.recentDecisions.filter((item) => item.id !== entry.id), entry]
+        .sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+      30
+    );
   }
 
   private mergeBars(bars: OneMinuteBar[]): void {
@@ -1707,6 +1843,12 @@ export class PaperAutonomyService {
       this.buildCompressionReleaseIdea(symbol, candles5m, trend.direction, trend.confidence)
     ].filter((idea): idea is NonNullable<typeof idea> => Boolean(idea));
 
+    let decisionsChanged = false;
+    const recordDecision = (entry: PaperAutonomyDecisionRecord): void => {
+      this.recordDecision(entry);
+      decisionsChanged = true;
+    };
+
     const ideas = rawIdeas
       .map((idea) => {
         const adjustment = this.buildPortfolioAdjustment(symbol, idea.thesis, idea.side);
@@ -1725,6 +1867,23 @@ export class PaperAutonomyService {
           generatedAt: currentBar.timestamp
         });
         if (patternDecision.blocked) {
+          recordDecision(this.buildDecisionRecord({
+            timestamp: currentBar.timestamp,
+            symbol,
+            side: idea.side,
+            thesis: idea.thesis,
+            researchDirection: trend.direction,
+            exploratory: trend.exploratory,
+            patternState: patternDecision.status.state,
+            allocation: patternDecision.allocation,
+            outcome: 'BLOCKED',
+            score: idea.score,
+            finalScore: idea.score,
+            riskPct: 0,
+            summary: `Blocked • ${patternDecision.summary}`,
+            reason: patternDecision.summary,
+            cooldownSummary: patternDecision.status.cooldownSummary
+          }));
           return null;
         }
         const adjustedScore = round(
@@ -1746,6 +1905,31 @@ export class PaperAutonomyService {
           ),
           2
         );
+        const minimumIdeaScore = (trend.exploratory ? 58 : 54) + patternDecision.minimumScoreBoost;
+        if (selfLearnedScore < minimumIdeaScore) {
+          recordDecision(this.buildDecisionRecord({
+            timestamp: currentBar.timestamp,
+            symbol,
+            side: idea.side,
+            thesis: idea.thesis,
+            researchDirection: trend.direction,
+            exploratory: trend.exploratory,
+            patternState: patternDecision.status.state,
+            allocation: patternDecision.allocation,
+            outcome: 'BLOCKED',
+            score: idea.score,
+            finalScore: selfLearnedScore,
+            riskPct: adaptiveRiskPct,
+            summary: `Blocked below score floor • ${round(selfLearnedScore, 1)}/${minimumIdeaScore}`,
+            reason: [
+              patternDecision.summary,
+              adjustment.summary,
+              selfLearningAdjustment?.summary
+            ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(' • '),
+            cooldownSummary: patternDecision.status.cooldownSummary
+          }));
+          return null;
+        }
         return {
           ...idea,
           rawScore: idea.score,
@@ -1753,24 +1937,59 @@ export class PaperAutonomyService {
           adaptiveRiskPct,
           portfolioAdjustment: adjustment,
           selfLearningAdjustment,
-          patternDecision
+          patternDecision,
+          minimumIdeaScore
         };
       })
-      .filter((idea): idea is NonNullable<typeof idea> => Boolean(idea))
-      .filter((idea) => {
-        const minimumIdeaScore = (trend.exploratory ? 58 : 54) + idea.patternDecision.minimumScoreBoost;
-        return idea.score >= minimumIdeaScore;
-      });
+      .filter((idea): idea is NonNullable<typeof idea> => Boolean(idea));
 
     const bestIdea = ideas.sort((left, right) => right.score - left.score)[0];
     if (!bestIdea) {
+      if (decisionsChanged) {
+        this.lastEvaluatedAt = currentBar.timestamp;
+        await this.persistState();
+      }
       return;
     }
 
     const alertId = this.buildAlertId(symbol, bestIdea.thesis, currentBar.timestamp);
     if (this.ideas.has(alertId)) {
+      if (decisionsChanged) {
+        this.lastEvaluatedAt = currentBar.timestamp;
+        await this.persistState();
+      }
       return;
     }
+
+    const acceptedAsReduced =
+      bestIdea.patternDecision.status.state !== 'PROVEN'
+      || bestIdea.patternDecision.allocation !== 'CORE'
+      || bestIdea.patternDecision.riskMultiplier < 1
+      || bestIdea.portfolioAdjustment.riskMultiplier < 1
+      || (bestIdea.selfLearningAdjustment?.riskMultiplier ?? 1) < 1
+      || bestIdea.patternDecision.minimumScoreBoost > 0
+      || (bestIdea.selfLearningAdjustment?.scoreAdjustment ?? 0) < 0;
+    recordDecision(this.buildDecisionRecord({
+      timestamp: currentBar.timestamp,
+      symbol,
+      side: bestIdea.side,
+      thesis: bestIdea.thesis,
+      researchDirection: trend.direction,
+      exploratory: trend.exploratory,
+      patternState: bestIdea.patternDecision.status.state,
+      allocation: bestIdea.patternDecision.allocation,
+      outcome: acceptedAsReduced ? 'REDUCED' : 'ACCEPTED',
+      score: bestIdea.rawScore,
+      finalScore: bestIdea.score,
+      riskPct: bestIdea.adaptiveRiskPct,
+      summary: `${acceptedAsReduced ? 'Reduced' : 'Accepted'} • ${bestIdea.patternDecision.summary}`,
+      reason: [
+        bestIdea.patternDecision.summary,
+        bestIdea.portfolioAdjustment.summary,
+        bestIdea.selfLearningAdjustment?.summary
+      ].filter((value): value is string => Boolean(value && value.trim().length > 0)).join(' • '),
+      cooldownSummary: bestIdea.patternDecision.status.cooldownSummary
+    }));
 
     const candidate: SetupCandidate = {
       id: `paper-autonomy-candidate:${symbol}|${bestIdea.thesis}|${currentBar.timestamp}`,
@@ -1843,6 +2062,10 @@ export class PaperAutonomyService {
 
     const trade = await this.config.submitAlert(alert, 'paper-autonomy');
     if (!trade) {
+      if (decisionsChanged) {
+        this.lastEvaluatedAt = currentBar.timestamp;
+        await this.persistState();
+      }
       return;
     }
 
@@ -2153,6 +2376,7 @@ export class PaperAutonomyService {
       thesisStats,
       explorationBudget,
       patternStates,
+      recentDecisions: [...this.recentDecisions].sort((left, right) => right.timestamp.localeCompare(left.timestamp)).slice(0, 12),
       recentIdeas: ideas.slice(0, 12),
       recentClosedIdeas: closedIdeas.slice(0, 8)
     };

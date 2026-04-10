@@ -638,6 +638,33 @@
             </div>
           </section>
 
+          <section class="session-summary-card replay-command-card">
+            <div class="section-subhead">
+              <h3>Live Bias Context</h3>
+              <span id="learningBiasChip" class="chip chip-neutral">Bias --</span>
+            </div>
+            <p id="learningBiasHeadline" class="session-summary-headline">--</p>
+            <p id="learningBiasNote" class="session-summary-copy">Use this as regime context for what the learning engine is reinforcing or fading.</p>
+            <div class="session-summary-grid">
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Research Bias</p>
+                <p id="learningBiasResearch" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Lead Market</p>
+                <p id="learningBiasLead" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Top Board Read</p>
+                <p id="learningBiasBoard" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Desk Window</p>
+                <p id="learningBiasWindow" class="insight-text">--</p>
+              </article>
+            </div>
+          </section>
+
           <section class="insights-grid review-insights-grid">
             <article class="insight-card">
               <p class="stat-label">Top Learned Edge</p>
@@ -707,6 +734,14 @@
               <span class="chip chip-neutral">Why the autonomy engine is trusting or benching setups</span>
             </div>
             <div id="learningAutonomyPatternList" class="stack learning-pattern-list"></div>
+          </section>
+
+          <section class="review-section">
+            <div class="section-subhead">
+              <h3>Recent Autonomy Decisions</h3>
+              <span class="chip chip-neutral">Accepted, reduced, or blocked by the playbook</span>
+            </div>
+            <div id="learningAutonomyDecisionList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="review-section">

@@ -32,8 +32,10 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Evan TradeAssist');
     expect(mobile.body).toContain('Learning Lab');
     expect(mobile.body).toContain('Live Engine Health');
+    expect(mobile.body).toContain('Live Bias Context');
     expect(mobile.body).toContain('Top 3 Learned Edges');
     expect(mobile.body).toContain('Top 3 Failing Patterns');
+    expect(mobile.body).toContain('Recent Autonomy Decisions');
     expect(mobile.body).toContain('Engine Room');
     expect(mobile.body).toContain('Pull to refresh');
     expect(mobile.body).toContain('Continuous Training');

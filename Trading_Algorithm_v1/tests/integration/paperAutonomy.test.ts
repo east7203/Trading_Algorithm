@@ -134,6 +134,8 @@ describe('paper autonomy integration', () => {
     expect(typeof paperAutonomy.symbolStatus[0].reason).toBe('string');
     expect(typeof paperAutonomy.explorationBudget.summary).toBe('string');
     expect(typeof paperAutonomy.patternStates[0]?.cooldownSummary).toBe('string');
+    expect(Array.isArray(paperAutonomy.recentDecisions)).toBe(true);
+    expect(typeof paperAutonomy.recentDecisions[0]?.summary).toBe('string');
   });
 
   it('learns thesis performance from closed autonomous paper trades', async () => {

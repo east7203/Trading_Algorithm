@@ -140,6 +140,13 @@ const learningFeedHealthEl = document.getElementById('learningFeedHealth');
 const learningDatabaseHealthEl = document.getElementById('learningDatabaseHealth');
 const learningTrainingHealthEl = document.getElementById('learningTrainingHealth');
 const learningQueueHealthEl = document.getElementById('learningQueueHealth');
+const learningBiasChipEl = document.getElementById('learningBiasChip');
+const learningBiasHeadlineEl = document.getElementById('learningBiasHeadline');
+const learningBiasNoteEl = document.getElementById('learningBiasNote');
+const learningBiasResearchEl = document.getElementById('learningBiasResearch');
+const learningBiasLeadEl = document.getElementById('learningBiasLead');
+const learningBiasBoardEl = document.getElementById('learningBiasBoard');
+const learningBiasWindowEl = document.getElementById('learningBiasWindow');
 const learningResolvedRecordsEl = document.getElementById('learningResolvedRecords');
 const learningRefreshStateEl = document.getElementById('learningRefreshState');
 const learningTopWinReasonEl = document.getElementById('learningTopWinReason');
@@ -157,6 +164,7 @@ const learningAutonomyExplorationEl = document.getElementById('learningAutonomyE
 const learningAutonomyGuardrailEl = document.getElementById('learningAutonomyGuardrail');
 const learningAutonomyDisabledEl = document.getElementById('learningAutonomyDisabled');
 const learningAutonomyPatternListEl = document.getElementById('learningAutonomyPatternList');
+const learningAutonomyDecisionListEl = document.getElementById('learningAutonomyDecisionList');
 const learningFavoringListEl = document.getElementById('learningFavoringList');
 const learningAvoidingListEl = document.getElementById('learningAvoidingList');
 const setupMixEl = document.getElementById('setupMix');
@@ -1459,6 +1467,11 @@ const getPaperAutonomyExplorationBudget = () => {
   return autonomy?.explorationBudget ?? null;
 };
 
+const getPaperAutonomyRecentDecisions = () => {
+  const autonomy = getPaperAutonomyStatus();
+  return Array.isArray(autonomy?.recentDecisions) ? autonomy.recentDecisions : [];
+};
+
 const describePaperAutonomyPatternState = (item) => {
   if (!item) {
     return '--';
@@ -1509,6 +1522,31 @@ const describePaperAutonomyBudgetMeta = (budget) => {
   return Number(budget.remainingToday ?? 0) > 0
     ? `${scopeText} ${Number(budget.remainingToday ?? 0)} probe slot${Number(budget.remainingToday ?? 0) === 1 ? '' : 's'} left before the lane locks.`
     : `${scopeText} Probe budget is fully allocated for this session day.`;
+};
+
+const paperAutonomyDecisionOutcomeLabel = (outcome) => {
+  switch (outcome) {
+    case 'ACCEPTED':
+      return 'Accepted';
+    case 'REDUCED':
+      return 'Reduced';
+    case 'BLOCKED':
+      return 'Blocked';
+    default:
+      return outcome ?? 'Decision';
+  }
+};
+
+const paperAutonomyDecisionOutcomeClass = (outcome) => {
+  switch (outcome) {
+    case 'ACCEPTED':
+      return 'chip chip-online';
+    case 'BLOCKED':
+      return 'chip chip-offline';
+    case 'REDUCED':
+    default:
+      return 'chip chip-neutral';
+  }
 };
 
 const summarizePaperAutonomyPatternBucket = (items, state) => {
@@ -1610,6 +1648,64 @@ const renderPaperAutonomyPatternCards = (container, items, emptyText, mode = 'pa
         typeof item.cooldownSummary === 'string' && item.cooldownSummary.trim().length > 0 ? item.cooldownSummary.trim() : null,
         ...performanceParts
       ].filter(Boolean).join(' • ') || 'Cooldown visibility will appear here once enough trades are logged.')}</p>
+    `;
+    container.appendChild(card);
+  });
+};
+
+const renderPaperAutonomyDecisionCards = (container, items, emptyText) => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  const sorted = [...(Array.isArray(items) ? items : [])].sort((left, right) =>
+    String(right.timestamp ?? '').localeCompare(String(left.timestamp ?? ''))
+  );
+  if (!sorted.length) {
+    renderEmpty(container, emptyText);
+    return;
+  }
+
+  sorted.slice(0, 8).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'learning-pattern-card autonomy-pattern-card';
+    const thesisLabel = paperAutonomyThesisLabel(item.thesis);
+    const riskClass =
+      Number(item.riskPct) >= 1
+        ? 'learning-pattern-metric-positive'
+        : Number(item.riskPct) > 0
+          ? 'learning-pattern-metric-neutral'
+          : 'learning-pattern-metric-negative';
+    card.innerHTML = `
+      <div class="learning-pattern-head">
+        <p class="learning-pattern-title">${escapeHtml(`${item.symbol} ${item.side} • ${thesisLabel}`)}</p>
+        <span class="${paperAutonomyDecisionOutcomeClass(item.outcome)}">${escapeHtml(paperAutonomyDecisionOutcomeLabel(item.outcome))}</span>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(item.summary ?? '--')}</p>
+      <div class="learning-pattern-metrics">
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">State</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(paperAutonomyPatternStateLabel(item.patternState))}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Allocation</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(item.allocation === 'EXPLORATION' ? 'Probe' : 'Core')}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Score</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(Number(item.finalScore) || 0, 1)}`)}</span>
+        </div>
+        <div class="learning-pattern-metric ${riskClass}">
+          <span class="learning-pattern-metric-label">Risk</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(Number(item.riskPct) > 0 ? `${fmtNum(Number(item.riskPct), 2)}%` : '0.00%')}</span>
+        </div>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml([
+        item.reason,
+        item.cooldownSummary,
+        item.timestamp ? fmtRelativeMinutes(item.timestamp) : null
+      ].filter(Boolean).join(' • ') || 'Decision detail unavailable.')}</p>
     `;
     container.appendChild(card);
   });
@@ -7326,6 +7422,11 @@ const renderLearningAutonomyPlaybook = () => {
       'Enable paper autonomy to start building a pattern-state playbook.',
       'attention'
     );
+    renderPaperAutonomyDecisionCards(
+      learningAutonomyDecisionListEl,
+      [],
+      'Enable paper autonomy to start logging autonomy decisions.'
+    );
     return;
   }
 
@@ -7376,6 +7477,62 @@ const renderLearningAutonomyPlaybook = () => {
     'The paper engine has not logged any pattern-state history yet.',
     'attention'
   );
+  renderPaperAutonomyDecisionCards(
+    learningAutonomyDecisionListEl,
+    getPaperAutonomyRecentDecisions(),
+    'No recent autonomy decisions yet.'
+  );
+};
+
+const renderLearningBiasContext = () => {
+  const diagnostics = latestDiagnostics?.diagnostics ?? null;
+  const researchTrend = diagnostics?.research?.overallTrend ?? null;
+  const topAlert = latestAlerts.find((alert) => alert?.riskDecision?.allowed) ?? latestAlerts[0] ?? null;
+  const paperAutonomy = getPaperAutonomyStatus();
+  const windowLabel = formatDeskWindow(paperAutonomy?.session ?? latestRiskConfig?.config?.tradingWindow ?? null);
+
+  if (learningBiasChipEl) {
+    if (!researchTrend) {
+      learningBiasChipEl.className = 'chip chip-neutral';
+      learningBiasChipEl.textContent = 'Bias loading';
+    } else if (researchTrend.direction === 'BULLISH') {
+      learningBiasChipEl.className = 'chip chip-online';
+      learningBiasChipEl.textContent = 'Bullish';
+    } else if (researchTrend.direction === 'BEARISH') {
+      learningBiasChipEl.className = 'chip chip-offline';
+      learningBiasChipEl.textContent = 'Bearish';
+    } else {
+      learningBiasChipEl.className = 'chip chip-neutral';
+      learningBiasChipEl.textContent = researchDirectionLabel(researchTrend.direction);
+    }
+  }
+  if (learningBiasHeadlineEl) {
+    learningBiasHeadlineEl.textContent = researchTrend
+      ? `${researchDirectionLabel(researchTrend.direction)} regime at ${fmtNum((Number(researchTrend.confidence) || 0) * 100, 0)}% confidence.`
+      : 'The live desk bias is still loading.';
+  }
+  if (learningBiasNoteEl) {
+    learningBiasNoteEl.textContent = researchTrend?.reason
+      ?? 'Use the current live bias as context for what the learning engine is favoring or fading.';
+  }
+  if (learningBiasResearchEl) {
+    learningBiasResearchEl.textContent = researchTrend
+      ? `${researchDirectionLabel(researchTrend.direction)} • ${fmtNum((Number(researchTrend.confidence) || 0) * 100, 0)}%`
+      : '--';
+  }
+  if (learningBiasLeadEl) {
+    learningBiasLeadEl.textContent = researchTrend?.leadSymbol
+      ? `${researchTrend.leadSymbol} • ${fmtNum(Number(researchTrend.score) || 0, 2)} score`
+      : 'No lead market yet';
+  }
+  if (learningBiasBoardEl) {
+    learningBiasBoardEl.textContent = topAlert
+      ? `${topAlert.symbol} ${topAlert.side} • ${setupLabel(topAlert.setupType)}`
+      : 'No strong board read yet';
+  }
+  if (learningBiasWindowEl) {
+    learningBiasWindowEl.textContent = windowLabel;
+  }
 };
 
 const renderReviewInsights = () => {
@@ -7508,6 +7665,7 @@ const renderReviewInsights = () => {
     if (learningAutonomyEdgeEl) {
       learningAutonomyEdgeEl.textContent = '--';
     }
+    renderLearningBiasContext();
     renderLearningAutonomyPlaybook();
     renderLearningBucketList(learningFavoringListEl, [], 'No learned edge is strong enough yet.');
     renderLearningBucketList(learningAvoidingListEl, [], 'No learned drag is strong enough yet.');
@@ -7587,6 +7745,7 @@ const renderReviewInsights = () => {
       : 'Autonomy thesis edge is still forming.';
   }
 
+  renderLearningBiasContext();
   renderLearningAutonomyPlaybook();
   renderLearningBucketList(learningFavoringListEl, favoring, 'No learned edge is strong enough yet.');
   renderLearningBucketList(learningAvoidingListEl, avoiding, 'Nothing is being penalized hard yet.');
