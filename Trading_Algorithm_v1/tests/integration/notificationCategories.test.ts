@@ -118,6 +118,23 @@ describe('notification category routing', () => {
 
     expect(response.statusCode).toBe(200);
     expect(telegramMessages).toHaveLength(0);
+
+    const activityResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/notifications/activity?limit=5'
+    });
+
+    expect(activityResponse.statusCode).toBe(200);
+    expect(activityResponse.json().activity[0]).toMatchObject({
+      category: 'engine-update',
+      title: 'Research experiment opened bullish',
+      telegram: {
+        fallbackRequested: false,
+        triggerReason: 'fallback-disabled',
+        attempted: false,
+        sent: false
+      }
+    });
   });
 
   it('marks IBKR recovery notifications as high-priority broker recovery alerts', async () => {
@@ -133,6 +150,60 @@ describe('notification category routing', () => {
     expect(messages.at(-1)).toMatchObject({
       category: 'broker-recovery',
       priority: 'high'
+    });
+  });
+
+  it('records Telegram fallback activity for manual trade alerts when app delivery misses', async () => {
+    const telegramAlerts: Array<Record<string, unknown>> = [];
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      nativePushNotificationService: null,
+      webPushNotificationService: {
+        start: async () => undefined,
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        subscribe: async () => undefined,
+        unsubscribe: async () => undefined,
+        notifySignalAlert: async () => ({ attempted: 1, delivered: 0, removed: 0 }),
+        notifyGeneric: async () => ({ attempted: 0, delivered: 0, removed: 0 })
+      } as unknown as WebPushNotificationService,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifySignalAlert: async (message: Record<string, unknown>) => {
+          telegramAlerts.push(message);
+          return { sent: true };
+        },
+        notifyGeneric: async () => ({ sent: true })
+      } as never
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: {
+        symbol: 'NQ'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(telegramAlerts).toHaveLength(1);
+
+    const activityResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/notifications/activity?limit=5'
+    });
+
+    expect(activityResponse.statusCode).toBe(200);
+    expect(activityResponse.json().activity[0]).toMatchObject({
+      kind: 'signal-alert',
+      category: 'trade-alert',
+      telegram: {
+        fallbackRequested: true,
+        triggerReason: 'zero-app-deliveries',
+        attempted: true,
+        sent: true
+      }
     });
   });
 });

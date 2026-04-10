@@ -36,6 +36,10 @@ import type { TelegramAlertService } from './telegramAlertService.js';
 import type { WebPushNotificationService } from './webPushNotificationService.js';
 import type { MarketResearchStatus, ResearchTrendDirection } from './marketResearchService.js';
 import type { SelfLearningSignalAdjustment } from './selfLearningService.js';
+import type {
+  NotificationActivityEntryInput,
+  NotificationActivityTelegramTriggerReason
+} from '../stores/notificationActivityStore.js';
 
 interface LocalTimeParts {
   dayKey: string;
@@ -87,6 +91,8 @@ interface AppChannelDeliverySummary {
   removed: number;
   errors: string[];
 }
+
+type SignalAlertNotificationActivityLogger = (entry: NotificationActivityEntryInput) => Promise<void> | void;
 
 const REPLAY_HISTORY_DIRS = [
   path.resolve(process.cwd(), 'data', 'historical', 'ibkr-auto'),
@@ -501,7 +507,8 @@ export class SignalMonitorService {
     private readonly onCandidateObserved?: ((context: ObservedCandidateContext) => Promise<void> | void) | null,
     private readonly nativePushNotificationService?: NativePushNotificationService | null,
     private readonly webPushNotificationService?: WebPushNotificationService | null,
-    private readonly telegramAlertService?: TelegramAlertService | null
+    private readonly telegramAlertService?: TelegramAlertService | null,
+    private readonly onNotificationActivity?: SignalAlertNotificationActivityLogger | null
   ) {}
 
   async start(): Promise<void> {
@@ -1559,13 +1566,56 @@ export class SignalMonitorService {
         || appDelivery.delivered === 0
       );
 
+    let telegramSent = false;
+    let telegramError: string | undefined;
     if (shouldFallbackToTelegram && this.telegramAlertService) {
       try {
-        await this.telegramAlertService.notifySignalAlert(alert, delivery);
+        const telegramDelivery = await this.telegramAlertService.notifySignalAlert(alert, delivery);
+        telegramSent = telegramDelivery?.sent === true;
       } catch (error) {
-        this.lastError = (error as Error).message;
+        telegramError = (error as Error).message;
+        this.lastError = telegramError;
       }
     }
+
+    const telegramTriggerReason: NotificationActivityTelegramTriggerReason =
+      !this.telegramAlertService
+        ? 'service-unavailable'
+        : (!this.nativePushNotificationService && !this.webPushNotificationService)
+          ? 'no-app-channel'
+          : appDelivery.delivered > 0
+              ? 'app-delivered'
+              : appDelivery.errors.length > 0
+                ? 'app-error'
+              : 'zero-app-deliveries';
+
+    await this.onNotificationActivity?.({
+      at: new Date().toISOString(),
+      kind: 'signal-alert',
+      title: alert.title,
+      body: alert.summary,
+      category: 'trade-alert',
+      priority: 'high',
+      source: alert.source,
+      symbol: alert.symbol,
+      side: alert.side,
+      setupType: alert.setupType,
+      deliveryReason: delivery.reason,
+      reminderCount: delivery.reminderCount,
+      app: {
+        attempted: appDelivery.attempted,
+        delivered: appDelivery.delivered,
+        removed: appDelivery.removed,
+        error: appDelivery.errors.at(-1)
+      },
+      telegram: {
+        fallbackRequested: true,
+        triggerReason: telegramTriggerReason,
+        attempted: shouldFallbackToTelegram,
+        sent: telegramSent,
+        error: telegramError
+      }
+    });
   }
 
   private async notifyAppAlertChannels(

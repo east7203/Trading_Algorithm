@@ -186,6 +186,7 @@ const paperAutonomyRiskPctEl = document.getElementById('paperAutonomyRiskPct');
 const savePaperSettingsEl = document.getElementById('savePaperSettings');
 const paperConfigMetaEl = document.getElementById('paperConfigMeta');
 const sendTestAppAlertEl = document.getElementById('sendTestAppAlert');
+const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
 const webAppInstallHintEl = document.getElementById('webAppInstallHint');
@@ -397,6 +398,22 @@ const notificationCategoryCopy = {
     full: 'engine updates',
     short: 'Engine'
   }
+};
+
+const notificationActivityCategoryCopy = {
+  'trade-alert': 'Manual Trade Alert',
+  'trade-activity': 'Paper Activity',
+  'broker-recovery': 'IBKR Recovery',
+  'engine-update': 'Engine Update'
+};
+
+const notificationActivityTriggerCopy = {
+  'fallback-disabled': 'Telegram is disabled for this category.',
+  'service-unavailable': 'Telegram service is not available right now.',
+  'no-app-channel': 'No app push channel was available, so Telegram became the backup.',
+  'app-delivered': 'App delivery landed, so Telegram stayed quiet.',
+  'app-error': 'App delivery errored, so Telegram became the backup.',
+  'zero-app-deliveries': 'App delivery reached 0 targets, so Telegram became the backup.'
 };
 
 const setupToggleMap = {
@@ -5670,6 +5687,134 @@ const renderEmpty = (container, text) => {
   container.appendChild(empty);
 };
 
+const describeNotificationActivityApp = (entry) => {
+  const app = entry?.app ?? {};
+  const attempted = Number(app.attempted) || 0;
+  const delivered = Number(app.delivered) || 0;
+  const removed = Number(app.removed) || 0;
+
+  if (app.error) {
+    return {
+      label: 'App error',
+      chipClass: 'chip chip-offline',
+      detail: app.error
+    };
+  }
+
+  if (delivered > 0) {
+    return {
+      label: `App ${delivered}/${Math.max(attempted, delivered)} delivered`,
+      chipClass: 'chip chip-online',
+      detail: removed > 0 ? `${removed} stale registrations removed.` : 'App delivery reached at least one registered device.'
+    };
+  }
+
+  if (attempted > 0) {
+    return {
+      label: 'App 0 delivered',
+      chipClass: 'chip chip-offline',
+      detail: 'The category may be muted on every device, or there were no active subscribers for this send.'
+    };
+  }
+
+  return {
+    label: 'App idle',
+    chipClass: 'chip chip-neutral',
+    detail: 'No app notification channel was available for this event.'
+  };
+};
+
+const describeNotificationActivityTelegram = (entry) => {
+  const telegram = entry?.telegram ?? {};
+  const triggerDetail = notificationActivityTriggerCopy[telegram.triggerReason] || 'Telegram fallback state unavailable.';
+
+  if (telegram.attempted && telegram.sent) {
+    return {
+      label: 'Telegram sent',
+      chipClass: 'chip chip-online',
+      detail: triggerDetail
+    };
+  }
+
+  if (telegram.attempted) {
+    return {
+      label: 'Telegram failed',
+      chipClass: 'chip chip-offline',
+      detail: telegram.error || triggerDetail
+    };
+  }
+
+  if (telegram.fallbackRequested) {
+    return {
+      label: 'Telegram standby',
+      chipClass: 'chip chip-neutral',
+      detail: triggerDetail
+    };
+  }
+
+  return {
+    label: 'Telegram off',
+    chipClass: 'chip chip-neutral',
+    detail: triggerDetail
+  };
+};
+
+const renderNotificationActivity = (entries) => {
+  if (!notificationActivityListEl) {
+    return;
+  }
+
+  notificationActivityListEl.innerHTML = '';
+  const items = Array.isArray(entries) ? entries : [];
+
+  if (!items.length) {
+    renderEmpty(notificationActivityListEl, 'No notification activity yet. Send a test alert or wait for the next live event.');
+    return;
+  }
+
+  items.forEach((entry) => {
+    const appStatus = describeNotificationActivityApp(entry);
+    const telegramStatus = describeNotificationActivityTelegram(entry);
+    const categoryLabel = notificationActivityCategoryCopy[entry.category] || 'Notification';
+    const metaParts = [
+      fmtRelativeMinutes(entry.at),
+      fmtDateTimeCompact(entry.at),
+      entry.source || null
+    ].filter(Boolean);
+    const extraChips = [
+      `<span class="chip chip-neutral">${escapeHtml(entry.priority || 'low')}</span>`,
+      entry.symbol ? `<span class="chip chip-neutral">${escapeHtml(entry.symbol)} ${escapeHtml(entry.side || '')}</span>` : '',
+      entry.deliveryReason === 'reminder'
+        ? `<span class="chip chip-neutral">Reminder ${escapeHtml(String(entry.reminderCount ?? 0))}</span>`
+        : entry.kind === 'signal-alert'
+          ? '<span class="chip chip-neutral">Initial</span>'
+          : '',
+      entry.setupType ? `<span class="chip chip-neutral">${escapeHtml(entry.setupType)}</span>` : ''
+    ].filter(Boolean);
+
+    const card = document.createElement('article');
+    card.className = 'item-card notification-activity-item';
+    card.innerHTML = `
+      <div class="item-row notification-activity-headline-row">
+        <strong class="notification-activity-title">${escapeHtml(entry.title || 'Notification')}</strong>
+        <span class="chip chip-neutral">${escapeHtml(categoryLabel)}</span>
+      </div>
+      <p class="notification-activity-meta">${escapeHtml(metaParts.join(' • '))}</p>
+      ${entry.body ? `<p class="notification-activity-summary">${escapeHtml(entry.body)}</p>` : ''}
+      <div class="chip-row notification-activity-chip-row">
+        ${extraChips.join('')}
+      </div>
+      <div class="notification-activity-status-row">
+        <span class="${appStatus.chipClass}">${escapeHtml(appStatus.label)}</span>
+        <span class="${telegramStatus.chipClass}">${escapeHtml(telegramStatus.label)}</span>
+      </div>
+      <p class="notification-activity-summary">${escapeHtml(appStatus.detail)}</p>
+      <p class="notification-activity-summary">${escapeHtml(telegramStatus.detail)}</p>
+    `;
+    notificationActivityListEl.appendChild(card);
+  });
+};
+
 const renderInsights = () => {
   setupMixEl.textContent = formatSetupMix(latestTrades.slice(0, 100));
   guardrailSummaryEl.textContent = countGuardrails(latestEvents.slice(0, 200));
@@ -6209,6 +6354,7 @@ const renderDiagnostics = () => {
     sysGlanceModelEl.textContent = '--';
     sysGlanceTrainingEl.textContent = '--';
     sysGlanceAlertsEl.textContent = '--';
+    renderNotificationActivity([]);
     updateSystemSummary();
     return;
   }
@@ -6263,6 +6409,7 @@ const renderDiagnostics = () => {
   diagResearchPredictionsEl.textContent = research?.performance
     ? `${research.performance.totalPredictions ?? 0} total • ${research.performance.openPredictions ?? 0} open`
     : '--';
+  renderNotificationActivity(diagnostics.notifications?.recentActivity ?? []);
   diagResearchWhyEl.textContent = research?.overallTrend?.reason ?? 'The research model has not formed a bias yet.';
   renderResearchDiagnostics(research);
   renderPaperAutonomyDiagnostics(diagnostics.paperAutonomy ?? null);

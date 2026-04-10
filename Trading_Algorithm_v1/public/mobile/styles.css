@@ -7169,6 +7169,57 @@ select {
   justify-content: center;
 }
 
+.notification-activity-panel {
+  margin-top: 16px;
+}
+
+.notification-activity-head {
+  margin-bottom: 12px;
+}
+
+.notification-activity-head .hint {
+  margin-top: 6px;
+}
+
+.notification-activity-list {
+  gap: 10px;
+}
+
+.notification-activity-item {
+  display: grid;
+  gap: 10px;
+  padding: 14px 15px;
+}
+
+.notification-activity-headline-row {
+  align-items: flex-start;
+}
+
+.notification-activity-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-activity-meta,
+.notification-activity-summary {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 0.79rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.notification-activity-chip-row {
+  margin-top: 0;
+}
+
+.notification-activity-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* ---- Level/evidence chips ---- */
 .level-chip-entry { background: rgba(0, 80, 200, 0.18); }
 .level-chip-stop { background: rgba(224, 87, 79, 0.18); }

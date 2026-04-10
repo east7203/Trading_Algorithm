@@ -51,8 +51,15 @@ import {
   type OperationalReminderConfig,
   type OperationalReminderStatus
 } from './services/operationalReminderService.js';
+import type { AppNotificationCategory, AppNotificationPriority } from './services/notificationPreferences.js';
 import { shouldNotifyIbkrRecovery } from './services/ibkrRecoveryNotificationPolicy.js';
 import { JournalStore } from './stores/journalStore.js';
+import {
+  NotificationActivityStore,
+  resolveNotificationActivityStorePath,
+  type NotificationActivityEntryInput,
+  type NotificationActivityTelegramTriggerReason
+} from './stores/notificationActivityStore.js';
 import { RiskConfigStore } from './stores/riskConfigStore.js';
 import {
   IbkrReconnectStateStore,
@@ -109,6 +116,7 @@ export interface AppContext {
   nativePushNotificationService: NativePushNotificationService | null;
   webPushNotificationService: WebPushNotificationService | null;
   telegramAlertService: TelegramAlertService | null;
+  notificationActivityStore: NotificationActivityStore;
   operationalReminderService: OperationalReminderService | null;
   marketResearchService: MarketResearchService | null;
   paperTradingService: PaperTradingService | null;
@@ -128,6 +136,8 @@ interface BuildAppOptions {
   signalReviewStorePath?: string;
   tradeLearningStore?: TradeLearningStore;
   tradeLearningStorePath?: string;
+  notificationActivityStore?: NotificationActivityStore;
+  notificationActivityStorePath?: string;
   selfLearningEnabled?: boolean;
   selfLearningConfig?: Partial<SelfLearningConfig>;
   selfLearningService?: SelfLearningService | null;
@@ -1040,6 +1050,28 @@ const resolveIbkrReconnectStateStorePath = (override?: string): string => {
   return fromEnv ?? path.resolve(process.cwd(), 'data', 'notifications', 'ibkr-reconnect-state.json');
 };
 
+const resolveNotificationActivityCategory = (category?: AppNotificationCategory): AppNotificationCategory => category ?? 'engine-update';
+
+const resolveNotificationActivityPriority = (
+  category: AppNotificationCategory,
+  requested?: AppNotificationPriority
+): AppNotificationPriority => {
+  if (requested) {
+    return requested;
+  }
+
+  switch (category) {
+    case 'trade-alert':
+    case 'broker-recovery':
+      return 'high';
+    case 'trade-activity':
+      return 'normal';
+    case 'engine-update':
+    default:
+      return 'low';
+  }
+};
+
 const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalendarClient => {
   if (override) {
     return override;
@@ -1191,6 +1223,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     options.signalReviewStore ?? new SignalReviewStore(resolveSignalReviewStorePath(options.signalReviewStorePath));
   const tradeLearningStore =
     options.tradeLearningStore ?? new TradeLearningStore(resolveTradeLearningStorePath(options.tradeLearningStorePath));
+  const notificationActivityStore =
+    options.notificationActivityStore ??
+    new NotificationActivityStore(resolveNotificationActivityStorePath(options.notificationActivityStorePath));
+  const appendNotificationActivity = async (entry: NotificationActivityEntryInput): Promise<void> => {
+    try {
+      await notificationActivityStore.append(entry);
+    } catch (error) {
+      app.log.warn({ err: error, title: entry.title, category: entry.category }, 'notification activity append failed');
+    }
+  };
   const shouldBootstrapTradeLearningHistory =
     !(process.env.NODE_ENV === 'test'
       && options.tradeLearningStore === undefined
@@ -1282,7 +1324,6 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       && telegramMessage
       && (
         !tradeAssistAppNotifier
-        || appError
         || (appDelivery?.delivered ?? 0) === 0
       )
     );
@@ -1296,6 +1337,46 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         telegramError = (error as Error).message;
       }
     }
+
+    const category = resolveNotificationActivityCategory(appMessage.category);
+    const priority = resolveNotificationActivityPriority(category, appMessage.priority);
+    const telegramTriggerReason: NotificationActivityTelegramTriggerReason =
+      !options?.telegramFallback
+        ? 'fallback-disabled'
+        : !telegramAlertService
+          ? 'service-unavailable'
+          : !tradeAssistAppNotifier
+            ? 'no-app-channel'
+            : (appDelivery?.delivered ?? 0) > 0
+              ? 'app-delivered'
+              : appError
+              ? 'app-error'
+              : 'zero-app-deliveries';
+
+    await appendNotificationActivity({
+      at: new Date().toISOString(),
+      kind: 'generic',
+      title: appMessage.title,
+      body: appMessage.body,
+      category,
+      priority,
+      tag: appMessage.tag,
+      url: appMessage.url,
+      source: appMessage.tag,
+      app: {
+        attempted: appDelivery?.attempted ?? 0,
+        delivered: appDelivery?.delivered ?? 0,
+        removed: appDelivery?.removed ?? 0,
+        error: appError
+      },
+      telegram: {
+        fallbackRequested: options?.telegramFallback === true,
+        triggerReason: telegramTriggerReason,
+        attempted: shouldFallbackToTelegram,
+        sent: telegramDelivery?.sent === true,
+        error: telegramError
+      }
+    });
 
     return {
       appDelivery,
@@ -1556,6 +1637,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             async (kind): Promise<void> => {
               const source = kind === 'test' ? 'reminder-test' : 'scheduled-reminder';
               await runIbkrRecoveryAttempt(source);
+            },
+            async (entry) => {
+              await appendNotificationActivity(entry);
             }
           )
         : null
@@ -2150,7 +2234,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               : null,
             nativePushNotificationService,
             webPushNotificationService,
-            telegramAlertService
+            telegramAlertService,
+            async (entry) => {
+              await appendNotificationActivity(entry);
+            }
           )
         : null
       : options.signalMonitorService;
@@ -3192,6 +3279,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   });
 
   app.get('/diagnostics', async (_request, reply) => {
+    await notificationActivityStore.start();
     const selfLearning = (await ensureSelfLearningStarted())?.status() ?? { enabled: false, started: false };
     const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
     const monitorLatestBarTimestamp =
@@ -3294,7 +3382,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           nativePushMissingConfigFields: nativePush.missingConfigFields ?? [],
           telegramReady: telegram.ready,
           ibkrLoginReminderEnabled: operationalReminder.enabled,
-          ibkrLoginReminderStarted: operationalReminder.started
+          ibkrLoginReminderStarted: operationalReminder.started,
+          recentActivity: notificationActivityStore.list(12)
         },
         calendar: {
           ...calendarStatus,
@@ -3500,6 +3589,22 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       telegram: telegramAlertService
         ? telegramAlertService.status()
         : { enabled: false, ready: false, chatConfigured: false }
+    });
+  });
+
+  app.get('/notifications/activity', async (request, reply) => {
+    await notificationActivityStore.start();
+    const rawLimit = (request.query as { limit?: string | number } | undefined)?.limit;
+    const parsedLimit =
+      typeof rawLimit === 'number'
+        ? rawLimit
+        : typeof rawLimit === 'string'
+          ? Number.parseInt(rawLimit, 10)
+          : 20;
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(50, Math.round(parsedLimit))) : 20;
+
+    return reply.status(200).send({
+      activity: notificationActivityStore.list(limit)
     });
   });
 
@@ -4352,6 +4457,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     nativePushNotificationService,
     webPushNotificationService,
     telegramAlertService,
+    notificationActivityStore,
     operationalReminderService,
     marketResearchService,
     paperTradingService,

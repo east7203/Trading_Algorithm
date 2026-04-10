@@ -4,6 +4,10 @@ import type {
   AppNotificationCategory,
   AppNotificationPriority
 } from './notificationPreferences.js';
+import type {
+  NotificationActivityEntryInput,
+  NotificationActivityTelegramTriggerReason
+} from '../stores/notificationActivityStore.js';
 
 interface OperationalReminderState {
   lastSentDayKey?: string;
@@ -58,6 +62,7 @@ export interface OperationalReminderStatus {
 }
 
 export type OperationalReminderHook = (kind: 'scheduled' | 'test') => Promise<void>;
+export type OperationalReminderActivityLogger = (entry: NotificationActivityEntryInput) => Promise<void> | void;
 
 const fileExists = async (targetPath: string): Promise<boolean> =>
   fs
@@ -127,7 +132,8 @@ export class OperationalReminderService {
     private readonly config: OperationalReminderConfig,
     private readonly appNotifier?: AppNotifier | null,
     private readonly telegramNotifier?: TelegramNotifier | null,
-    private readonly onReminderHook?: OperationalReminderHook
+    private readonly onReminderHook?: OperationalReminderHook,
+    private readonly onNotificationActivity?: OperationalReminderActivityLogger
   ) {}
 
   async start(): Promise<void> {
@@ -232,25 +238,71 @@ export class OperationalReminderService {
         }
       }
 
-      const shouldFallbackToTelegram =
-        Boolean(this.telegramNotifier) && (!this.appNotifier || appError || (appDelivery?.delivered ?? 0) === 0);
+      const shouldFallbackToTelegram = Boolean(
+        this.telegramNotifier && (!this.appNotifier || appError || (appDelivery?.delivered ?? 0) === 0)
+      );
 
+      let telegramError: string | undefined;
+      let telegramSent = false;
       if (shouldFallbackToTelegram) {
-        await this.telegramNotifier?.notifyGeneric({
-          title,
-          lines: [
-            body,
-            'The server has already submitted the IB Gateway login.',
-            'The server also uses IB Gateway fallback controls if the official push does not land cleanly.',
-            'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
-            kind === 'test' ? 'This is a manual verification send.' : `Scheduled for Sunday ${this.status().sundayTime}.`
-          ],
-          buttons: [
-            { text: 'Open Status', url: statusUrl },
-            { text: 'Last-Resort Website', url: this.config.ibkrMobileUrl }
-          ]
-        });
+        try {
+          const delivery = await this.telegramNotifier?.notifyGeneric({
+            title,
+            lines: [
+              body,
+              'The server has already submitted the IB Gateway login.',
+              'The server also uses IB Gateway fallback controls if the official push does not land cleanly.',
+              'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
+              kind === 'test' ? 'This is a manual verification send.' : `Scheduled for Sunday ${this.status().sundayTime}.`
+            ],
+            buttons: [
+              { text: 'Open Status', url: statusUrl },
+              { text: 'Last-Resort Website', url: this.config.ibkrMobileUrl }
+            ]
+          });
+          telegramSent = delivery?.sent === true;
+        } catch (error) {
+          telegramError = (error as Error).message;
+        }
       }
+
+      const telegramTriggerReason: NotificationActivityTelegramTriggerReason =
+        !this.telegramNotifier
+          ? 'service-unavailable'
+          : !this.appNotifier
+            ? 'no-app-channel'
+            : (appDelivery?.delivered ?? 0) > 0
+                ? 'app-delivered'
+                : appError
+                  ? 'app-error'
+                : 'zero-app-deliveries';
+
+      await this.onNotificationActivity?.({
+        at: new Date().toISOString(),
+        kind: 'generic',
+        title,
+        body,
+        category: 'broker-recovery',
+        priority: 'high',
+        tag: kind === 'test' ? 'ibkr-login-reminder-test' : 'ibkr-login-reminder',
+        url: statusUrl,
+        source: kind === 'test' ? 'reminder-test' : 'scheduled-reminder',
+        deliveryReason: kind === 'test' ? 'initial' : 'reminder',
+        reminderCount: kind === 'test' ? 0 : 1,
+        app: {
+          attempted: appDelivery?.attempted ?? 0,
+          delivered: appDelivery?.delivered ?? 0,
+          removed: appDelivery?.removed ?? 0,
+          error: appError
+        },
+        telegram: {
+          fallbackRequested: true,
+          triggerReason: telegramTriggerReason,
+          attempted: shouldFallbackToTelegram,
+          sent: telegramSent,
+          error: telegramError
+        }
+      });
 
       this.lastError = undefined;
       if (dayKey) {
