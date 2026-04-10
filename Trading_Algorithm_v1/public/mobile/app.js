@@ -186,6 +186,9 @@ const paperAutonomyRiskPctEl = document.getElementById('paperAutonomyRiskPct');
 const savePaperSettingsEl = document.getElementById('savePaperSettings');
 const paperConfigMetaEl = document.getElementById('paperConfigMeta');
 const sendTestAppAlertEl = document.getElementById('sendTestAppAlert');
+const sendTestTradeAlertEl = document.getElementById('sendTestTradeAlert');
+const sendTestBrokerRecoveryAlertEl = document.getElementById('sendTestBrokerRecoveryAlert');
+const sendTestEngineUpdateAlertEl = document.getElementById('sendTestEngineUpdateAlert');
 const pushHealthPermissionEl = document.getElementById('pushHealthPermission');
 const pushHealthPermissionNoteEl = document.getElementById('pushHealthPermissionNote');
 const pushHealthInstallEl = document.getElementById('pushHealthInstall');
@@ -5263,15 +5266,29 @@ const requestNotificationPermission = async () => {
   return (await Notification.requestPermission()) === 'granted';
 };
 
-const triggerServerTestAlert = async () => {
+const runServerNotificationTest = async ({
+  path,
+  payload,
+  pendingStatus,
+  successStatus,
+  failureLabel,
+  refreshAlerts = false
+}) => {
+  setStatus(pendingStatus);
   try {
-    await apiFetch('/notifications/test/alert', {
+    const response = await apiFetch(path, {
       method: 'POST',
-      body: JSON.stringify({ symbol: 'NQ' })
+      ...(payload !== undefined ? { body: JSON.stringify(payload) } : {})
     });
-    return true;
-  } catch {
-    return false;
+    await Promise.all([
+      loadDiagnostics(),
+      refreshAlerts ? loadAlerts() : Promise.resolve()
+    ]);
+    setStatus(successStatus);
+    return response;
+  } catch (error) {
+    setStatus(`Status: ${failureLabel} failed (${error.message})`, true);
+    throw error;
   }
 };
 
@@ -5357,31 +5374,54 @@ const sendTestAppAlert = async () => {
     }
   }
 
-  const serverSent = await triggerServerTestAlert();
-
-  if (localSent && serverSent) {
-    setStatus('Status: phone test alert scheduled and Telegram/server test sent. Lock or background the app for the next 2 seconds to see the banner.');
-    return true;
-  }
-
   if (localSent) {
-    setStatus('Status: phone test alert scheduled, but the Telegram/server test did not go through.', true);
-    return true;
-  }
-
-  if (serverSent) {
-    setStatus('Status: local phone notifications are unavailable on this device, but the Telegram/server test was sent.', true);
+    void renderPushHealthPanel();
+    setStatus('Status: device banner scheduled. Lock or background the app for the next 2 seconds to see the local test banner.');
     return true;
   }
 
   setStatus(
     granted
-      ? 'Status: test alerts are unavailable on this device right now.'
-      : 'Status: notification permission is blocked on this device, and the Telegram/server test failed.',
+      ? 'Status: device banner tests are unavailable on this device right now.'
+      : 'Status: notification permission is blocked on this device, so the local banner test could not run.',
     true
   );
+  void renderPushHealthPanel();
   return false;
 };
+
+const sendTestTradeAlert = async () =>
+  runServerNotificationTest({
+    path: '/notifications/test/alert',
+    payload: { symbol: 'NQ' },
+    pendingStatus: 'Status: sending manual trade alert test...',
+    successStatus: 'Status: manual trade alert test sent. Check your phone and the Recent Activity log.',
+    failureLabel: 'manual trade alert test',
+    refreshAlerts: true
+  });
+
+const sendTestBrokerRecoveryAlert = async () =>
+  runServerNotificationTest({
+    path: '/notifications/test/ibkr-login-reminder',
+    pendingStatus: 'Status: sending IBKR recovery alert test...',
+    successStatus: 'Status: IBKR recovery alert test sent. Telegram should only appear if app delivery misses.',
+    failureLabel: 'IBKR recovery alert test'
+  });
+
+const sendTestEngineUpdateAlert = async () =>
+  runServerNotificationTest({
+    path: '/notifications/test/research-experiment',
+    payload: {
+      symbol: 'NQ',
+      direction: 'BULLISH',
+      confidence: 0.79,
+      thesis: 'test lane verification',
+      delayMinutes: 1
+    },
+    pendingStatus: 'Status: sending engine update test...',
+    successStatus: 'Status: engine update test sent. It should stay app-only and remain out of Telegram.',
+    failureLabel: 'engine update test'
+  });
 
 const syncSeenAlerts = async (alerts) => {
   const seenIds = getSeenAlertIds();
@@ -7828,6 +7868,15 @@ const bindNotificationControls = () => {
 
   sendTestAppAlertEl?.addEventListener('click', async () => {
     await sendTestAppAlert();
+  });
+  sendTestTradeAlertEl?.addEventListener('click', async () => {
+    await sendTestTradeAlert().catch(() => null);
+  });
+  sendTestBrokerRecoveryAlertEl?.addEventListener('click', async () => {
+    await sendTestBrokerRecoveryAlert().catch(() => null);
+  });
+  sendTestEngineUpdateAlertEl?.addEventListener('click', async () => {
+    await sendTestEngineUpdateAlert().catch(() => null);
   });
 };
 
