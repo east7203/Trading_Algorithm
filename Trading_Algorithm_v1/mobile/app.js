@@ -5,6 +5,7 @@ const UI_PREFS_KEY = 'trading_mobile_ui_prefs_v1';
 const NOTIFICATION_PREFS_KEY = 'trading_mobile_notification_prefs_v1';
 const SEEN_ALERT_IDS_KEY = 'trading_mobile_seen_alert_ids_v1';
 const NATIVE_PUSH_TOKEN_KEY = 'trading_mobile_native_push_token_v1';
+const SECURITY_REPAIR_STATE_KEY = 'trading_mobile_security_repair_state_v1';
 const TV_CHECKLISTS_KEY = 'trading_mobile_tv_checklists_v1';
 
 const defaultUiPrefs = {
@@ -226,6 +227,7 @@ const securityHealthDefaultsNoteEl = document.getElementById('securityHealthDefa
 const securityRepairPushEl = document.getElementById('securityRepairPush');
 const securityRunBrokerRecoveryTestEl = document.getElementById('securityRunBrokerRecoveryTest');
 const securityRefreshChecksEl = document.getElementById('securityRefreshChecks');
+const securityRepairMetaEl = document.getElementById('securityRepairMeta');
 const notificationActivityListEl = document.getElementById('notificationActivityList');
 const installWebAppEl = document.getElementById('installWebApp');
 const webAppInstallStatusEl = document.getElementById('webAppInstallStatus');
@@ -3220,6 +3222,26 @@ const saveSeenAlertIds = (ids) => {
   localStorage.setItem(SEEN_ALERT_IDS_KEY, JSON.stringify(ids.slice(-200)));
 };
 
+const getSecurityRepairState = () => {
+  const raw = localStorage.getItem(SECURITY_REPAIR_STATE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const saveSecurityRepairState = (state) => {
+  localStorage.setItem(SECURITY_REPAIR_STATE_KEY, JSON.stringify(state));
+};
+
 const applyUiPrefs = (prefs) => {
   document.documentElement.dataset.theme = prefs.theme;
   document.documentElement.dataset.density = prefs.density;
@@ -3355,6 +3377,22 @@ const fmtRelativeMinutes = (value) => {
     return '1 hr ago';
   }
   return `${diffHours} hr ago`;
+};
+
+const renderSecurityRepairMeta = () => {
+  if (!securityRepairMetaEl) {
+    return;
+  }
+
+  const state = getSecurityRepairState();
+  if (!state?.action || !state?.at) {
+    securityRepairMetaEl.textContent = 'Last repair action: none yet.';
+    return;
+  }
+
+  const outcome = state.ok ? 'succeeded' : 'needs review';
+  const detail = state.detail ? ` • ${state.detail}` : '';
+  securityRepairMetaEl.textContent = `Last repair action: ${state.action} ${outcome} ${fmtRelativeMinutes(state.at)} • ${fmtDateTimeCompact(state.at)}${detail}`;
 };
 
 const fmtNum = (value, decimals = 2) => {
@@ -5666,6 +5704,13 @@ const sendTestEngineUpdateAlert = async () =>
 const repairPushRegistration = async () => {
   const prefs = getNotificationPrefs();
   if (!prefs.enabled) {
+    saveSecurityRepairState({
+      action: 'Re-register Push',
+      ok: false,
+      at: new Date().toISOString(),
+      detail: 'Allow Push Alerts is off.'
+    });
+    renderSecurityRepairMeta();
     setStatus('Status: turn on Allow Push Alerts before re-registering this device.', true);
     return false;
   }
@@ -5673,6 +5718,13 @@ const repairPushRegistration = async () => {
   setStatus('Status: re-registering push on this device...');
   const granted = await requestNotificationPermission();
   if (!granted) {
+    saveSecurityRepairState({
+      action: 'Re-register Push',
+      ok: false,
+      at: new Date().toISOString(),
+      detail: 'Notification permission is blocked.'
+    });
+    renderSecurityRepairMeta();
     setStatus('Status: notification permission is blocked, so push could not be re-registered.', true);
     void renderPushHealthPanel();
     return false;
@@ -5694,10 +5746,25 @@ const repairPushRegistration = async () => {
   renderSecurityHealthPanel();
 
   if (synced) {
+    saveSecurityRepairState({
+      action: 'Re-register Push',
+      ok: true,
+      at: new Date().toISOString()
+    });
+    renderSecurityRepairMeta();
     setStatus('Status: push registration refreshed for this device.');
     return true;
   }
 
+  saveSecurityRepairState({
+    action: 'Re-register Push',
+    ok: false,
+    at: new Date().toISOString(),
+    detail: hasNativePush()
+      ? 'Waiting for native token sync.'
+      : 'Remote subscription refresh did not complete.'
+  });
+  renderSecurityRepairMeta();
   setStatus(
     hasNativePush()
       ? 'Status: permission is granted. Waiting for the native push token to finish syncing.'
@@ -5711,6 +5778,12 @@ const refreshSecurityChecks = async () => {
   setStatus('Status: refreshing security diagnostics...');
   await Promise.all([loadHealth(), loadDiagnostics()]);
   renderSecurityHealthPanel();
+  saveSecurityRepairState({
+    action: 'Refresh Security Checks',
+    ok: true,
+    at: new Date().toISOString()
+  });
+  renderSecurityRepairMeta();
   void renderPushHealthPanel();
   setStatus('Status: security checks refreshed.');
 };
@@ -8404,7 +8477,22 @@ const bindNotificationControls = () => {
     await repairPushRegistration().catch(() => null);
   });
   securityRunBrokerRecoveryTestEl?.addEventListener('click', async () => {
-    await sendTestBrokerRecoveryAlert().catch(() => null);
+    try {
+      await sendTestBrokerRecoveryAlert();
+      saveSecurityRepairState({
+        action: 'Run IBKR Recovery Test',
+        ok: true,
+        at: new Date().toISOString()
+      });
+    } catch {
+      saveSecurityRepairState({
+        action: 'Run IBKR Recovery Test',
+        ok: false,
+        at: new Date().toISOString(),
+        detail: 'The recovery test request failed.'
+      });
+    }
+    renderSecurityRepairMeta();
   });
   securityRefreshChecksEl?.addEventListener('click', async () => {
     await refreshSecurityChecks().catch(() => null);
@@ -8679,6 +8767,7 @@ const bootstrap = async () => {
   apiBaseInput.value = getApiBase();
   updateSystemSummary();
   renderStatusRail();
+  renderSecurityRepairMeta();
   approvedByInput.value = localStorage.getItem(APPROVER_KEY) || '';
   manualChecklistConfirmInput.checked = localStorage.getItem(CHECKLIST_KEY) === 'true';
   manualChecklistConfirmInput.addEventListener('change', () => {
