@@ -173,6 +173,27 @@ export interface PaperAutonomyDecisionRecord {
   cooldownSummary: string;
 }
 
+export interface PaperAutonomyDailyStateChange {
+  key: string;
+  thesis: PaperAutonomyThesis;
+  label: string;
+  symbol: SymbolCode;
+  researchDirection: ResearchTrendDirection;
+  exploratory: boolean;
+  fromState: PaperAutonomyPatternState;
+  toState: PaperAutonomyPatternState;
+  reason: string;
+  cooldownSummary: string;
+}
+
+export interface PaperAutonomyDailyChangeSummary {
+  sessionDay: string;
+  promoted: PaperAutonomyDailyStateChange[];
+  probation: PaperAutonomyDailyStateChange[];
+  paused: PaperAutonomyDailyStateChange[];
+  summary: string;
+}
+
 export interface PaperAutonomyStatus {
   enabled: boolean;
   started: boolean;
@@ -200,6 +221,7 @@ export interface PaperAutonomyStatus {
   thesisStats: PaperAutonomyThesisStats[];
   explorationBudget: PaperAutonomyExplorationBudgetStatus;
   patternStates: PaperAutonomyPatternStatus[];
+  dailyChanges: PaperAutonomyDailyChangeSummary;
   recentDecisions: PaperAutonomyDecisionRecord[];
   recentIdeas: PaperAutonomyIdeaRecord[];
   recentClosedIdeas: PaperAutonomyIdeaRecord[];
@@ -635,10 +657,13 @@ export class PaperAutonomyService {
     thesis: PaperAutonomyThesis,
     symbol: SymbolCode,
     researchDirection: ResearchTrendDirection,
-    exploratory: boolean
+    exploratory: boolean,
+    ideaPool?: PaperAutonomyIdeaRecord[]
   ): PaperAutonomyPatternStatus {
     const patternKey = this.buildPatternKey(thesis, symbol, researchDirection, exploratory);
-    const patternIdeas = this.listPatternIdeas(patternKey).sort((left, right) => right.openedAt.localeCompare(left.openedAt));
+    const patternIdeas = (ideaPool ?? this.listPatternIdeas(patternKey))
+      .filter((idea) => this.resolveIdeaPatternKey(idea) === patternKey)
+      .sort((left, right) => right.openedAt.localeCompare(left.openedAt));
     const openIdeas = patternIdeas.filter((idea) => idea.status === 'OPEN');
     const closedIdeas = patternIdeas
       .filter((idea) => idea.status === 'CLOSED')
@@ -898,6 +923,79 @@ export class PaperAutonomyService {
       summary: input.summary,
       reason: input.reason,
       cooldownSummary: input.cooldownSummary
+    };
+  }
+
+  private buildDailyChangeSummary(
+    patternStates: PaperAutonomyPatternStatus[],
+    sessionDay: string,
+    ideaPool: PaperAutonomyIdeaRecord[]
+  ): PaperAutonomyDailyChangeSummary {
+    const timezone = this.getTradingWindow().timezone;
+    const priorIdeas = ideaPool.filter((idea) => getLocalDayKey(idea.openedAt, timezone) < sessionDay);
+    const promoted: PaperAutonomyDailyStateChange[] = [];
+    const probation: PaperAutonomyDailyStateChange[] = [];
+    const paused: PaperAutonomyDailyStateChange[] = [];
+
+    for (const current of patternStates) {
+      const priorPatternIdeas = priorIdeas.filter((idea) => this.resolveIdeaPatternKey(idea) === current.key);
+      if (priorPatternIdeas.length === 0) {
+        continue;
+      }
+
+      const priorStatus = this.buildPatternStatus(
+        current.thesis,
+        current.symbol,
+        current.researchDirection,
+        current.exploratory,
+        priorPatternIdeas
+      );
+      if (priorStatus.state === current.state) {
+        continue;
+      }
+
+      const change: PaperAutonomyDailyStateChange = {
+        key: current.key,
+        thesis: current.thesis,
+        label: current.label,
+        symbol: current.symbol,
+        researchDirection: current.researchDirection,
+        exploratory: current.exploratory,
+        fromState: priorStatus.state,
+        toState: current.state,
+        reason: current.reason,
+        cooldownSummary: current.cooldownSummary
+      };
+
+      if (current.state === 'PROVEN' && priorStatus.state !== 'PROVEN') {
+        promoted.push(change);
+      } else if (current.state === 'PROBATION' && priorStatus.state !== 'PROBATION') {
+        probation.push(change);
+      } else if (current.state === 'DISABLED' && priorStatus.state !== 'DISABLED') {
+        paused.push(change);
+      }
+    }
+
+    const summaryParts = [];
+    if (promoted.length > 0) {
+      summaryParts.push(`${promoted.length} promoted`);
+    }
+    if (probation.length > 0) {
+      summaryParts.push(`${probation.length} moved to probation`);
+    }
+    if (paused.length > 0) {
+      summaryParts.push(`${paused.length} paused`);
+    }
+    const spotlightChange = promoted[0] ?? probation[0] ?? paused[0] ?? null;
+
+    return {
+      sessionDay,
+      promoted,
+      probation,
+      paused,
+      summary: summaryParts.length > 0
+        ? `Today: ${summaryParts.join(' • ')}.${spotlightChange ? ` Spotlight: ${spotlightChange.label} on ${spotlightChange.symbol} moved ${spotlightChange.fromState.toLowerCase()} -> ${spotlightChange.toState.toLowerCase()}.` : ''}`
+        : 'No pattern-state changes since the prior session day.'
     };
   }
 
@@ -2330,7 +2428,9 @@ export class PaperAutonomyService {
       );
     const symbolStatus = this.config.focusSymbols.map((symbol) => this.buildSymbolStatus(symbol));
     const tradingWindow = this.getTradingWindow();
-    const explorationBudget = this.getExplorationBudgetStatus(ideas[0]?.openedAt ?? new Date().toISOString());
+    const statusTimestamp = ideas[0]?.openedAt ?? new Date().toISOString();
+    const explorationBudget = this.getExplorationBudgetStatus(statusTimestamp);
+    const dailyChanges = this.buildDailyChangeSummary(patternStates, explorationBudget.sessionDay, ideas);
 
     return {
       enabled: this.config.enabled,
@@ -2376,6 +2476,7 @@ export class PaperAutonomyService {
       thesisStats,
       explorationBudget,
       patternStates,
+      dailyChanges,
       recentDecisions: [...this.recentDecisions].sort((left, right) => right.timestamp.localeCompare(left.timestamp)).slice(0, 12),
       recentIdeas: ideas.slice(0, 12),
       recentClosedIdeas: closedIdeas.slice(0, 8)

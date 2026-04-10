@@ -93,6 +93,50 @@ const buildTrade = (alert: SignalAlert, index: number): PaperTrade => ({
   source: 'paper-autonomy'
 });
 
+const buildSeedIdea = ({
+  alertId,
+  symbol,
+  side,
+  thesis,
+  researchDirection,
+  exploratory,
+  openedAt,
+  closedAt,
+  realizedR,
+  outcome
+}: {
+  alertId: string;
+  symbol: 'NQ' | 'ES';
+  side: 'LONG' | 'SHORT';
+  thesis: string;
+  researchDirection: 'BULLISH' | 'BEARISH' | 'BALANCED' | 'STAND_ASIDE';
+  exploratory: boolean;
+  openedAt: string;
+  closedAt: string;
+  realizedR: number;
+  outcome: 'WIN' | 'LOSS' | 'FLAT';
+}) => ({
+  alertId,
+  candidateId: `${alertId}-candidate`,
+  symbol,
+  side,
+  thesis,
+  score: 62,
+  reason: 'Seeded test pattern',
+  researchDirection,
+  researchConfidence: 0.66,
+  exploratory,
+  patternKey: `${thesis}|${symbol}|${researchDirection}|${exploratory ? 'exploratory' : 'aligned'}`,
+  patternState: 'EXPERIMENTAL',
+  allocation: exploratory ? 'EXPLORATION' : 'CORE',
+  openedAt,
+  status: 'CLOSED',
+  closedAt,
+  realizedPnl: realizedR * 100,
+  realizedR,
+  outcome
+});
+
 describe('paper autonomy service', () => {
   it('self-corrects by reducing risk and trade frequency when the paper portfolio is under stress', async () => {
     const neutralAlerts: SignalAlert[] = [];
@@ -320,5 +364,120 @@ describe('paper autonomy service', () => {
     expect(exploratoryService.status().explorationBudget.remainingToday).toBe(0);
     expect(exploratoryService.status().explorationBudget.available).toBe(false);
     expect(exploratoryService.status().recentDecisions.length).toBeGreaterThan(0);
+  });
+
+  it('summarizes what changed today across promoted, probation, and paused patterns', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-daily-changes-'));
+    tempDirs.push(tempDir);
+    const statePath = path.join(tempDir, 'paper-autonomy.json');
+    const seededIdeas = [
+      ...Array.from({ length: 4 }, (_, index) => buildSeedIdea({
+        alertId: `promoted-yesterday-${index}`,
+        symbol: 'NQ',
+        side: 'LONG',
+        thesis: 'TREND_BREAKOUT_EXPANSION',
+        researchDirection: 'BULLISH',
+        exploratory: false,
+        openedAt: `2026-04-09T1${index}:00:00.000Z`,
+        closedAt: `2026-04-09T1${index}:30:00.000Z`,
+        realizedR: 1,
+        outcome: 'WIN'
+      })),
+      buildSeedIdea({
+        alertId: 'promoted-today-0',
+        symbol: 'NQ',
+        side: 'LONG',
+        thesis: 'TREND_BREAKOUT_EXPANSION',
+        researchDirection: 'BULLISH',
+        exploratory: false,
+        openedAt: '2026-04-10T13:00:00.000Z',
+        closedAt: '2026-04-10T13:30:00.000Z',
+        realizedR: 1,
+        outcome: 'WIN'
+      }),
+      ...Array.from({ length: 5 }, (_, index) => buildSeedIdea({
+        alertId: `probation-yesterday-${index}`,
+        symbol: 'NQ',
+        side: 'LONG',
+        thesis: 'TREND_PULLBACK_RECLAIM',
+        researchDirection: 'BULLISH',
+        exploratory: false,
+        openedAt: `2026-04-09T0${index}:00:00.000Z`,
+        closedAt: `2026-04-09T0${index}:30:00.000Z`,
+        realizedR: 1,
+        outcome: 'WIN'
+      })),
+      ...Array.from({ length: 2 }, (_, index) => buildSeedIdea({
+        alertId: `probation-today-${index}`,
+        symbol: 'NQ',
+        side: 'LONG',
+        thesis: 'TREND_PULLBACK_RECLAIM',
+        researchDirection: 'BULLISH',
+        exploratory: false,
+        openedAt: `2026-04-10T1${index}:00:00.000Z`,
+        closedAt: `2026-04-10T1${index}:30:00.000Z`,
+        realizedR: -1,
+        outcome: 'LOSS'
+      })),
+      ...Array.from({ length: 8 }, (_, index) => buildSeedIdea({
+        alertId: `paused-yesterday-${index}`,
+        symbol: 'ES',
+        side: 'SHORT',
+        thesis: 'RANGE_FADE_REVERSION',
+        researchDirection: 'BALANCED',
+        exploratory: false,
+        openedAt: `2026-04-09T${String(8 + index).padStart(2, '0')}:00:00.000Z`,
+        closedAt: `2026-04-09T${String(8 + index).padStart(2, '0')}:30:00.000Z`,
+        realizedR: 1,
+        outcome: 'WIN'
+      })),
+      ...Array.from({ length: 3 }, (_, index) => buildSeedIdea({
+        alertId: `paused-today-${index}`,
+        symbol: 'ES',
+        side: 'SHORT',
+        thesis: 'RANGE_FADE_REVERSION',
+        researchDirection: 'BALANCED',
+        exploratory: false,
+        openedAt: `2026-04-10T${String(8 + index).padStart(2, '0')}:00:00.000Z`,
+        closedAt: `2026-04-10T${String(8 + index).padStart(2, '0')}:30:00.000Z`,
+        realizedR: -1,
+        outcome: 'LOSS'
+      }))
+    ];
+
+    await fs.writeFile(statePath, JSON.stringify({ ideas: seededIdeas }, null, 2));
+
+    const service = new PaperAutonomyService({
+      enabled: true,
+      statePath,
+      bootstrapRecursive: false,
+      timezone: 'America/New_York',
+      sessionStartHour: 0,
+      sessionStartMinute: 0,
+      sessionEndHour: 23,
+      sessionEndMinute: 59,
+      focusSymbols: ['NQ', 'ES'],
+      maxBarsPerSymbol: 6000,
+      maxIdeas: 300,
+      maxHoldMinutes: 180,
+      minTrendConfidence: 0,
+      breakoutLookbackBars5m: 6,
+      pullbackLookbackBars5m: 8,
+      getPaperTradingStatus: () => buildPaperStatus(),
+      submitAlert: async () => null
+    });
+
+    await service.start();
+    const dailyChanges = service.status().dailyChanges;
+
+    expect(dailyChanges.promoted).toHaveLength(1);
+    expect(dailyChanges.promoted[0]?.label).toBe('Trend Breakout Expansion');
+    expect(dailyChanges.probation).toHaveLength(1);
+    expect(dailyChanges.probation[0]?.label).toBe('Trend Pullback Reclaim');
+    expect(dailyChanges.paused).toHaveLength(1);
+    expect(dailyChanges.paused[0]?.label).toBe('Range Fade Reversion');
+    expect(dailyChanges.summary).toContain('1 promoted');
+    expect(dailyChanges.summary).toContain('1 moved to probation');
+    expect(dailyChanges.summary).toContain('1 paused');
   });
 });

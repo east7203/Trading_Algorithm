@@ -159,6 +159,7 @@ const learningAutonomyStateChipEl = document.getElementById('learningAutonomySta
 const learningAutonomyHeadlineEl = document.getElementById('learningAutonomyHeadline');
 const learningAutonomyContextEl = document.getElementById('learningAutonomyContext');
 const learningAutonomyBudgetEl = document.getElementById('learningAutonomyBudget');
+const learningAutonomyChangeSummaryEl = document.getElementById('learningAutonomyChangeSummary');
 const learningAutonomyLeaderEl = document.getElementById('learningAutonomyLeader');
 const learningAutonomyExplorationEl = document.getElementById('learningAutonomyExploration');
 const learningAutonomyGuardrailEl = document.getElementById('learningAutonomyGuardrail');
@@ -191,6 +192,7 @@ const paperPatternExperimentalEl = document.getElementById('paperPatternExperime
 const paperPatternProbationEl = document.getElementById('paperPatternProbation');
 const paperPatternDisabledEl = document.getElementById('paperPatternDisabled');
 const paperPatternBudgetMetaEl = document.getElementById('paperPatternBudgetMeta');
+const paperPatternChangeSummaryEl = document.getElementById('paperPatternChangeSummary');
 const paperPatternStateListEl = document.getElementById('paperPatternStateList');
 const paperOpenChipEl = document.getElementById('paperOpenChip');
 const paperClosedChipEl = document.getElementById('paperClosedChip');
@@ -1467,6 +1469,11 @@ const getPaperAutonomyExplorationBudget = () => {
   return autonomy?.explorationBudget ?? null;
 };
 
+const getPaperAutonomyDailyChanges = () => {
+  const autonomy = getPaperAutonomyStatus();
+  return autonomy?.dailyChanges ?? null;
+};
+
 const getPaperAutonomyRecentDecisions = () => {
   const autonomy = getPaperAutonomyStatus();
   return Array.isArray(autonomy?.recentDecisions) ? autonomy.recentDecisions : [];
@@ -1522,6 +1529,27 @@ const describePaperAutonomyBudgetMeta = (budget) => {
   return Number(budget.remainingToday ?? 0) > 0
     ? `${scopeText} ${Number(budget.remainingToday ?? 0)} probe slot${Number(budget.remainingToday ?? 0) === 1 ? '' : 's'} left before the lane locks.`
     : `${scopeText} Probe budget is fully allocated for this session day.`;
+};
+
+const describePaperAutonomyDailyChangeSummary = (dailyChanges) => {
+  if (!dailyChanges) {
+    return 'Today shift summary is loading.';
+  }
+
+  const promoted = Array.isArray(dailyChanges.promoted) ? dailyChanges.promoted : [];
+  const probation = Array.isArray(dailyChanges.probation) ? dailyChanges.probation : [];
+  const paused = Array.isArray(dailyChanges.paused) ? dailyChanges.paused : [];
+  if (!promoted.length && !probation.length && !paused.length) {
+    return 'No pattern-state changes since the prior session day.';
+  }
+
+  const spotlight = promoted[0] ?? probation[0] ?? paused[0] ?? null;
+  return [
+    `${promoted.length} promoted`,
+    `${probation.length} to probation`,
+    `${paused.length} paused`,
+    spotlight ? `spotlight: ${spotlight.label} on ${spotlight.symbol}` : null
+  ].filter(Boolean).join(' • ');
 };
 
 const paperAutonomyDecisionOutcomeLabel = (outcome) => {
@@ -1715,6 +1743,7 @@ const renderPaperAutonomyTransparency = () => {
   const autonomy = getPaperAutonomyStatus();
   const patternStates = getPaperAutonomyPatternStates();
   const explorationBudget = getPaperAutonomyExplorationBudget();
+  const dailyChanges = getPaperAutonomyDailyChanges();
 
   if (paperPatternStateChipEl) {
     paperPatternStateChipEl.textContent = autonomy?.enabled
@@ -1746,6 +1775,11 @@ const renderPaperAutonomyTransparency = () => {
     paperPatternBudgetMetaEl.textContent = autonomy?.enabled
       ? describePaperAutonomyBudgetMeta(explorationBudget)
       : 'Enable paper autonomy to start tracking how much exploration budget is left.';
+  }
+  if (paperPatternChangeSummaryEl) {
+    paperPatternChangeSummaryEl.textContent = autonomy?.enabled
+      ? describePaperAutonomyDailyChangeSummary(dailyChanges)
+      : 'Enable paper autonomy to compare today against the prior session.';
   }
 
   renderPaperAutonomyPatternCards(
@@ -7383,6 +7417,7 @@ const renderLearningAutonomyPlaybook = () => {
   const autonomy = getPaperAutonomyStatus();
   const patternStates = getPaperAutonomyPatternStates();
   const explorationBudget = getPaperAutonomyExplorationBudget();
+  const dailyChanges = getPaperAutonomyDailyChanges();
   const byAttention = sortPaperAutonomyPatternStates(patternStates, 'attention');
   const byPaper = sortPaperAutonomyPatternStates(patternStates, 'paper');
   const provenLeader = byPaper.find((item) => item.state === 'PROVEN') ?? null;
@@ -7403,6 +7438,9 @@ const renderLearningAutonomyPlaybook = () => {
     }
     if (learningAutonomyBudgetEl) {
       learningAutonomyBudgetEl.textContent = '--';
+    }
+    if (learningAutonomyChangeSummaryEl) {
+      learningAutonomyChangeSummaryEl.textContent = '--';
     }
     if (learningAutonomyLeaderEl) {
       learningAutonomyLeaderEl.textContent = '--';
@@ -7449,6 +7487,9 @@ const renderLearningAutonomyPlaybook = () => {
   }
   if (learningAutonomyBudgetEl) {
     learningAutonomyBudgetEl.textContent = describePaperAutonomyBudgetMeta(explorationBudget);
+  }
+  if (learningAutonomyChangeSummaryEl) {
+    learningAutonomyChangeSummaryEl.textContent = describePaperAutonomyDailyChangeSummary(dailyChanges);
   }
   if (learningAutonomyLeaderEl) {
     learningAutonomyLeaderEl.textContent = provenLeader

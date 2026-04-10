@@ -2841,6 +2841,37 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 available: paperAutonomy.explorationBudget.available,
                 summary: compactText(paperAutonomy.explorationBudget.summary, 140)
               },
+              dailyChanges: {
+                sessionDay: paperAutonomy.dailyChanges.sessionDay,
+                promoted: paperAutonomy.dailyChanges.promoted.slice(0, 3).map((entry) => ({
+                  key: entry.key,
+                  label: entry.label,
+                  symbol: entry.symbol,
+                  fromState: entry.fromState,
+                  toState: entry.toState,
+                  reason: compactText(entry.reason, 140),
+                  cooldownSummary: compactText(entry.cooldownSummary, 140)
+                })),
+                probation: paperAutonomy.dailyChanges.probation.slice(0, 3).map((entry) => ({
+                  key: entry.key,
+                  label: entry.label,
+                  symbol: entry.symbol,
+                  fromState: entry.fromState,
+                  toState: entry.toState,
+                  reason: compactText(entry.reason, 140),
+                  cooldownSummary: compactText(entry.cooldownSummary, 140)
+                })),
+                paused: paperAutonomy.dailyChanges.paused.slice(0, 3).map((entry) => ({
+                  key: entry.key,
+                  label: entry.label,
+                  symbol: entry.symbol,
+                  fromState: entry.fromState,
+                  toState: entry.toState,
+                  reason: compactText(entry.reason, 140),
+                  cooldownSummary: compactText(entry.cooldownSummary, 140)
+                })),
+                summary: compactText(paperAutonomy.dailyChanges.summary, 180)
+              },
               activeTheses: paperAutonomy.activeTheses.slice(0, 4).map((entry) => ({
                 thesis: entry.thesis,
                 label: entry.label,
