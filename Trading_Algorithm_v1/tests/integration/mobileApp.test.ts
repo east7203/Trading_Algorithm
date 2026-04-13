@@ -195,6 +195,9 @@ describe('mobile app endpoints', () => {
     expect(payload.ok).toBe(true);
     expect(payload.alert.source).toBe('MANUAL_TEST');
     expect(payload.alert.title).toContain('manual engine test signal');
+    expect(typeof payload.alert.entry).toBe('number');
+    expect(typeof payload.alert.stopLoss).toBe('number');
+    expect(typeof payload.alert.takeProfit).toBe('number');
   });
 
   it('sends a controlled research experiment notification with a short summary', async () => {

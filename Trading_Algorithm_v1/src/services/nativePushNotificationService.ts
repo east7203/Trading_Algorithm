@@ -4,6 +4,11 @@ import { connect, constants } from 'node:http2';
 import jwt from 'jsonwebtoken';
 import type { SignalAlert } from '../domain/types.js';
 import type { AppNotificationMessage } from './operationalReminderService.js';
+import {
+  buildReminderStatusText,
+  buildTradeLevelSummary,
+  signalAlertSourceLabel
+} from './signalAlertNotificationFormatter.js';
 import type {
   AppNotificationCategory,
   AppNotificationPreferences,
@@ -64,19 +69,6 @@ const fileExists = async (targetPath: string): Promise<boolean> =>
 
 const ensureParentDir = async (targetPath: string): Promise<void> => {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-};
-
-const signalSourceLabel = (alert: SignalAlert): string => {
-  switch (alert.source) {
-    case 'MANUAL_ENGINE':
-      return 'Manual engine';
-    case 'MANUAL_TEST':
-      return 'Manual engine test';
-    case 'PAPER_AUTONOMY':
-      return 'Paper autonomy';
-    default:
-      return 'Signal engine';
-  }
 };
 
 const resolveNotificationPriority = (
@@ -244,7 +236,10 @@ export class NativePushNotificationService {
     await this.store.remove(deviceToken);
   }
 
-  async notifySignalAlert(alert: SignalAlert): Promise<{ attempted: number; delivered: number; removed: number }> {
+  async notifySignalAlert(
+    alert: SignalAlert,
+    delivery: { reason?: 'initial' | 'reminder'; reminderCount?: number } = {}
+  ): Promise<{ attempted: number; delivered: number; removed: number }> {
     if (!this.config.enabled) {
       return { attempted: 0, delivered: 0, removed: 0 };
     }
@@ -271,13 +266,15 @@ export class NativePushNotificationService {
         alert: {
           title: alert.title,
           body: [
-            signalSourceLabel(alert),
+            signalAlertSourceLabel(alert),
             `${alert.symbol} ${alert.side}`,
+            ...buildTradeLevelSummary(alert),
             typeof alert.candidate.finalScore === 'number'
               ? `Score ${alert.candidate.finalScore.toFixed(1)}`
               : 'Score --',
+            buildReminderStatusText(delivery),
             alert.riskDecision.allowed ? 'Ready to take manually' : alert.riskDecision.reasonCodes[0] || 'Risk blocked'
-          ].join(' • ')
+          ].filter(Boolean).join(' • ')
         },
         ...(priority === 'high' ? { sound: 'default' } : {}),
         badge: 1

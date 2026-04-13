@@ -1626,7 +1626,7 @@ export class SignalMonitorService {
     }
   ): Promise<AppChannelDeliverySummary> {
     const deliveries = await Promise.allSettled([
-      this.nativePushNotificationService?.notifySignalAlert(alert),
+      this.nativePushNotificationService?.notifySignalAlert(alert, delivery),
       this.webPushNotificationService?.notifySignalAlert(alert, delivery)
     ]);
 

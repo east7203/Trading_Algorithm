@@ -1,5 +1,9 @@
 import type { SignalAlert } from '../domain/types.js';
 import type { TelegramNotificationMessage } from './operationalReminderService.js';
+import {
+  buildTradeLevelLines,
+  signalAlertSourceLabel
+} from './signalAlertNotificationFormatter.js';
 
 export interface TelegramAlertConfig {
   enabled: boolean;
@@ -16,19 +20,6 @@ export interface TelegramAlertStatus {
   chatConfigured: boolean;
   lastError?: string;
 }
-
-const signalSourceLabel = (alert: SignalAlert): string => {
-  switch (alert.source) {
-    case 'MANUAL_ENGINE':
-      return 'Manual engine';
-    case 'MANUAL_TEST':
-      return 'Manual engine test';
-    case 'PAPER_AUTONOMY':
-      return 'Paper autonomy';
-    default:
-      return 'Signal engine';
-  }
-};
 
 const TELEGRAM_SEND_TIMEOUT_MS = 10_000;
 
@@ -81,9 +72,10 @@ export class TelegramAlertService {
       : undefined;
     const text = [
       reminderLabel ? `${reminderLabel}: ${alert.title}` : `${alert.title}`,
-      `${signalSourceLabel(alert)} • ${alert.symbol} ${alert.side} • ${alert.setupType}`,
+      `${signalAlertSourceLabel(alert)} • ${alert.symbol} ${alert.side} • ${alert.setupType}`,
+      ...buildTradeLevelLines(alert),
       typeof alert.candidate.finalScore === 'number' ? `Score: ${alert.candidate.finalScore.toFixed(1)}` : 'Score: --',
-      reminderLabel ? `${reminderLabel}: still unacknowledged` : undefined,
+      reminderLabel ? 'Reminder: alert is still unacknowledged' : undefined,
       alert.riskDecision.allowed
         ? `Ready to take manually at ${alert.riskDecision.finalRiskPct.toFixed(2)}% risk`
         : `Blocked: ${alert.riskDecision.reasonCodes.join(', ') || 'guardrail'}`,

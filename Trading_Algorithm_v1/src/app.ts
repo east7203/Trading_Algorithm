@@ -3769,7 +3769,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         source: alert.source,
         title: alert.title,
         detectedAt: alert.detectedAt,
-        finalScore: alert.candidate.finalScore ?? null
+        finalScore: alert.candidate.finalScore ?? null,
+        entry: alert.candidate.entry,
+        stopLoss: alert.candidate.stopLoss,
+        takeProfit: alert.candidate.takeProfit[0] ?? null
       }
     });
   });

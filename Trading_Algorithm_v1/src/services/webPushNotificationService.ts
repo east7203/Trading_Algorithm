@@ -3,6 +3,11 @@ import path from 'node:path';
 import webpush from 'web-push';
 import type { SignalAlert } from '../domain/types.js';
 import type { AppNotificationMessage } from './operationalReminderService.js';
+import {
+  buildReminderStatusText,
+  buildTradeLevelSummary,
+  signalAlertSourceLabel
+} from './signalAlertNotificationFormatter.js';
 import type {
   AppNotificationCategory,
   AppNotificationPreferences,
@@ -68,19 +73,6 @@ const fileExists = async (targetPath: string): Promise<boolean> =>
 
 const ensureParentDir = async (targetPath: string): Promise<void> => {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
-};
-
-const signalSourceLabel = (alert: SignalAlert): string => {
-  switch (alert.source) {
-    case 'MANUAL_ENGINE':
-      return 'Manual engine';
-    case 'MANUAL_TEST':
-      return 'Manual engine test';
-    case 'PAPER_AUTONOMY':
-      return 'Paper autonomy';
-    default:
-      return 'Signal engine';
-  }
 };
 
 const resolveNotificationPriority = (
@@ -296,12 +288,13 @@ export class WebPushNotificationService {
       alertId: alert.alertId,
       title: reminderLabel ? `${reminderLabel}: ${alert.title}` : alert.title,
       body: [
-        signalSourceLabel(alert),
+        signalAlertSourceLabel(alert),
         `${alert.symbol} ${alert.side}`,
+        ...buildTradeLevelSummary(alert),
         typeof alert.candidate.finalScore === 'number'
           ? `Score ${alert.candidate.finalScore.toFixed(1)}`
           : 'Score --',
-        reminderLabel,
+        buildReminderStatusText(delivery),
         alert.riskDecision.allowed ? 'Ready to take manually' : alert.riskDecision.reasonCodes[0] || 'Risk blocked'
       ]
         .filter(Boolean)
