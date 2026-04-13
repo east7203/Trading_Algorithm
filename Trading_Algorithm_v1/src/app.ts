@@ -735,9 +735,11 @@ const resolveSignalMonitorConfig = (
     maxAlerts: parseIntEnv('SIGNAL_MONITOR_MAX_ALERTS', 100, 1),
     escalationCheckIntervalMs: parseIntEnv('SIGNAL_MONITOR_ESCALATION_CHECK_SECONDS', 30, 5) * 1000,
     escalationDelaysMs: [
-      parseIntEnv('SIGNAL_MONITOR_ESCALATION_FIRST_SECONDS', 60, 15) * 1000,
-      parseIntEnv('SIGNAL_MONITOR_ESCALATION_SECOND_SECONDS', 180, 30) * 1000
-    ],
+      parseIntEnv('SIGNAL_MONITOR_ESCALATION_FIRST_SECONDS', 120, 15),
+      parseIntEnv('SIGNAL_MONITOR_ESCALATION_SECOND_SECONDS', 0, 0)
+    ]
+      .filter((seconds) => seconds > 0)
+      .map((seconds) => seconds * 1000),
     minFinalScore: parseFloatEnv('SIGNAL_MONITOR_MIN_FINAL_SCORE', 74, 0, 100),
     accountSnapshot: {
       equity: parseFloatEnv('SIGNAL_MONITOR_ACCOUNT_EQUITY', 100_000, 1),
