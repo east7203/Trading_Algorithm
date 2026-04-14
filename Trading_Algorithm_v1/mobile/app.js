@@ -2649,6 +2649,8 @@ const summarizeSignalNextStep = (alert) => {
     : 'Wait for now and review the chart only.';
 };
 
+const hasSavedSignalSnapshot = (alert) => Array.isArray(alert?.chartSnapshot?.bars) && alert.chartSnapshot.bars.length > 0;
+
 const buildSignalVisualContext = (alert, overrides = {}) => ({
   alertId: alert.alertId,
   symbol: alert.symbol,
@@ -2762,6 +2764,7 @@ const renderBoardSpotlight = (alert) => {
   }
 
   const readiness = alert.riskDecision.allowed ? 'Ready to execute manually' : 'Blocked for now';
+  const hasSavedSnapshot = hasSavedSignalSnapshot(alert);
   const blockedReason = alert.riskDecision.allowed
     ? summarizeSignalNextStep(alert)
     : `Blocked by ${alert.riskDecision.reasonCodes.map(humanizeRiskReason).join(' • ') || 'guardrails'}`;
@@ -2781,18 +2784,28 @@ const renderBoardSpotlight = (alert) => {
     alert.candidate.stopLoss,
     alert.candidate.takeProfit?.[0]
   );
-  boardSpotlightSnapshotEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
-    expanded: true,
-    minimal: true
-  });
-  configureExpandableChart(
-    boardSpotlightSnapshotEl,
-    buildSignalVisualContext(alert, {
-      meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert at ${fmtTime(alert.detectedAt)} • swipe down to return`,
-      chartVariant: 'replay-trade-box',
-      tradeBoxMinimal: true
-    })
-  );
+  if (hasSavedSnapshot) {
+    boardSpotlightSnapshotEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
+      expanded: true,
+      minimal: true
+    });
+    configureExpandableChart(
+      boardSpotlightSnapshotEl,
+      buildSignalVisualContext(alert, {
+        meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert at ${fmtTime(alert.detectedAt)} • swipe down to return`,
+        chartVariant: 'replay-trade-box',
+        tradeBoxMinimal: true
+      })
+    );
+  } else {
+    boardSpotlightSnapshotEl.innerHTML = `
+      <div class="board-spotlight-empty">
+        <p class="board-spotlight-empty-title">Saved snapshot unavailable</p>
+        <p class="board-spotlight-empty-note">This alert did not keep chart bars. Use the live TradingView panel to confirm the setup.</p>
+      </div>
+    `;
+    configureExpandableChart(boardSpotlightSnapshotEl, null);
+  }
   renderBoardSpotlightTradingView(boardSpotlightContext);
   if (boardSpotlightTradingViewBtn) {
     boardSpotlightTradingViewBtn.disabled = false;
@@ -8132,7 +8145,12 @@ const renderDiagnostics = () => {
 const renderHero = () => {
   const diagnostics = latestDiagnostics?.diagnostics;
   const filteredAlerts = getFilteredAlerts(latestAlerts);
-  const topAlert = filteredAlerts[0] ?? latestAlerts[0] ?? null;
+  const topAlert =
+    filteredAlerts.find(hasSavedSignalSnapshot)
+    ?? filteredAlerts[0]
+    ?? latestAlerts.find(hasSavedSignalSnapshot)
+    ?? latestAlerts[0]
+    ?? null;
   const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
   const blockedCount = latestAlerts.length - readyCount;
 
@@ -8339,10 +8357,15 @@ const loadAlerts = async () => {
         tradeBoxMinimal: true
       });
       const signalChartEl = node.querySelector('.signalChart');
-      signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
-        minimal: true
-      });
-      configureExpandableChart(signalChartEl, signalVisualContext);
+      if (hasSavedSignalSnapshot(alert)) {
+        signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
+          minimal: true
+        });
+        configureExpandableChart(signalChartEl, signalVisualContext);
+      } else {
+        signalChartEl.innerHTML = '<div class="signalChartPlaceholder">Saved snapshot unavailable</div>';
+        configureExpandableChart(signalChartEl, null);
+      }
       hydrateTradingViewChecklist(
         node,
         buildSignalVisualContext(alert, {
