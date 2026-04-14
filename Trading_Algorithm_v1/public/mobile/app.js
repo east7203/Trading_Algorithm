@@ -24,9 +24,22 @@ const defaultNotificationPrefs = {
   engineUpdates: false
 };
 
-const tradingViewSymbolMap = {
+const tradingViewExternalSymbolMap = {
   NQ: 'CME_MINI:NQ1!',
-  ES: 'CME_MINI:ES1!'
+  ES: 'CME_MINI:ES1!',
+  MNQ: 'CME_MINI:MNQ1!',
+  YM: 'CBOT_MINI:YM1!',
+  MYM: 'CBOT_MINI:MYM1!'
+};
+
+const tradingViewEmbedSymbolMap = {
+  NQ: 'NASDAQ:QQQ',
+  ES: 'AMEX:SPY',
+  MNQ: 'NASDAQ:QQQ',
+  YM: 'AMEX:DIA',
+  MYM: 'AMEX:DIA',
+  NAS100: 'NASDAQ:QQQ',
+  US30: 'AMEX:DIA'
 };
 
 const escapeHtml = (value) =>
@@ -734,8 +747,12 @@ const setTvChecklistState = (alertId, item, checked) => {
 
 const countTvChecklistChecks = (state) => tvChecklistFields.filter((field) => state[field]).length;
 
+const resolveTradingViewExternalSymbol = (symbol) => tradingViewExternalSymbolMap[symbol] ?? symbol;
+
+const resolveTradingViewEmbedSymbol = (symbol) => tradingViewEmbedSymbolMap[symbol] ?? resolveTradingViewExternalSymbol(symbol);
+
 const buildTradingViewUrl = (symbol, interval = '5') => {
-  const tvSymbol = tradingViewSymbolMap[symbol] ?? symbol;
+  const tvSymbol = resolveTradingViewExternalSymbol(symbol);
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}&interval=${encodeURIComponent(interval)}`;
 };
 
@@ -2416,7 +2433,7 @@ const openSymbolDetailViewer = (item, deck) => {
   script.src = tradingViewWidgetScriptUrl;
   script.text = JSON.stringify({
     autosize: true,
-    symbol: tradingViewSymbolMap[item.symbol] ?? item.symbol,
+    symbol: resolveTradingViewEmbedSymbol(item.symbol),
     interval: '5',
     timezone: 'America/Chicago',
     theme: 'light',
@@ -2701,7 +2718,7 @@ const renderBoardSpotlightTradingView = (context) => {
   script.src = tradingViewWidgetScriptUrl;
   script.text = JSON.stringify({
     autosize: true,
-    symbol: tradingViewSymbolMap[context.symbol] ?? context.symbol,
+    symbol: resolveTradingViewEmbedSymbol(context.symbol),
     interval: context.interval ?? '5',
     timezone: 'America/Chicago',
     theme: tradingViewThemeForUi(),
@@ -5932,7 +5949,7 @@ const openTradingViewViewer = (context) => {
   script.src = tradingViewWidgetScriptUrl;
   script.text = JSON.stringify({
     autosize: true,
-    symbol: tradingViewSymbolMap[context.symbol] ?? context.symbol,
+    symbol: resolveTradingViewEmbedSymbol(context.symbol),
     interval: context.interval ?? '5',
     timezone: 'America/Chicago',
     theme: 'dark',
