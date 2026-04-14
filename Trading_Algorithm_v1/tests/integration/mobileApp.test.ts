@@ -1,13 +1,23 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type AppContext } from '../../src/app.js';
 
 const contexts: AppContext[] = [];
+const tempDirs: string[] = [];
 
 afterEach(async () => {
   while (contexts.length > 0) {
     const ctx = contexts.pop();
     if (ctx) {
       await ctx.app.close();
+    }
+  }
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) {
+      await fs.rm(dir, { recursive: true, force: true });
     }
   }
 });
@@ -198,6 +208,50 @@ describe('mobile app endpoints', () => {
     expect(typeof payload.alert.entry).toBe('number');
     expect(typeof payload.alert.stopLoss).toBe('number');
     expect(typeof payload.alert.takeProfit).toBe('number');
+  });
+
+  it('falls back to persisted alert snapshots when the live board queue is empty', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mobile-alert-fallback-'));
+    tempDirs.push(tempDir);
+    const reviewStorePath = path.join(tempDir, 'signal-reviews.json');
+    const settingsStorePath = path.join(tempDir, 'signal-monitor.json');
+
+    const warmCtx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalReviewStorePath: reviewStorePath,
+      signalMonitorSettingsStorePath: settingsStorePath
+    });
+    contexts.push(warmCtx);
+
+    const testAlertResponse = await warmCtx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: { symbol: 'NQ' }
+    });
+
+    expect(testAlertResponse.statusCode).toBe(200);
+    const createdAlertId = testAlertResponse.json().alert.alertId;
+    await warmCtx.app.close();
+    contexts.pop();
+
+    const coldCtx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: false,
+      signalReviewStorePath: reviewStorePath,
+      signalMonitorSettingsStorePath: settingsStorePath
+    });
+    contexts.push(coldCtx);
+
+    const response = await coldCtx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=5'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().alerts).toHaveLength(1);
+    expect(response.json().alerts[0].alertId).toBe(createdAlertId);
+    expect(response.json().alerts[0].candidate).toBeTruthy();
   });
 
   it('sends a controlled research experiment notification with a short summary', async () => {

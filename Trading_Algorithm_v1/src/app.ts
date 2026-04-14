@@ -3093,27 +3093,40 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const limitRaw = (request.query as { limit?: string } | undefined)?.limit;
     const parsedLimit = Number.parseInt(limitRaw ?? '30', 10);
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 30;
-    const alerts = signalMonitorService ? signalMonitorService.listAlerts(limit) : [];
-    const enrichedAlerts = await Promise.all(
-      alerts.map(async (alert) => {
-        const review = await signalReviewStore.getReview(alert.alertId);
-        return {
-          ...alert,
-          reviewState: review
-            ? {
-                reviewStatus: review.reviewStatus,
-                acknowledgedAt: review.acknowledgedAt,
-                acknowledgedBy: review.acknowledgedBy,
-                escalationCount: review.escalationCount ?? 0,
-                lastEscalatedAt: review.lastEscalatedAt,
-                reviewedAt: review.reviewedAt,
-                validity: review.validity,
-                outcome: review.outcome
-              }
-            : alert.reviewState
-        };
-      })
-    );
+    const liveAlerts = signalMonitorService ? signalMonitorService.listAlerts(limit) : [];
+    const persistedReviews = (await signalReviewStore.listReviews('ALL', Math.min(limit * 3, 200))).sort((left, right) => {
+      const leftHasSnapshot = Array.isArray(left.alertSnapshot?.chartSnapshot?.bars) && left.alertSnapshot.chartSnapshot.bars.length > 0;
+      const rightHasSnapshot = Array.isArray(right.alertSnapshot?.chartSnapshot?.bars) && right.alertSnapshot.chartSnapshot.bars.length > 0;
+      if (leftHasSnapshot === rightHasSnapshot) {
+        return 0;
+      }
+      return leftHasSnapshot ? -1 : 1;
+    });
+    const reviewByAlertId = new Map(persistedReviews.map((review) => [review.alertId, review]));
+    const mergedAlerts = [
+      ...liveAlerts,
+      ...persistedReviews
+        .map((review) => review.alertSnapshot)
+        .filter((alert) => !liveAlerts.some((liveAlert) => liveAlert.alertId === alert.alertId))
+    ].slice(0, limit);
+    const enrichedAlerts = mergedAlerts.map((alert) => {
+      const review = reviewByAlertId.get(alert.alertId);
+      return {
+        ...alert,
+        reviewState: review
+          ? {
+              reviewStatus: review.reviewStatus,
+              acknowledgedAt: review.acknowledgedAt,
+              acknowledgedBy: review.acknowledgedBy,
+              escalationCount: review.escalationCount ?? 0,
+              lastEscalatedAt: review.lastEscalatedAt,
+              reviewedAt: review.reviewedAt,
+              validity: review.validity,
+              outcome: review.outcome
+            }
+          : alert.reviewState
+      };
+    });
 
     return reply.status(200).send({
       alerts: enrichedAlerts

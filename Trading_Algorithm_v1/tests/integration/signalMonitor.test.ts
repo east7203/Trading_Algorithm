@@ -418,7 +418,8 @@ describe('signal monitor integration', () => {
       path: '/signals/alerts?limit=10'
     });
     expect(alertsResponse.statusCode).toBe(200);
-    expect(alertsResponse.json().alerts.length).toBe(0);
+    expect(alertsResponse.json().alerts.length).toBe(1);
+    expect(alertsResponse.json().alerts[0].chartSnapshot).toBeTruthy();
 
     const paperStatus = await ctx.app.inject({
       method: 'GET',
