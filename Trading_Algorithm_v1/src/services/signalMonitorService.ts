@@ -564,6 +564,52 @@ export class SignalMonitorService {
     return this.alerts.slice(0, Math.max(1, limit));
   }
 
+  buildLiveChartSnapshot(candidate: SetupCandidate): SignalChartSnapshot | undefined {
+    const symbolBars = this.barsBySymbol.get(candidate.symbol) ?? [];
+    const latestBar = symbolBars[symbolBars.length - 1];
+    if (!latestBar) {
+      return undefined;
+    }
+
+    const candles5m = completeCandles(symbolBars, latestBar.timestamp, 5, 40);
+    if (candles5m.length < 4) {
+      return undefined;
+    }
+
+    const settings = this.getSettings();
+    const sessionStart = settings.sessionStartHour * 60 + settings.sessionStartMinute;
+    const sessionEnd = settings.sessionEndHour * 60 + settings.sessionEndMinute;
+    const rangeEnd = sessionStart + settings.nyRangeMinutes;
+    const localNow = getLocalTimeParts(latestBar.timestamp, settings.timezone);
+    const dayScan = takeLast(symbolBars, 12 * 60);
+    const sessionBarsToday = dayScan.filter((bar) => {
+      const local = getLocalTimeParts(bar.timestamp, settings.timezone);
+      return local.dayKey === localNow.dayKey && inWindow(local.minuteOfDay, sessionStart, sessionEnd);
+    });
+    const sessionLevelBars =
+      sessionBarsToday.length > 0 ? sessionBarsToday : takeLast(symbolBars, Math.min(symbolBars.length, 180));
+    if (sessionLevelBars.length === 0) {
+      return undefined;
+    }
+
+    const nyRangeBars = sessionBarsToday.filter((bar) => {
+      const local = getLocalTimeParts(bar.timestamp, settings.timezone);
+      return local.minuteOfDay <= rangeEnd;
+    });
+    const nyRangeSource = nyRangeBars.length > 0 ? nyRangeBars : sessionLevelBars;
+    const liveCandidate: SetupCandidate = {
+      ...candidate,
+      generatedAt: latestBar.timestamp
+    };
+
+    return createChartSnapshot(candles5m, liveCandidate, {
+      high: Math.max(...sessionLevelBars.map((bar) => bar.high)),
+      low: Math.min(...sessionLevelBars.map((bar) => bar.low)),
+      nyRangeHigh: Math.max(...nyRangeSource.map((bar) => bar.high)),
+      nyRangeLow: Math.min(...nyRangeSource.map((bar) => bar.low))
+    });
+  }
+
   async replayHistoricalAlerts(options: {
     since?: string;
     until?: string;

@@ -7108,6 +7108,7 @@ select {
 }
 
 .board-spotlight-tv-frame {
+  display: grid;
   min-height: 244px;
   border: 1px solid var(--rh-border);
   border-radius: 16px;
@@ -7116,9 +7117,20 @@ select {
 }
 
 .board-spotlight-tv-frame .tradingview-widget-container,
-.board-spotlight-tv-frame .tradingview-widget-container__widget {
+.board-spotlight-tv-frame .tradingview-widget-container__widget,
+.board-spotlight-tv-frame .signalChartStack,
+.board-spotlight-tv-frame .signalChartStack svg {
   width: 100%;
   height: 100%;
+}
+
+.board-spotlight-tv-frame .signalChartStack {
+  min-height: 244px;
+}
+
+.board-spotlight-tv-frame .signalChartPlaceholder {
+  min-height: 244px;
+  margin: 0;
 }
 
 .board-spotlight-empty {

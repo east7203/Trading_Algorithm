@@ -210,6 +210,41 @@ describe('mobile app endpoints', () => {
     expect(typeof payload.alert.takeProfit).toBe('number');
   });
 
+  it('serves a live futures confirm chart snapshot for board alerts', async () => {
+    const ctx = withApp();
+
+    const testAlertResponse = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: { symbol: 'NQ' }
+    });
+
+    expect(testAlertResponse.statusCode).toBe(200);
+    const alert = testAlertResponse.json().alert;
+
+    const response = await ctx.app.inject({
+      method: 'GET',
+      path:
+        `/signals/chart/live?alertId=${encodeURIComponent(alert.alertId)}`
+        + `&symbol=${encodeURIComponent(alert.symbol)}`
+        + `&side=${encodeURIComponent(alert.side)}`
+        + `&setupType=${encodeURIComponent(alert.setupType)}`
+        + `&entry=${encodeURIComponent(String(alert.entry))}`
+        + `&stopLoss=${encodeURIComponent(String(alert.stopLoss))}`
+        + `&takeProfit=${encodeURIComponent(String(alert.takeProfit))}`
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(['live', 'saved', 'unavailable']).toContain(payload.source);
+    if (payload.snapshot) {
+      expect(payload.snapshot.symbol).toBe('NQ');
+      expect(payload.snapshot.timeframe).toBe('5m');
+      expect(Array.isArray(payload.snapshot.bars)).toBe(true);
+      expect(payload.snapshot.bars.length).toBeGreaterThan(0);
+    }
+  });
+
   it('falls back to persisted alert snapshots when the live board queue is empty', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mobile-alert-fallback-'));
     tempDirs.push(tempDir);

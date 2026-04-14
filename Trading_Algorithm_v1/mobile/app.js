@@ -149,6 +149,7 @@ const boardSpotlightTakeProfitEl = document.getElementById('boardSpotlightTakePr
 const boardSpotlightRrEl = document.getElementById('boardSpotlightRr');
 const boardSpotlightSnapshotEl = document.getElementById('boardSpotlightSnapshot');
 const boardSpotlightTradingViewFrameEl = document.getElementById('boardSpotlightTradingViewFrame');
+const boardSpotlightConfirmModeEl = document.getElementById('boardSpotlightConfirmMode');
 const boardSpotlightTradingViewBtn = document.getElementById('boardSpotlightTradingView');
 const boardSpotlightReviewBtn = document.getElementById('boardSpotlightReview');
 const reviewPendingStatEl = document.getElementById('reviewPendingStat');
@@ -440,6 +441,7 @@ let tradingViewViewerBound = false;
 let tradingViewViewerContext = null;
 let boardSpotlightContext = null;
 let boardSpotlightTradingViewKey = null;
+let boardSpotlightTradingViewRequestId = 0;
 
 const pullRefreshGesture = {
   active: false,
@@ -2722,66 +2724,115 @@ const buildSignalVisualContext = (alert, overrides = {}) => ({
   ...overrides
 });
 
+const buildBoardSpotlightLiveChartPath = (context) => {
+  const entry = context?.candidate?.entry;
+  const stopLoss = context?.candidate?.stopLoss;
+  const takeProfit = context?.candidate?.takeProfit?.[0] ?? context?.snapshot?.levels?.takeProfit;
+  if (
+    !context?.symbol
+    || !context?.side
+    || !Number.isFinite(entry)
+    || !Number.isFinite(stopLoss)
+    || !Number.isFinite(takeProfit)
+  ) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    alertId: context.alertId ?? '',
+    symbol: context.symbol,
+    side: context.side,
+    setupType: context.setupType ?? 'NY_BREAK_RETEST_MOMENTUM',
+    entry: String(entry),
+    stopLoss: String(stopLoss),
+    takeProfit: String(takeProfit)
+  });
+  return `/signals/chart/live?${params.toString()}`;
+};
+
 const tradingViewThemeForUi = () => (document.documentElement.dataset.theme === 'midnight' ? 'dark' : 'light');
 
-const renderBoardSpotlightTradingView = (context) => {
+const setBoardSpotlightConfirmMode = (text) => {
+  if (boardSpotlightConfirmModeEl) {
+    boardSpotlightConfirmModeEl.textContent = text;
+  }
+};
+
+const renderBoardSpotlightTradingView = async (context) => {
   if (!boardSpotlightTradingViewFrameEl) {
     return;
   }
 
   const nextKey = context
-    ? `${context.alertId}:${context.symbol}:${context.interval}:${tradingViewThemeForUi()}`
+    ? [
+        context.alertId,
+        context.symbol,
+        context.interval,
+        context.side,
+        context.candidate?.entry,
+        context.candidate?.stopLoss,
+        context.candidate?.takeProfit?.[0]
+      ].join(':')
     : 'empty';
   if (boardSpotlightTradingViewKey === nextKey) {
     return;
   }
   boardSpotlightTradingViewKey = nextKey;
+  const requestId = ++boardSpotlightTradingViewRequestId;
 
   if (!context?.symbol) {
+    setBoardSpotlightConfirmMode('Live 5m chart');
     boardSpotlightTradingViewFrameEl.innerHTML = `
       <div class="board-spotlight-empty">
-        <p class="board-spotlight-empty-title">TradingView preview waiting</p>
-        <p class="board-spotlight-empty-note">Once a trade alert is active, the lead idea will load a live 5m chart here.</p>
+        <p class="board-spotlight-empty-title">Futures confirm waiting</p>
+        <p class="board-spotlight-empty-note">Once a trade alert is active, the lead idea will load a live 5m futures chart here.</p>
       </div>
     `;
     return;
   }
 
-  boardSpotlightTradingViewFrameEl.innerHTML = `
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-    </div>
-  `;
-  const script = document.createElement('script');
-  script.type = 'text/javascript';
-  script.async = true;
-  script.src = tradingViewWidgetScriptUrl;
-  script.text = JSON.stringify({
-    autosize: true,
-    symbol: resolveTradingViewEmbedSymbol(context.symbol),
-    interval: context.interval ?? '5',
-    timezone: 'America/Chicago',
-    theme: tradingViewThemeForUi(),
-    style: '1',
-    locale: 'en',
-    enable_publishing: false,
-    allow_symbol_change: false,
-    hide_top_toolbar: false,
-    hide_legend: false,
-    save_image: false,
-    calendar: false,
-    details: false,
-    support_host: 'https://www.tradingview.com'
-  });
-  script.onerror = () => {
+  setBoardSpotlightConfirmMode('Live 5m chart');
+  boardSpotlightTradingViewFrameEl.innerHTML = '<div class="signalChartPlaceholder">Loading live futures chart...</div>';
+
+  let liveSnapshot = null;
+  const liveChartPath = buildBoardSpotlightLiveChartPath(context);
+  if (liveChartPath) {
+    try {
+      const payload = await apiFetch(liveChartPath);
+      if (requestId !== boardSpotlightTradingViewRequestId) {
+        return;
+      }
+      liveSnapshot = payload?.snapshot ?? null;
+      if (payload?.source === 'saved' || (!liveSnapshot && payload?.source !== 'live')) {
+        setBoardSpotlightConfirmMode('Saved 5m chart');
+      }
+    } catch {
+      if (requestId !== boardSpotlightTradingViewRequestId) {
+        return;
+      }
+      setBoardSpotlightConfirmMode('Saved 5m chart');
+    }
+  }
+
+  if (requestId !== boardSpotlightTradingViewRequestId) {
+    return;
+  }
+
+  const confirmSnapshot = liveSnapshot ?? context.snapshot ?? null;
+  if (!confirmSnapshot?.bars?.length) {
     boardSpotlightTradingViewFrameEl.innerHTML = `
       <div class="board-spotlight-empty">
-        <p class="board-spotlight-empty-title">TradingView preview did not load</p>
-        <p class="board-spotlight-empty-note">Use the button above to open the full chart directly.</p>
+        <p class="board-spotlight-empty-title">Confirm chart unavailable</p>
+        <p class="board-spotlight-empty-note">Open the full futures chart in TradingView for the live view.</p>
       </div>
     `;
-  };
-  boardSpotlightTradingViewFrameEl.querySelector('.tradingview-widget-container')?.appendChild(script);
+    return;
+  }
+
+  boardSpotlightTradingViewFrameEl.innerHTML = renderReplayTradeBoxChartMarkup(confirmSnapshot, context.candidate, {
+    expanded: true,
+    minimal: true
+  });
 };
 
 const renderBoardSpotlight = (alert) => {
@@ -2810,7 +2861,7 @@ const renderBoardSpotlight = (alert) => {
     boardSpotlightRrEl.textContent = '--';
     boardSpotlightSnapshotEl.innerHTML = '<div class="signalChartPlaceholder">Snapshot pending</div>';
     configureExpandableChart(boardSpotlightSnapshotEl, null);
-    renderBoardSpotlightTradingView(null);
+    void renderBoardSpotlightTradingView(null);
     if (boardSpotlightTradingViewBtn) {
       boardSpotlightTradingViewBtn.disabled = true;
     }
@@ -2863,7 +2914,7 @@ const renderBoardSpotlight = (alert) => {
     `;
     configureExpandableChart(boardSpotlightSnapshotEl, null);
   }
-  renderBoardSpotlightTradingView(boardSpotlightContext);
+  void renderBoardSpotlightTradingView(boardSpotlightContext);
   if (boardSpotlightTradingViewBtn) {
     boardSpotlightTradingViewBtn.disabled = false;
   }
@@ -3768,7 +3819,7 @@ const applyUiPrefs = (prefs) => {
   densityPresetEl.value = prefs.density;
   textScaleEl.value = String(prefs.textScale);
   reduceMotionEl.checked = prefs.reduceMotion;
-  renderBoardSpotlightTradingView(boardSpotlightContext);
+  void renderBoardSpotlightTradingView(boardSpotlightContext);
 };
 
 const setStatus = (text, isError = false) => {
@@ -9625,7 +9676,11 @@ const bootstrap = async () => {
     if (!boardSpotlightContext) {
       return;
     }
-    openTradingViewViewer(boardSpotlightContext);
+    window.open(
+      buildTradingViewUrl(boardSpotlightContext.symbol, boardSpotlightContext.interval ?? '5'),
+      '_blank',
+      'noopener,noreferrer'
+    );
   });
   boardSpotlightReviewBtn?.addEventListener('click', () => {
     if (!boardSpotlightContext?.alertId) {

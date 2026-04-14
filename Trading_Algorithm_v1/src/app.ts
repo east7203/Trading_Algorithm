@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { getCmeEquitySessionState, type CmeEquitySessionState } from './domain/cmeEquityHours.js';
 import { generateSetupCandidates } from './domain/setupDetectors.js';
-import type { NewsEvent, SignalAlert, SignalReviewEntry, SignalReviewOutcome, SymbolCode } from './domain/types.js';
+import type { NewsEvent, SetupCandidate, SignalAlert, SignalReviewEntry, SignalReviewOutcome, SymbolCode } from './domain/types.js';
 import { rankCandidates } from './services/ranker.js';
 import { evaluateRisk } from './services/riskEngine.js';
 import { ExecutionService } from './services/executionService.js';
@@ -3133,6 +3133,88 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     return reply.status(200).send({
       alerts: enrichedAlerts
+    });
+  });
+
+  app.get('/signals/chart/live', async (request, reply) => {
+    const query = (request.query as {
+      alertId?: string;
+      symbol?: string;
+      side?: string;
+      setupType?: string;
+      entry?: string;
+      stopLoss?: string;
+      takeProfit?: string;
+    } | undefined) ?? {};
+
+    const knownSymbols = new Set<SymbolCode>(['NQ', 'ES', 'YM', 'MNQ', 'MYM', 'NAS100', 'US30']);
+    const knownSides = new Set(['LONG', 'SHORT']);
+    const knownSetupTypes = new Set([
+      'LIQUIDITY_SWEEP_MSS_FVG_CONTINUATION',
+      'LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES',
+      'DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION',
+      'NY_BREAK_RETEST_MOMENTUM',
+      'WERLEIN_FOREVER_MODEL',
+      'AUTONOMOUS_FUTURES_DAYTRADER'
+    ]);
+    const symbol = (query.symbol ?? '').toUpperCase() as SymbolCode;
+    const side = (query.side ?? '').toUpperCase();
+    const setupType = (query.setupType ?? '').toUpperCase();
+    const entry = Number(query.entry);
+    const stopLoss = Number(query.stopLoss);
+    const takeProfit = Number(query.takeProfit);
+
+    if (!knownSymbols.has(symbol)) {
+      return reply.status(400).send({ message: 'Valid symbol is required' });
+    }
+    if (!knownSides.has(side)) {
+      return reply.status(400).send({ message: 'Valid side is required' });
+    }
+    if (!Number.isFinite(entry) || !Number.isFinite(stopLoss) || !Number.isFinite(takeProfit)) {
+      return reply.status(400).send({ message: 'Entry, stop loss, and take profit are required' });
+    }
+
+    let snapshot = signalMonitorService?.buildLiveChartSnapshot({
+      id: 'board-live-chart',
+      setupType: knownSetupTypes.has(setupType) ? setupType as SetupCandidate['setupType'] : 'NY_BREAK_RETEST_MOMENTUM',
+      symbol,
+      session: 'NY',
+      detectionTimeframe: '5m',
+      executionTimeframe: '5m',
+      side: side as SetupCandidate['side'],
+      entry,
+      stopLoss,
+      takeProfit: [takeProfit],
+      baseScore: 0,
+      oneMinuteConfidence: 0,
+      finalScore: 0,
+      eligibility: {
+        passed: true,
+        passReasons: ['board_live_chart'],
+        failReasons: []
+      },
+      metadata: {
+        source: 'board-live-chart'
+      },
+      generatedAt: new Date().toISOString()
+    }) ?? null;
+    let source: 'live' | 'saved' | 'unavailable' = snapshot ? 'live' : 'unavailable';
+
+    if (!snapshot && query.alertId) {
+      const liveAlertSnapshot =
+        signalMonitorService?.listAlerts(100).find((alert) => alert.alertId === query.alertId)?.chartSnapshot ?? null;
+      const savedReviewSnapshot = liveAlertSnapshot
+        ? null
+        : (await signalReviewStore.listReviews('ALL', 200)).find((review) => review.alertId === query.alertId)?.alertSnapshot?.chartSnapshot ?? null;
+      snapshot = liveAlertSnapshot ?? savedReviewSnapshot;
+      if (snapshot) {
+        source = 'saved';
+      }
+    }
+
+    return reply.status(200).send({
+      snapshot,
+      source
     });
   });
 
