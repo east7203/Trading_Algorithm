@@ -404,6 +404,41 @@
               </article>
             </section>
 
+            <section class="board-spotlight">
+              <div class="board-spotlight-copy">
+                <p class="section-kicker board-list-kicker">Lead Alert Visual</p>
+                <h3 id="boardSpotlightTitle">No live trade alert</h3>
+                <p id="boardSpotlightMeta" class="board-spotlight-meta">Waiting for the next qualified setup.</p>
+                <div class="signal-levels board-spotlight-levels">
+                  <span class="level-chip level-chip-entry">Entry <b id="boardSpotlightEntry">--</b></span>
+                  <span class="level-chip level-chip-stop">SL <b id="boardSpotlightStopLoss">--</b></span>
+                  <span class="level-chip level-chip-target">TP1 <b id="boardSpotlightTakeProfit">--</b></span>
+                  <span class="level-chip">R:R <b id="boardSpotlightRr">--</b></span>
+                </div>
+                <p id="boardSpotlightReason" class="board-spotlight-reason">All trade alerts stay queued below. The cleanest current idea will stay pinned here with a visual read.</p>
+                <div class="signal-chart-tools board-spotlight-actions">
+                  <button id="boardSpotlightTradingView" class="chip-btn secondary-btn" type="button">Open TradingView</button>
+                  <button id="boardSpotlightReview" class="chip-btn secondary-btn" type="button">Open Review</button>
+                </div>
+              </div>
+              <div class="board-spotlight-visuals">
+                <article class="board-spotlight-panel">
+                  <div class="board-spotlight-panel-head">
+                    <p class="card-section-label">Trigger Snapshot</p>
+                    <span class="chip chip-neutral">Saved at alert time</span>
+                  </div>
+                  <div id="boardSpotlightSnapshot" class="signalChart board-spotlight-chart"></div>
+                </article>
+                <article class="board-spotlight-panel">
+                  <div class="board-spotlight-panel-head">
+                    <p class="card-section-label">TradingView Confirm</p>
+                    <span class="chip chip-neutral">Live 5m chart</span>
+                  </div>
+                  <div id="boardSpotlightTradingViewFrame" class="board-spotlight-tv-frame"></div>
+                </article>
+              </div>
+            </section>
+
             <section class="signal-toolbar board-toolbar">
               <div class="filter-row">
                 <div class="segmented-control" id="signalStatusFilters">

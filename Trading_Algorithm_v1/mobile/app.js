@@ -125,6 +125,17 @@ const signalLeadWhyEl = document.getElementById('signalLeadWhy');
 const signalReadyBlockedEl = document.getElementById('signalReadyBlocked');
 const signalLeadSymbolEl = document.getElementById('signalLeadSymbol');
 const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
+const boardSpotlightTitleEl = document.getElementById('boardSpotlightTitle');
+const boardSpotlightMetaEl = document.getElementById('boardSpotlightMeta');
+const boardSpotlightReasonEl = document.getElementById('boardSpotlightReason');
+const boardSpotlightEntryEl = document.getElementById('boardSpotlightEntry');
+const boardSpotlightStopLossEl = document.getElementById('boardSpotlightStopLoss');
+const boardSpotlightTakeProfitEl = document.getElementById('boardSpotlightTakeProfit');
+const boardSpotlightRrEl = document.getElementById('boardSpotlightRr');
+const boardSpotlightSnapshotEl = document.getElementById('boardSpotlightSnapshot');
+const boardSpotlightTradingViewFrameEl = document.getElementById('boardSpotlightTradingViewFrame');
+const boardSpotlightTradingViewBtn = document.getElementById('boardSpotlightTradingView');
+const boardSpotlightReviewBtn = document.getElementById('boardSpotlightReview');
 const reviewPendingStatEl = document.getElementById('reviewPendingStat');
 const reviewSummaryChipEl = document.getElementById('reviewSummaryChip');
 const reviewPendingQueueChipEl = document.getElementById('reviewPendingQueueChip');
@@ -412,6 +423,8 @@ let chartLightboxListenersBound = false;
 const chartLightboxContext = new WeakMap();
 let tradingViewViewerBound = false;
 let tradingViewViewerContext = null;
+let boardSpotlightContext = null;
+let boardSpotlightTradingViewKey = null;
 
 const pullRefreshGesture = {
   active: false,
@@ -2636,6 +2649,152 @@ const summarizeSignalNextStep = (alert) => {
     : 'Wait for now and review the chart only.';
 };
 
+const buildSignalVisualContext = (alert, overrides = {}) => ({
+  alertId: alert.alertId,
+  symbol: alert.symbol,
+  interval: alert.chartSnapshot?.timeframe === '5m' ? '5' : alert.chartSnapshot?.timeframe ?? '5',
+  title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
+  meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • confirm before manual execution`,
+  candidate: alert.candidate,
+  setupType: alert.setupType,
+  side: alert.side,
+  snapshot: alert.chartSnapshot,
+  alert,
+  ...overrides
+});
+
+const tradingViewThemeForUi = () => (document.documentElement.dataset.theme === 'midnight' ? 'dark' : 'light');
+
+const renderBoardSpotlightTradingView = (context) => {
+  if (!boardSpotlightTradingViewFrameEl) {
+    return;
+  }
+
+  const nextKey = context
+    ? `${context.alertId}:${context.symbol}:${context.interval}:${tradingViewThemeForUi()}`
+    : 'empty';
+  if (boardSpotlightTradingViewKey === nextKey) {
+    return;
+  }
+  boardSpotlightTradingViewKey = nextKey;
+
+  if (!context?.symbol) {
+    boardSpotlightTradingViewFrameEl.innerHTML = `
+      <div class="board-spotlight-empty">
+        <p class="board-spotlight-empty-title">TradingView preview waiting</p>
+        <p class="board-spotlight-empty-note">Once a trade alert is active, the lead idea will load a live 5m chart here.</p>
+      </div>
+    `;
+    return;
+  }
+
+  boardSpotlightTradingViewFrameEl.innerHTML = `
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+    </div>
+  `;
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.async = true;
+  script.src = tradingViewWidgetScriptUrl;
+  script.text = JSON.stringify({
+    autosize: true,
+    symbol: tradingViewSymbolMap[context.symbol] ?? context.symbol,
+    interval: context.interval ?? '5',
+    timezone: 'America/Chicago',
+    theme: tradingViewThemeForUi(),
+    style: '1',
+    locale: 'en',
+    enable_publishing: false,
+    allow_symbol_change: false,
+    hide_top_toolbar: false,
+    hide_legend: false,
+    save_image: false,
+    calendar: false,
+    details: false,
+    support_host: 'https://www.tradingview.com'
+  });
+  script.onerror = () => {
+    boardSpotlightTradingViewFrameEl.innerHTML = `
+      <div class="board-spotlight-empty">
+        <p class="board-spotlight-empty-title">TradingView preview did not load</p>
+        <p class="board-spotlight-empty-note">Use the button above to open the full chart directly.</p>
+      </div>
+    `;
+  };
+  boardSpotlightTradingViewFrameEl.querySelector('.tradingview-widget-container')?.appendChild(script);
+};
+
+const renderBoardSpotlight = (alert) => {
+  if (
+    !boardSpotlightTitleEl
+    || !boardSpotlightMetaEl
+    || !boardSpotlightReasonEl
+    || !boardSpotlightEntryEl
+    || !boardSpotlightStopLossEl
+    || !boardSpotlightTakeProfitEl
+    || !boardSpotlightRrEl
+    || !boardSpotlightSnapshotEl
+  ) {
+    return;
+  }
+
+  if (!alert) {
+    boardSpotlightContext = null;
+    boardSpotlightTitleEl.textContent = 'No live trade alert';
+    boardSpotlightMetaEl.textContent = 'Waiting for the next qualified setup.';
+    boardSpotlightReasonEl.textContent =
+      'All trade alerts stay queued below. The lead idea will pin here once the board has a clean setup.';
+    boardSpotlightEntryEl.textContent = '--';
+    boardSpotlightStopLossEl.textContent = '--';
+    boardSpotlightTakeProfitEl.textContent = '--';
+    boardSpotlightRrEl.textContent = '--';
+    boardSpotlightSnapshotEl.innerHTML = '<div class="signalChartPlaceholder">Snapshot pending</div>';
+    configureExpandableChart(boardSpotlightSnapshotEl, null);
+    renderBoardSpotlightTradingView(null);
+    if (boardSpotlightTradingViewBtn) {
+      boardSpotlightTradingViewBtn.disabled = true;
+    }
+    if (boardSpotlightReviewBtn) {
+      boardSpotlightReviewBtn.disabled = true;
+    }
+    return;
+  }
+
+  const readiness = alert.riskDecision.allowed ? 'Ready to execute manually' : 'Blocked for now';
+  const blockedReason = alert.riskDecision.allowed
+    ? summarizeSignalNextStep(alert)
+    : `Blocked by ${alert.riskDecision.reasonCodes.map(humanizeRiskReason).join(' • ') || 'guardrails'}`;
+  boardSpotlightContext = buildSignalVisualContext(alert, {
+    meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert • confirm before manual execution`
+  });
+  boardSpotlightTitleEl.textContent = `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`;
+  boardSpotlightMetaEl.textContent = `${fmtDateTimeCompact(alert.detectedAt)} • ${readiness}`;
+  boardSpotlightReasonEl.textContent = `${formatSignalWhy(alert)} • ${blockedReason}`;
+  boardSpotlightEntryEl.textContent = fmtNum(alert.candidate.entry, 2);
+  boardSpotlightStopLossEl.textContent = fmtNum(alert.candidate.stopLoss, 2);
+  boardSpotlightTakeProfitEl.textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
+  boardSpotlightRrEl.textContent = calcRr(
+    alert.candidate.entry,
+    alert.candidate.stopLoss,
+    alert.candidate.takeProfit?.[0]
+  );
+  boardSpotlightSnapshotEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot, { expanded: true });
+  configureExpandableChart(
+    boardSpotlightSnapshotEl,
+    buildSignalVisualContext(alert, {
+      meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert at ${fmtTime(alert.detectedAt)} • swipe down to return`
+    })
+  );
+  renderBoardSpotlightTradingView(boardSpotlightContext);
+  if (boardSpotlightTradingViewBtn) {
+    boardSpotlightTradingViewBtn.disabled = false;
+  }
+  if (boardSpotlightReviewBtn) {
+    boardSpotlightReviewBtn.disabled = false;
+  }
+};
+
 const formatTimeValue = (hour, minute) =>
   `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 
@@ -3532,6 +3691,7 @@ const applyUiPrefs = (prefs) => {
   densityPresetEl.value = prefs.density;
   textScaleEl.value = String(prefs.textScale);
   reduceMotionEl.checked = prefs.reduceMotion;
+  renderBoardSpotlightTradingView(boardSpotlightContext);
 };
 
 const setStatus = (text, isError = false) => {
@@ -7982,6 +8142,7 @@ const renderHero = () => {
       : `Blocked by ${topAlert.riskDecision.reasonCodes.join(' • ') || 'guardrails'}`;
     signalLeadSymbolEl.textContent = `${topAlert.symbol} • ${signalBiasLabel(topAlert)}`;
   }
+  renderBoardSpotlight(topAlert);
 
   const feedState = getFeedStateMeta(diagnostics ?? null);
   heroFeedBadgeEl.textContent = `Feed ${feedState.segment}`;
@@ -8123,7 +8284,7 @@ const loadSignalSettings = async () => {
 
 const loadAlerts = async () => {
   try {
-    const { alerts } = await apiFetch('/signals/alerts?limit=30');
+    const { alerts } = await apiFetch('/signals/alerts?limit=100');
     latestAlerts = alerts ?? [];
     alertsListEl.innerHTML = '';
     await syncSeenAlerts(latestAlerts);
@@ -8155,28 +8316,18 @@ const loadAlerts = async () => {
       );
       node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
+      const signalVisualContext = buildSignalVisualContext(alert, {
+        meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`
+      });
       const signalChartEl = node.querySelector('.signalChart');
       signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
-      configureExpandableChart(
-        signalChartEl,
-        {
-          title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
-          meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
-          snapshot: alert.chartSnapshot,
-          candidate: alert.candidate,
-          alert
-        }
+      configureExpandableChart(signalChartEl, signalVisualContext);
+      hydrateTradingViewChecklist(
+        node,
+        buildSignalVisualContext(alert, {
+          meta: 'Confirm structure, stop placement, and timing before manual execution.'
+        })
       );
-      hydrateTradingViewChecklist(node, {
-        alertId: alert.alertId,
-        symbol: alert.symbol,
-        interval: alert.chartSnapshot?.timeframe === '5m' ? '5' : alert.chartSnapshot?.timeframe ?? '5',
-        title: `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`,
-        meta: 'Confirm structure, stop placement, and timing before manual execution.',
-        candidate: alert.candidate,
-        setupType: alert.setupType,
-        side: alert.side
-      });
       node.querySelector('.signalScore').textContent =
         typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
       node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
@@ -9366,6 +9517,19 @@ const bootstrap = async () => {
       updateSegmentedControls();
       await loadAlerts();
     });
+  });
+  boardSpotlightTradingViewBtn?.addEventListener('click', () => {
+    if (!boardSpotlightContext) {
+      return;
+    }
+    openTradingViewViewer(boardSpotlightContext);
+  });
+  boardSpotlightReviewBtn?.addEventListener('click', () => {
+    if (!boardSpotlightContext?.alertId) {
+      return;
+    }
+    routeToSignalAlert(boardSpotlightContext.alertId, 'learning');
+    setActiveTab('learning');
   });
   updateSegmentedControls();
 
