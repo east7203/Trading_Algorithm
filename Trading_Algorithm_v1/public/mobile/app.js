@@ -2766,7 +2766,8 @@ const renderBoardSpotlight = (alert) => {
     ? summarizeSignalNextStep(alert)
     : `Blocked by ${alert.riskDecision.reasonCodes.map(humanizeRiskReason).join(' • ') || 'guardrails'}`;
   boardSpotlightContext = buildSignalVisualContext(alert, {
-    meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert • confirm before manual execution`
+    meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert • confirm before manual execution`,
+    chartVariant: 'replay-trade-box'
   });
   boardSpotlightTitleEl.textContent = `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`;
   boardSpotlightMetaEl.textContent = `${fmtDateTimeCompact(alert.detectedAt)} • ${readiness}`;
@@ -2779,11 +2780,14 @@ const renderBoardSpotlight = (alert) => {
     alert.candidate.stopLoss,
     alert.candidate.takeProfit?.[0]
   );
-  boardSpotlightSnapshotEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot, { expanded: true });
+  boardSpotlightSnapshotEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
+    expanded: true
+  });
   configureExpandableChart(
     boardSpotlightSnapshotEl,
     buildSignalVisualContext(alert, {
-      meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert at ${fmtTime(alert.detectedAt)} • swipe down to return`
+      meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert at ${fmtTime(alert.detectedAt)} • swipe down to return`,
+      chartVariant: 'replay-trade-box'
     })
   );
   renderBoardSpotlightTradingView(boardSpotlightContext);
@@ -8317,15 +8321,17 @@ const loadAlerts = async () => {
       node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
       const signalVisualContext = buildSignalVisualContext(alert, {
-        meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`
+        meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
+        chartVariant: 'replay-trade-box'
       });
       const signalChartEl = node.querySelector('.signalChart');
-      signalChartEl.innerHTML = renderSignalChartMarkup(alert.chartSnapshot);
+      signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate);
       configureExpandableChart(signalChartEl, signalVisualContext);
       hydrateTradingViewChecklist(
         node,
         buildSignalVisualContext(alert, {
-          meta: 'Confirm structure, stop placement, and timing before manual execution.'
+          meta: 'Confirm structure, stop placement, and timing before manual execution.',
+          chartVariant: 'replay-trade-box'
         })
       );
       node.querySelector('.signalScore').textContent =
