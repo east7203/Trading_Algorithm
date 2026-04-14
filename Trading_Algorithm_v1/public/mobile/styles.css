@@ -7598,6 +7598,15 @@ select {
     padding: 14px;
   }
 
+  .home-direction-grid,
+  .home-brief-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+
   .learning-pattern-head {
     flex-direction: column;
   }
@@ -7605,6 +7614,121 @@ select {
   .learning-pattern-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ---- Home + Board mobile overflow guard ---- */
+.view-home,
+.view-signals {
+  overflow-x: hidden;
+}
+
+.view-home .section-head,
+.view-home .section-subhead,
+.view-signals .section-head,
+.view-signals .section-subhead,
+.board-section-head,
+.board-list-head {
+  flex-wrap: wrap;
+}
+
+.view-home .section-head > *,
+.view-home .section-subhead > *,
+.view-signals .section-head > *,
+.view-signals .section-subhead > *,
+.home-paper-head > *,
+.home-direction-head > *,
+.home-watchlist-head > *,
+.home-watchlist-symbol-row > *,
+.home-watchlist-meta > *,
+.signal-toolbar-meta > *,
+.board-spotlight-panel-head > * {
+  min-width: 0;
+}
+
+.home-paper-head,
+.home-direction-head,
+.home-watchlist-head,
+.home-watchlist-symbol-row,
+.home-watchlist-meta,
+.signal-toolbar-meta,
+.board-spotlight-levels,
+.board-spotlight-actions {
+  flex-wrap: wrap;
+}
+
+.home-watchlist-head > :first-child,
+.home-direction-head > :first-child,
+.board-section-head > div,
+.board-list-head > div {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.home-watchlist-price-block,
+.home-direction-stack {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.home-paper-card,
+.home-direction-card,
+.home-market-panel,
+.home-fold,
+.home-brief-card,
+.home-brief-column,
+.home-why-card,
+.home-snapshot-card,
+.board-workspace,
+.board-toolbar,
+.desk-card,
+.board-spotlight,
+.board-spotlight-copy,
+.board-spotlight-visuals,
+.board-spotlight-panel,
+.board-spotlight-chart,
+.board-spotlight-tv-frame,
+.signal-card {
+  min-width: 0;
+}
+
+.home-paper-balance,
+.home-paper-pnl,
+.home-paper-meta,
+.home-direction-label,
+.home-direction-detail,
+.home-why-copy,
+.home-fold-title,
+.home-brief-summary,
+.home-watchlist-symbol,
+.home-watchlist-setup,
+.home-watchlist-note,
+.home-watchlist-price,
+.home-watchlist-meta,
+.home-snapshot-value,
+.home-snapshot-note,
+.board-section-copy,
+.board-spotlight-meta,
+.board-spotlight-reason,
+.board-spotlight-empty-title,
+.board-spotlight-empty-note {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.view-home .chip,
+.view-home .chip-btn,
+.view-home .micro-pill,
+.view-home .level-chip,
+.view-signals .chip,
+.view-signals .chip-btn,
+.view-signals .level-chip {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.board-spotlight-actions .chip-btn {
+  flex: 1 1 160px;
+  justify-content: center;
 }
 
 /* ---- Reduce motion ---- */
