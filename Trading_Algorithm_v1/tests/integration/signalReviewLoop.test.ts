@@ -368,4 +368,74 @@ describe('signal review loop integration', () => {
     expect(tradeLearningSummary.json().summary.byAutonomyThesis[0].key).toBe('TREND_BREAKOUT_EXPANSION');
     expect(tradeLearningSummary.json().summary.byResearchDirection[0].key).toBe('BULLISH');
   });
+
+  it('keeps manual-engine learning metrics isolated from autonomy replay reviews', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-review-manual-learning-only-'));
+    tempDirs.push(tempDir);
+    const storePath = path.join(tempDir, 'signal-reviews.json');
+    const settingsPath = path.join(tempDir, 'signal-monitor-settings.json');
+    const tradeLearningPath = path.join(tempDir, 'trade-learning.json');
+
+    const ctx = withApp(storePath, settingsPath, tradeLearningPath);
+    await relaxSignalSettings(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    const pendingResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/learning?status=PENDING&limit=10'
+    });
+    const manualReview = pendingResponse.json().cases[0];
+
+    const manualSave = await ctx.app.inject({
+      method: 'POST',
+      path: '/signals/learning',
+      payload: {
+        alertId: manualReview.alertId,
+        validity: 'VALID',
+        outcome: 'WOULD_WIN',
+        notes: 'Manual breakout worked.',
+        reviewedBy: 'qa-reviewer'
+      }
+    });
+    expect(manualSave.statusCode).toBe(200);
+
+    await ctx.signalReviewStore.recordAlert(buildReplayLearningAlert());
+    const autonomySave = await ctx.app.inject({
+      method: 'POST',
+      path: '/signals/learning',
+      payload: {
+        alertId: 'replay-autonomy-learning-alert',
+        validity: 'VALID',
+        outcome: 'WOULD_LOSE',
+        notes: 'Autonomy replay failed.',
+        reviewedBy: 'qa-reviewer'
+      }
+    });
+    expect(autonomySave.statusCode).toBe(200);
+
+    const performance = await ctx.app.inject({
+      method: 'GET',
+      path: '/learning/performance'
+    });
+    expect(performance.statusCode).toBe(200);
+    expect(performance.json().performance.resolvedReviews).toBe(1);
+    expect(performance.json().feedback.manualResolvedReviews).toBe(1);
+    expect(performance.json().performance.bySetup[0].key).toBe('NY_BREAK_RETEST_MOMENTUM');
+
+    const selfLearning = await ctx.app.inject({
+      method: 'GET',
+      path: '/trade-learning/profile'
+    });
+    expect(selfLearning.statusCode).toBe(200);
+    expect(selfLearning.json().selfLearning.signalProfile.resolvedRecords).toBe(1);
+    expect(selfLearning.json().selfLearning.autonomyProfile.resolvedRecords).toBeGreaterThanOrEqual(1);
+  });
 });

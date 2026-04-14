@@ -2,6 +2,7 @@ import type { SetupCandidate, Side, SymbolCode } from '../domain/types.js';
 import type { ResearchTrendDirection } from './marketResearchService.js';
 import type { PaperAutonomyThesis } from './paperAutonomyService.js';
 import type { TradeLearningRecord } from '../stores/tradeLearningStore.js';
+import { isAutonomyTradeLearningRecord, isManualEngineTradeLearningRecord } from '../training/liveLearning.js';
 
 interface OutcomeCounts {
   resolved: number;
@@ -69,6 +70,8 @@ export interface SelfLearningStatus {
   minBucketSamples: number;
   recentWindowDays: number;
   profile: SelfLearningProfile;
+  signalProfile: SelfLearningProfile;
+  autonomyProfile: SelfLearningProfile;
 }
 
 export interface SelfLearningSignalAdjustment {
@@ -257,9 +260,13 @@ export class SelfLearningService {
   private lastRefreshedAt: string | undefined;
   private lastError: string | undefined;
   private profile: SelfLearningProfile;
+  private signalProfile: SelfLearningProfile;
+  private autonomyProfile: SelfLearningProfile;
 
   constructor(private readonly config: SelfLearningConfig) {
     this.profile = emptyProfile(config.recentWindowDays);
+    this.signalProfile = emptyProfile(config.recentWindowDays);
+    this.autonomyProfile = emptyProfile(config.recentWindowDays);
   }
 
   async start(): Promise<void> {
@@ -304,6 +311,8 @@ export class SelfLearningService {
         this.refreshQueued = false;
         const records = await this.config.recordsProvider();
         this.profile = this.buildProfile(records);
+        this.signalProfile = this.buildProfile(records.filter((record) => isManualEngineTradeLearningRecord(record)));
+        this.autonomyProfile = this.buildProfile(records.filter((record) => isAutonomyTradeLearningRecord(record)));
         this.lastRefreshedAt = new Date().toISOString();
         this.lastError = undefined;
       } while (this.refreshQueued);
@@ -329,12 +338,14 @@ export class SelfLearningService {
       minResolvedRecords: this.config.minResolvedRecords,
       minBucketSamples: this.config.minBucketSamples,
       recentWindowDays: this.config.recentWindowDays,
-      profile: structuredClone(this.profile)
+      profile: structuredClone(this.profile),
+      signalProfile: structuredClone(this.signalProfile),
+      autonomyProfile: structuredClone(this.autonomyProfile)
     };
   }
 
   scoreSignalCandidate(candidate: SetupCandidate): SelfLearningSignalAdjustment {
-    const profile = this.profile;
+    const profile = this.signalProfile;
     if (profile.resolvedRecords < this.config.minResolvedRecords) {
       return {
         scoreAdjustment: 0,
@@ -396,7 +407,7 @@ export class SelfLearningService {
     side: Side;
     researchDirection?: ResearchTrendDirection;
   }): SelfLearningAutonomyAdjustment {
-    const profile = this.profile;
+    const profile = this.autonomyProfile;
     if (profile.resolvedRecords < this.config.minResolvedRecords) {
       return {
         scoreAdjustment: 0,

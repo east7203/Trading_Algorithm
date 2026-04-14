@@ -8,6 +8,28 @@ import type {
 import type { TradeLearningRecord } from '../stores/tradeLearningStore.js';
 import type { TrainingExample, TrainingOutcome } from './historicalTrainer.js';
 
+export const isManualEngineTradeLearningRecord = (record: TradeLearningRecord): boolean => {
+  const alertSource = record.alertSnapshot?.source;
+  if (alertSource === 'MANUAL_ENGINE') {
+    return true;
+  }
+  if (alertSource === 'MANUAL_TEST' || alertSource === 'PAPER_AUTONOMY') {
+    return false;
+  }
+  return record.source === 'signal-monitor';
+};
+
+export const isAutonomyTradeLearningRecord = (record: TradeLearningRecord): boolean => {
+  const alertSource = record.alertSnapshot?.source;
+  if (alertSource === 'PAPER_AUTONOMY') {
+    return true;
+  }
+  if (alertSource === 'MANUAL_ENGINE' || alertSource === 'MANUAL_TEST') {
+    return false;
+  }
+  return record.source === 'paper-autonomy' || record.source === 'signal-monitor-autonomous';
+};
+
 export interface LearningFeedbackCounts {
   totalExamples: number;
   marketExamples: number;

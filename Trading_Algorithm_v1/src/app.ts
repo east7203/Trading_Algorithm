@@ -77,6 +77,7 @@ import {
 import { ContinuousTrainingService, type ContinuousTrainingConfig } from './training/continuousTrainingService.js';
 import {
   buildLearningFeedbackDatasetFromTradeRecords,
+  isManualEngineTradeLearningRecord,
   summarizeLearningPerformanceFromTradeRecords,
 } from './training/liveLearning.js';
 import type { OneMinuteBar } from './training/historicalTrainer.js';
@@ -1956,6 +1957,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     await tradeLearningStartPromise;
     return tradeLearningStore.listAllRecords();
   };
+  const listManualEngineTradeLearningRecords = async () =>
+    (await listTradeLearningRecords()).filter((record) => isManualEngineTradeLearningRecord(record));
   const selfLearningService =
     options.selfLearningService === undefined
       ? selfLearningEnabled
@@ -1973,7 +1976,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             ...resolvedContinuousConfig,
             enabled: true,
             feedbackDatasetProvider: async () =>
-              buildLearningFeedbackDatasetFromTradeRecords(await listTradeLearningRecords()),
+              buildLearningFeedbackDatasetFromTradeRecords(await listManualEngineTradeLearningRecords()),
             onRunRecorded: async (run) => {
               if (!run.executed || run.trigger === 'startup') {
                 return;
@@ -2505,7 +2508,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       latestBarTimestamp,
       frozenFeed
     );
-    const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
+    const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listManualEngineTradeLearningRecords());
     const research = marketResearchService ? marketResearchService.status() : null;
     const paper = await syncPaperSessionState();
     const lastAlert = signalMonitorService?.listAlerts(1)[0];
@@ -3238,7 +3241,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.get('/learning/performance', async (_request, reply) => {
     const selfLearning = (await ensureSelfLearningStarted())?.status() ?? null;
-    const records = await listTradeLearningRecords();
+    const records = await listManualEngineTradeLearningRecords();
     const performance = summarizeLearningPerformanceFromTradeRecords(records);
     const feedback = buildLearningFeedbackDatasetFromTradeRecords(records);
     const database = await tradeLearningStore.summary();
@@ -3430,7 +3433,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const reviews = await signalReviewStore.summary();
     const learningCases = buildLearningSummaryPayload(reviews);
     const tradeLearning = await tradeLearningStore.summary();
-    const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listTradeLearningRecords());
+    const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listManualEngineTradeLearningRecords());
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
     const research: MarketResearchStatus | { enabled: false; started: false } = marketResearchService

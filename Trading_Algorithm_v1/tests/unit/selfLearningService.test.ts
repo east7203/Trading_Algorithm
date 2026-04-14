@@ -184,8 +184,105 @@ describe('self learning service', () => {
       side: 'LONG',
       researchDirection: 'BULLISH'
     });
-    expect(autonomyAdjustment.scoreAdjustment).toBeGreaterThan(0);
-    expect(autonomyAdjustment.riskMultiplier).toBeGreaterThan(1);
+    expect(autonomyAdjustment.scoreAdjustment).toBe(0);
+    expect(autonomyAdjustment.summary).toContain('gathering enough resolved trades');
+    service.stop();
+  });
+
+  it('separates manual-engine learning from autonomy learning', async () => {
+    const manualWins = Array.from({ length: 5 }, (_, index) => buildRecord(index + 20));
+    const autonomyLosses = Array.from({ length: 5 }, (_, index) =>
+      buildRecord(index + 40, {
+        source: 'paper-autonomy',
+        alertSnapshot: {
+          alertId: `autonomy-alert-${index}`,
+          symbol: 'NQ',
+          setupType: 'AUTONOMOUS_FUTURES_DAYTRADER',
+          side: 'LONG',
+          detectedAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
+          rankingModelId: 'model-a',
+          source: 'PAPER_AUTONOMY',
+          title: 'Autonomy test alert',
+          summary: 'Autonomy test alert',
+          candidate: {
+            ...buildCandidate(),
+            id: `autonomy-candidate-${index}`,
+            setupType: 'AUTONOMOUS_FUTURES_DAYTRADER'
+          },
+          riskDecision: {
+            allowed: true,
+            finalRiskPct: 0.5,
+            positionSize: 1,
+            reasonCodes: [],
+            blockedByNewsWindow: false,
+            blockedByTradingWindow: false,
+            blockedByPolicy: false,
+            checkedAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString()
+          }
+        },
+        review: {
+          reviewStatus: 'COMPLETED',
+          outcome: 'WOULD_LOSE',
+          effectiveOutcome: 'WOULD_LOSE',
+          effectiveOutcomeSource: 'MANUAL',
+          notes: 'Autonomy thesis failed.'
+        },
+        paperTrade: {
+          paperTradeId: `autonomy-paper-${index}`,
+          status: 'CLOSED',
+          source: 'paper-autonomy',
+          submittedAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
+          expiresAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
+          filledAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
+          filledPrice: 20000,
+          closedAt: new Date(Date.UTC(2026, 3, 2, 14, index + 3, 0)).toISOString(),
+          exitPrice: 19992,
+          exitReason: 'STOP_LOSS',
+          realizedPnl: -100,
+          realizedR: -1,
+          quantity: 1,
+          riskPct: 0.25,
+          riskAmount: 100
+        },
+        autonomy: {
+          thesis: 'TREND_BREAKOUT_EXPANSION',
+          reason: 'Autonomy thesis failed.'
+        },
+        reasoning: {
+          alertSummary: 'Autonomy thesis failed.',
+          reviewNotes: 'Autonomy thesis failed.',
+          passReasons: [],
+          failReasons: ['autonomy thesis failed'],
+          guardrailCodes: [],
+          why: ['autonomy thesis failed']
+        }
+      })
+    );
+
+    const service = new SelfLearningService({
+      enabled: true,
+      refreshIntervalMs: 60_000,
+      minResolvedRecords: 4,
+      minBucketSamples: 3,
+      recentWindowDays: 30,
+      maxReasonBuckets: 6,
+      recordsProvider: async () => [...manualWins, ...autonomyLosses]
+    });
+
+    await service.start();
+
+    const signalAdjustment = service.scoreSignalCandidate(buildCandidate());
+    expect(signalAdjustment.scoreAdjustment).toBeGreaterThan(0);
+
+    const autonomyAdjustment = service.scoreAutonomyIdea({
+      thesis: 'TREND_BREAKOUT_EXPANSION',
+      symbol: 'NQ',
+      side: 'LONG',
+      researchDirection: 'BULLISH'
+    });
+    expect(autonomyAdjustment.scoreAdjustment).toBeLessThan(0);
+    expect(service.status().signalProfile.resolvedRecords).toBe(5);
+    expect(service.status().autonomyProfile.resolvedRecords).toBe(5);
     service.stop();
   });
 });
