@@ -2767,7 +2767,8 @@ const renderBoardSpotlight = (alert) => {
     : `Blocked by ${alert.riskDecision.reasonCodes.map(humanizeRiskReason).join(' • ') || 'guardrails'}`;
   boardSpotlightContext = buildSignalVisualContext(alert, {
     meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert • confirm before manual execution`,
-    chartVariant: 'replay-trade-box'
+    chartVariant: 'replay-trade-box',
+    tradeBoxMinimal: true
   });
   boardSpotlightTitleEl.textContent = `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`;
   boardSpotlightMetaEl.textContent = `${fmtDateTimeCompact(alert.detectedAt)} • ${readiness}`;
@@ -2781,13 +2782,15 @@ const renderBoardSpotlight = (alert) => {
     alert.candidate.takeProfit?.[0]
   );
   boardSpotlightSnapshotEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
-    expanded: true
+    expanded: true,
+    minimal: true
   });
   configureExpandableChart(
     boardSpotlightSnapshotEl,
     buildSignalVisualContext(alert, {
       meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert at ${fmtTime(alert.detectedAt)} • swipe down to return`,
-      chartVariant: 'replay-trade-box'
+      chartVariant: 'replay-trade-box',
+      tradeBoxMinimal: true
     })
   );
   renderBoardSpotlightTradingView(boardSpotlightContext);
@@ -4586,6 +4589,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   }
 
   const expanded = options.expanded === true;
+  const minimal = options.minimal === true;
   const width = expanded ? 440 : 320;
   const height = expanded ? 304 : 236;
   const padding = expanded
@@ -4609,7 +4613,6 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const plotBottom = padding.top + plotHeight;
   const slotWidth = plotWidth / bars.length;
   const bodyWidth = Math.max(5, slotWidth * 0.72);
-  const wickColor = '#d7d55b';
   const upFill = '#25c3b0';
   const downFill = '#ff5c5c';
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
@@ -4731,9 +4734,10 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       const bodyTop = Math.min(openY, closeY);
       const bodyHeight = Math.max(Math.abs(closeY - openY), 2);
       const fill = bar.close >= bar.open ? upFill : downFill;
+      const wickStroke = minimal ? fill : '#d7d55b';
       const opacity = index < tradeStartIndex ? 0.62 : 0.98;
       return `
-        <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${wickColor}" stroke-width="1.25" opacity="${Math.max(0.5, opacity - 0.06)}" />
+        <line x1="${x}" y1="${highY}" x2="${x}" y2="${lowY}" stroke="${wickStroke}" stroke-width="1.25" opacity="${Math.max(0.5, opacity - 0.06)}" />
         <rect x="${x - bodyWidth / 2}" y="${bodyTop}" width="${bodyWidth}" height="${bodyHeight}" rx="1.4" fill="${fill}" opacity="${opacity}" />
       `;
     })
@@ -4747,7 +4751,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const trailStartY = priceToY(bars[tradeStartIndex]?.close ?? entry);
   const trailEndX = candleX(bars.length - 1);
   const trailEndY = priceToY(bars[bars.length - 1]?.close ?? entry);
-  const tradeTrail = `
+  const tradeTrail = minimal ? '' : `
     <polyline
       points="${tradeTrailPoints}"
       fill="none"
@@ -4784,13 +4788,14 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
          L ${tradeStartX} ${entryY}"
       fill="none"
       stroke="${entryDirectionUp ? '#3ad16a' : '#ff6f6f'}"
-      stroke-width="2.1"
+      stroke-width="${minimal ? '1.5' : '2.1'}"
+      stroke-dasharray="${minimal ? '4 5' : '0'}"
       stroke-linecap="round"
       stroke-linejoin="round"
       opacity="0.82"
     />
   `;
-  const entryLabel = `
+  const entryLabel = minimal ? '' : `
     <g>
       <rect
         x="${Math.max(padding.left + 12, tradeStartX - 46)}"
@@ -4814,6 +4819,9 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   `;
 
   const priceTag = (label, price, y, tone) => {
+    if (minimal) {
+      return '';
+    }
     const formattedPrice = fmtNum(price, 2);
     const labelText = `${label} ${formattedPrice}`;
     const widthPx = expanded ? 74 : 64;
@@ -4856,7 +4864,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
     `;
   };
 
-  const trailHeadline = `
+  const trailHeadline = minimal ? '' : `
     <g>
       <rect
         x="${Math.max(padding.left + 14, tradeStartX + 10)}"
@@ -4896,7 +4904,9 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
     </g>
   `;
 
-  const resolutionMarker =
+  const resolutionMarker = minimal
+    ? ''
+    :
     resolutionX !== null
       ? `
         <g>
@@ -4941,7 +4951,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       `
       : '';
 
-  const headlineBadge = `
+  const headlineBadge = minimal ? '' : `
     <g>
       <rect x="${padding.left}" y="${padding.top}" width="${expanded ? 112 : 92}" height="${expanded ? 18 : 16}" rx="8" fill="rgba(8, 12, 20, 0.82)" />
       <text x="${padding.left + (expanded ? 56 : 46)}" y="${padding.top + (expanded ? 12 : 11)}" fill="rgba(236, 242, 248, 0.82)" font-size="${expanded ? '9' : '8'}" font-weight="700" text-anchor="middle">
@@ -5704,7 +5714,10 @@ const openChartLightbox = (chartEl) => {
     chartLightboxMetaEl.textContent = context.meta || chartEl.dataset.chartLightboxMeta || 'Swipe down to return to the desk.';
     const expandedChartMarkup =
       context.chartVariant === 'replay-trade-box'
-        ? renderReplayTradeBoxChartMarkup(context.snapshot, context.candidate, { expanded: true })
+        ? renderReplayTradeBoxChartMarkup(context.snapshot, context.candidate, {
+            expanded: true,
+            minimal: context.tradeBoxMinimal === true
+          })
         : renderSignalChartMarkup(context.snapshot, { expanded: true });
     chartLightboxFrameEl.innerHTML = context.snapshot
       ? `
@@ -8322,16 +8335,20 @@ const loadAlerts = async () => {
       node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
       const signalVisualContext = buildSignalVisualContext(alert, {
         meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
-        chartVariant: 'replay-trade-box'
+        chartVariant: 'replay-trade-box',
+        tradeBoxMinimal: true
       });
       const signalChartEl = node.querySelector('.signalChart');
-      signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate);
+      signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
+        minimal: true
+      });
       configureExpandableChart(signalChartEl, signalVisualContext);
       hydrateTradingViewChecklist(
         node,
         buildSignalVisualContext(alert, {
           meta: 'Confirm structure, stop placement, and timing before manual execution.',
-          chartVariant: 'replay-trade-box'
+          chartVariant: 'replay-trade-box',
+          tradeBoxMinimal: true
         })
       );
       node.querySelector('.signalScore').textContent =
