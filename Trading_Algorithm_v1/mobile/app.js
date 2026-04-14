@@ -29,17 +29,19 @@ const tradingViewExternalSymbolMap = {
   ES: 'CME_MINI:ES1!',
   MNQ: 'CME_MINI:MNQ1!',
   YM: 'CBOT_MINI:YM1!',
-  MYM: 'CBOT_MINI:MYM1!'
+  MYM: 'CBOT_MINI:MYM1!',
+  NAS100: 'CME_MINI:NQ1!',
+  US30: 'CBOT_MINI:YM1!'
 };
 
-const tradingViewEmbedSymbolMap = {
-  NQ: 'NASDAQ:QQQ',
-  ES: 'AMEX:SPY',
-  MNQ: 'NASDAQ:QQQ',
-  YM: 'AMEX:DIA',
-  MYM: 'AMEX:DIA',
-  NAS100: 'NASDAQ:QQQ',
-  US30: 'AMEX:DIA'
+const tradingViewFuturesRootMap = {
+  NQ: 'CME_MINI:NQ',
+  ES: 'CME_MINI:ES',
+  MNQ: 'CME_MINI:MNQ',
+  YM: 'CBOT_MINI:YM',
+  MYM: 'CBOT_MINI:MYM',
+  NAS100: 'CME_MINI:NQ',
+  US30: 'CBOT_MINI:YM'
 };
 
 const escapeHtml = (value) =>
@@ -747,9 +749,47 @@ const setTvChecklistState = (alertId, item, checked) => {
 
 const countTvChecklistChecks = (state) => tvChecklistFields.filter((field) => state[field]).length;
 
+const getQuarterlyFuturesContractCode = (date = new Date()) => {
+  const quarterMonths = [
+    { month: 2, code: 'H' },
+    { month: 5, code: 'M' },
+    { month: 8, code: 'U' },
+    { month: 11, code: 'Z' }
+  ];
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+
+  const thirdFridayUtcDate = (targetYear, targetMonth) => {
+    const firstDay = new Date(Date.UTC(targetYear, targetMonth, 1));
+    const firstDayWeekday = firstDay.getUTCDay();
+    const firstFridayOffset = (5 - firstDayWeekday + 7) % 7;
+    return 1 + firstFridayOffset + 14;
+  };
+
+  for (const contract of quarterMonths) {
+    if (month < contract.month) {
+      return `${contract.code}${year}`;
+    }
+    if (month === contract.month) {
+      const rollDate = thirdFridayUtcDate(year, contract.month);
+      if (date.getUTCDate() < rollDate) {
+        return `${contract.code}${year}`;
+      }
+    }
+  }
+
+  return `H${year + 1}`;
+};
+
 const resolveTradingViewExternalSymbol = (symbol) => tradingViewExternalSymbolMap[symbol] ?? symbol;
 
-const resolveTradingViewEmbedSymbol = (symbol) => tradingViewEmbedSymbolMap[symbol] ?? resolveTradingViewExternalSymbol(symbol);
+const resolveTradingViewEmbedSymbol = (symbol) => {
+  const futuresRoot = tradingViewFuturesRootMap[symbol];
+  if (!futuresRoot) {
+    return resolveTradingViewExternalSymbol(symbol);
+  }
+  return `${futuresRoot}${getQuarterlyFuturesContractCode()}`;
+};
 
 const buildTradingViewUrl = (symbol, interval = '5') => {
   const tvSymbol = resolveTradingViewExternalSymbol(symbol);
