@@ -4858,7 +4858,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const padding = expanded
     ? { top: 16, right: 18, bottom: 18, left: 12 }
     : { top: 14, right: 16, bottom: 16, left: 10 };
-  const bars = snapshot.bars;
+  const sourceBars = snapshot.bars;
   const side = candidate?.side ?? snapshot.side;
   const entry = candidate?.entry ?? snapshot.levels?.entry;
   const stopLoss = candidate?.stopLoss ?? snapshot.levels?.stopLoss;
@@ -4867,6 +4867,29 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
     return renderSignalChartMarkup(snapshot, options);
   }
 
+  const moveMetrics = buildReplayMoveMetrics(snapshot, candidate);
+  const tradeStartIndexRaw = moveMetrics?.tradeStartIndex ?? resolveReplayTradeStartIndex(snapshot, sourceBars);
+  const resolution = moveMetrics?.resolution ?? analyzeReplayResolution(snapshot, candidate);
+  const maxVisibleBars = Math.min(sourceBars.length, expanded ? 12 : 10);
+  const desiredTradeStartSlot = Math.max(1, Math.floor(maxVisibleBars * 0.38));
+  const maxVisibleStart = Math.max(0, sourceBars.length - maxVisibleBars);
+  let visibleStartIndex = Math.max(0, tradeStartIndexRaw - desiredTradeStartSlot);
+  visibleStartIndex = Math.min(visibleStartIndex, maxVisibleStart);
+  if (resolution.hitIndex >= 0 && resolution.hitIndex >= visibleStartIndex + maxVisibleBars - 1) {
+    visibleStartIndex = Math.min(
+      Math.max(0, resolution.hitIndex - (maxVisibleBars - 2)),
+      maxVisibleStart
+    );
+  }
+  const bars = sourceBars.slice(visibleStartIndex, visibleStartIndex + maxVisibleBars);
+  const tradeStartIndex = Math.max(
+    0,
+    Math.min(tradeStartIndexRaw - visibleStartIndex, bars.length - 1)
+  );
+  const visibleResolution =
+    resolution.hitIndex >= visibleStartIndex && resolution.hitIndex < visibleStartIndex + bars.length
+      ? { ...resolution, hitIndex: resolution.hitIndex - visibleStartIndex }
+      : { ...resolution, hitIndex: -1 };
   const allPrices = [...bars.flatMap((bar) => [bar.high, bar.low]), entry, stopLoss, takeProfit];
   const maxPrice = Math.max(...allPrices);
   const minPrice = Math.min(...allPrices);
@@ -4880,14 +4903,11 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const downFill = '#ff5c5c';
   const priceToY = (price) => padding.top + ((maxPrice - price) / range) * plotHeight;
   const candleX = (index) => padding.left + index * slotWidth + slotWidth / 2;
-  const moveMetrics = buildReplayMoveMetrics(snapshot, candidate);
-  const tradeStartIndex = moveMetrics?.tradeStartIndex ?? resolveReplayTradeStartIndex(snapshot, bars);
   const tradeStartX = candleX(tradeStartIndex) - slotWidth / 2;
   const plotRight = width - padding.right;
   const entryY = priceToY(entry);
   const stopY = priceToY(stopLoss);
   const targetY = priceToY(takeProfit);
-  const resolution = moveMetrics?.resolution ?? analyzeReplayResolution(snapshot, candidate);
   const tradeDirectionGood =
     side === 'LONG'
       ? (bars[bars.length - 1]?.close ?? entry) >= entry
@@ -4911,17 +4931,17 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
       ? `${moveMetrics?.lastLabel ?? `Last ${fmtNum(Math.abs(netMove), 2)} pts favorable`} • Best ${fmtNum(favorableMove, 2)}`
       : `${moveMetrics?.lastLabel ?? `Last ${fmtNum(Math.abs(netMove), 2)} pts adverse`} • Worst ${fmtNum(adverseMove, 2)}`;
   const resolutionTone =
-    resolution.outcome === 'TARGET_FIRST'
+    visibleResolution.outcome === 'TARGET_FIRST'
       ? '#52de9d'
-      : resolution.outcome === 'STOP_FIRST'
+      : visibleResolution.outcome === 'STOP_FIRST'
         ? '#ff7c86'
         : 'rgba(244, 248, 251, 0.78)';
   const resolutionX =
-    resolution.hitIndex >= tradeStartIndex ? candleX(resolution.hitIndex) : null;
+    visibleResolution.hitIndex >= tradeStartIndex ? candleX(visibleResolution.hitIndex) : null;
   const resolutionY =
-    resolution.outcome === 'TARGET_FIRST'
+    visibleResolution.outcome === 'TARGET_FIRST'
       ? targetY
-      : resolution.outcome === 'STOP_FIRST'
+      : visibleResolution.outcome === 'STOP_FIRST'
         ? stopY
         : entryY;
   const profitTop = Math.min(entryY, targetY);
@@ -5170,7 +5190,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const resolutionMarker = minimal
     ? ''
     :
-    resolutionX !== null
+    resolutionX !== null && visibleResolution.hitIndex >= 0
       ? `
         <g>
           <circle
@@ -5209,7 +5229,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
             font-size="${expanded ? '7.5' : '6.8'}"
             font-weight="800"
             text-anchor="middle"
-          >${escapeHtml(resolution.outcome === 'TARGET_FIRST' ? 'TARGET FIRST' : resolution.outcome === 'STOP_FIRST' ? 'STOP FIRST' : resolution.outcome === 'AMBIGUOUS' ? 'BOTH SAME BAR' : 'UNRESOLVED')}</text>
+          >${escapeHtml(visibleResolution.outcome === 'TARGET_FIRST' ? 'TARGET FIRST' : visibleResolution.outcome === 'STOP_FIRST' ? 'STOP FIRST' : visibleResolution.outcome === 'AMBIGUOUS' ? 'BOTH SAME BAR' : 'UNRESOLVED')}</text>
         </g>
       `
       : '';
