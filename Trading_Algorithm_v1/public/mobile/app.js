@@ -442,6 +442,7 @@ let tradingViewViewerContext = null;
 let boardSpotlightContext = null;
 let boardSpotlightTradingViewKey = null;
 let boardSpotlightTradingViewRequestId = 0;
+const autoAcknowledgingAlertIds = new Set();
 
 const pullRefreshGesture = {
   active: false,
@@ -4897,7 +4898,9 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const plotBottom = padding.top + plotHeight;
-  const slotWidth = plotWidth / bars.length;
+  const futurePaddingSlots = Math.max(3, Math.round(bars.length * (expanded ? 0.75 : 0.7)));
+  const visibleSlotCount = bars.length + futurePaddingSlots;
+  const slotWidth = plotWidth / visibleSlotCount;
   const bodyWidth = Math.max(5, slotWidth * 0.72);
   const upFill = '#25c3b0';
   const downFill = '#ff5c5c';
@@ -6744,16 +6747,60 @@ const setActiveTab = (tabName) => {
   });
 };
 
+const postAlertAcknowledgement = async (alertId, acknowledgedBy = '') =>
+  apiFetch(`/signals/alerts/${encodeURIComponent(alertId)}/ack`, {
+    method: 'POST',
+    body: JSON.stringify(acknowledgedBy ? { acknowledgedBy } : {})
+  });
+
+const autoAcknowledgeAlerts = async (alerts) => {
+  const candidates = alerts.filter(
+    (alert) => alert?.alertId && !alert.reviewState?.acknowledgedAt && !autoAcknowledgingAlertIds.has(alert.alertId)
+  );
+  if (!candidates.length) {
+    return false;
+  }
+
+  const acknowledgedBy = approvedByInput?.value.trim() || localStorage.getItem(APPROVER_KEY) || 'Board auto-seen';
+  candidates.forEach((alert) => {
+    autoAcknowledgingAlertIds.add(alert.alertId);
+  });
+
+  const results = await Promise.allSettled(
+    candidates.map(async (alert) => {
+      const payload = await postAlertAcknowledgement(alert.alertId, acknowledgedBy);
+      return {
+        alert,
+        review: payload?.review ?? null
+      };
+    })
+  );
+
+  let changed = false;
+  results.forEach((result, index) => {
+    const alert = candidates[index];
+    autoAcknowledgingAlertIds.delete(alert.alertId);
+    if (result.status !== 'fulfilled' || !result.value.review?.acknowledgedAt) {
+      return;
+    }
+
+    alert.reviewState = {
+      ...(alert.reviewState ?? {}),
+      ...result.value.review
+    };
+    changed = true;
+  });
+
+  return changed;
+};
+
 const acknowledgeAlert = async (alertId, buttonEl) => {
-  const acknowledgedBy = approvedByInput.value.trim() || localStorage.getItem(APPROVER_KEY) || '';
+  const acknowledgedBy = approvedByInput?.value.trim() || localStorage.getItem(APPROVER_KEY) || '';
   buttonEl.disabled = true;
   buttonEl.textContent = 'Acknowledging...';
 
   try {
-    await apiFetch(`/signals/alerts/${encodeURIComponent(alertId)}/ack`, {
-      method: 'POST',
-      body: JSON.stringify(acknowledgedBy ? { acknowledgedBy } : {})
-    });
+    await postAlertAcknowledgement(alertId, acknowledgedBy);
     vibrateLight();
     setStatus('Status: alert acknowledged. Repeat reminders are now suppressed for this signal.');
     await Promise.all([loadAlerts(), loadReviews(), loadDiagnostics()]);
@@ -8613,6 +8660,10 @@ const loadAlerts = async () => {
     latestAlerts = alerts ?? [];
     alertsListEl.innerHTML = '';
     await syncSeenAlerts(latestAlerts);
+    const autoAcknowledged = await autoAcknowledgeAlerts(latestAlerts);
+    if (autoAcknowledged) {
+      void Promise.all([loadReviews(), loadDiagnostics()]);
+    }
 
     const filteredAlerts = getFilteredAlerts(latestAlerts);
 

@@ -55,6 +55,8 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Board Signal');
     expect(mobile.body).toContain('Macro Read');
     expect(mobile.body).toContain('symbolDetailViewer');
+    expect(mobile.body).not.toContain('TradingView Checklist');
+    expect(mobile.body).not.toContain('TV checklist 0/5');
     expect(mobile.body).toContain('apple-mobile-web-app-capable');
     expect(mobile.body).toContain('Web App');
     expect(mobile.body).toContain('Install App');
