@@ -1381,8 +1381,8 @@ const formatDeskWindow = (session) => {
   if (!session) {
     return 'Window --';
   }
-  const tzLabel = session.timezone === 'America/New_York' ? 'ET' : session.timezone;
-  return `${formatTimeValue(session.startHour, session.startMinute)}-${formatTimeValue(session.endHour, session.endMinute)} ${tzLabel}`;
+  return formatViewerLocalWindow(session)
+    ?? `${formatTimeValue(session.startHour, session.startMinute)}-${formatTimeValue(session.endHour, session.endMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), session.timezone)}`;
 };
 
 const paperAutonomyThesisLabel = (thesis) => {
@@ -3026,7 +3026,15 @@ const describeDeskRules = (config) => {
     return 'Loading morning rules';
   }
 
-  const timeWindow = `${formatTimeValue(config.sessionStartHour, config.sessionStartMinute)}-${formatTimeValue(config.sessionEndHour, config.sessionEndMinute)} ET`;
+  const timeWindow =
+    formatViewerLocalWindow({
+      timezone: config.timezone ?? 'America/New_York',
+      startHour: config.sessionStartHour,
+      startMinute: config.sessionStartMinute,
+      endHour: config.sessionEndHour,
+      endMinute: config.sessionEndMinute
+    })
+    ?? `${formatTimeValue(config.sessionStartHour, config.sessionStartMinute)}-${formatTimeValue(config.sessionEndHour, config.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), config.timezone ?? 'America/New_York')}`;
   const setupCount = (config.enabledSetups ?? []).length;
   const aPlusMode = config.aPlusOnlyAfterFirstHour ? 'A+ after hour 1' : 'Normal scoring all morning';
   return `${timeWindow} • ${setupCount} setups • ${aPlusMode}`;
@@ -3041,7 +3049,13 @@ const updateSystemSummary = () => {
     ? `${feedState.summary}. ${feedState.detail}`
     : 'Checking desk connection.';
   const rules = signalSettings
-    ? `Morning window ${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ET.`
+    ? `Morning window ${formatViewerLocalWindow({
+        timezone: signalSettings.timezone ?? 'America/New_York',
+        startHour: signalSettings.sessionStartHour,
+        startMinute: signalSettings.sessionStartMinute,
+        endHour: signalSettings.sessionEndHour,
+        endMinute: signalSettings.sessionEndMinute
+      }) ?? `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), signalSettings.timezone ?? 'America/New_York')}`}.`
     : 'Morning rules are loading.';
   const alerts = describeNotificationPreferenceState(notificationPrefs);
   const learning = diagnostics?.training?.enabled
@@ -3308,16 +3322,16 @@ const renderQuietModeState = () => {
   }
 
   const insideWindow = isWithinClockWindow(new Date().toISOString(), window);
-  const tzLabel = window.timezone === 'America/New_York' ? 'ET' : window.timezone;
-  const startText = formatTimeValue(window.startHour, window.startMinute);
-  const endText = formatTimeValue(window.endHour, window.endMinute);
+  const windowLabel =
+    formatViewerLocalWindow(window)
+    ?? `${formatTimeValue(window.startHour, window.startMinute)}-${formatTimeValue(window.endHour, window.endMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), window.timezone)}`;
 
   diagQuietModeEl.dataset.tone = insideWindow ? 'good' : 'warn';
   diagQuietModeEl.textContent = insideWindow ? 'Quiet mode off' : 'Quiet mode on';
   if (diagQuietModeHintEl) {
     diagQuietModeHintEl.textContent = insideWindow
-      ? `Recovery alerts stay normal during the ${startText}-${endText} ${tzLabel} window.`
-      : `Outside the ${startText}-${endText} ${tzLabel} window, recovery alerts stay quiet unless you trigger them manually.`;
+      ? `Recovery alerts stay normal during the ${windowLabel} window.`
+      : `Outside the ${windowLabel} window, recovery alerts stay quiet unless you trigger them manually.`;
   }
 };
 
@@ -3918,6 +3932,131 @@ const fmtDateTimeCompact = (value) => {
     hour: 'numeric',
     minute: '2-digit'
   });
+};
+
+const normalizeTimeRangeLabel = (value) => value.replace(/[\u2009\u202f]/g, ' ').replace(/\s*–\s*/g, '-');
+
+const getLocalTimeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+};
+
+const getTimeZoneShortLabel = (value = new Date().toISOString(), timeZone = getLocalTimeZone()) => {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'short'
+    })
+      .formatToParts(new Date(value))
+      .find((part) => part.type === 'timeZoneName')?.value ?? timeZone;
+  } catch {
+    return timeZone;
+  }
+};
+
+const getZonedDateTimeParts = (value, timeZone) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(new Date(value));
+    const read = (type) => Number(parts.find((part) => part.type === type)?.value);
+    const year = read('year');
+    const month = read('month');
+    const day = read('day');
+    const hour = read('hour');
+    const minute = read('minute');
+    if (![year, month, day, hour, minute].every(Number.isFinite)) {
+      return null;
+    }
+    return { year, month, day, hour, minute };
+  } catch {
+    return null;
+  }
+};
+
+const shiftCalendarDate = (parts, dayDelta) => {
+  const shifted = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + dayDelta));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate()
+  };
+};
+
+const zonedDateTimeToInstant = (timeZone, parts) => {
+  let guess = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+  for (let index = 0; index < 3; index += 1) {
+    const actual = getZonedDateTimeParts(new Date(guess), timeZone);
+    if (!actual) {
+      break;
+    }
+    const desiredUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+    const actualUtc = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute);
+    const diffMinutes = Math.round((desiredUtc - actualUtc) / 60000);
+    if (diffMinutes === 0) {
+      break;
+    }
+    guess += diffMinutes * 60000;
+  }
+  return new Date(guess);
+};
+
+const formatViewerLocalWindow = (windowLike) => {
+  if (!windowLike?.timezone) {
+    return null;
+  }
+
+  const sourceToday = getZonedDateTimeParts(new Date(), windowLike.timezone);
+  if (!sourceToday) {
+    return null;
+  }
+
+  const startParts = {
+    ...sourceToday,
+    hour: windowLike.startHour ?? 0,
+    minute: windowLike.startMinute ?? 0
+  };
+  const startTotalMinutes = (windowLike.startHour ?? 0) * 60 + (windowLike.startMinute ?? 0);
+  const endTotalMinutes = (windowLike.endHour ?? 0) * 60 + (windowLike.endMinute ?? 0);
+  const endDate = endTotalMinutes < startTotalMinutes ? shiftCalendarDate(sourceToday, 1) : sourceToday;
+  const endParts = {
+    ...endDate,
+    hour: windowLike.endHour ?? 0,
+    minute: windowLike.endMinute ?? 0
+  };
+  const startInstant = zonedDateTimeToInstant(windowLike.timezone, startParts);
+  const endInstant = zonedDateTimeToInstant(windowLike.timezone, endParts);
+  const localTimeZone = getLocalTimeZone();
+
+  try {
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      timeZone: localTimeZone,
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+    if (typeof formatter.formatRange === 'function') {
+      return normalizeTimeRangeLabel(formatter.formatRange(startInstant, endInstant));
+    }
+  } catch {
+    // fall through to simple formatting
+  }
+
+  const clockFormatter = new Intl.DateTimeFormat(undefined, {
+    timeZone: localTimeZone,
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  return `${clockFormatter.format(startInstant)}-${clockFormatter.format(endInstant)} ${getTimeZoneShortLabel(startInstant, localTimeZone)}`;
 };
 
 const fmtRelativeMinutes = (value) => {
@@ -8262,9 +8401,23 @@ const renderHero = () => {
   const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
   const blockedCount = latestAlerts.length - readyCount;
 
-  heroWindowEl.textContent = '08:30-10:30 ET';
+  heroWindowEl.textContent = formatViewerLocalWindow({
+    timezone: 'America/New_York',
+    startHour: 8,
+    startMinute: 30,
+    endHour: 10,
+    endMinute: 30
+  }) ?? '08:30-10:30 ET';
   if (signalSettings) {
-    heroWindowEl.textContent = `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ET`;
+    heroWindowEl.textContent =
+      formatViewerLocalWindow({
+        timezone: signalSettings.timezone ?? 'America/New_York',
+        startHour: signalSettings.sessionStartHour,
+        startMinute: signalSettings.sessionStartMinute,
+        endHour: signalSettings.sessionEndHour,
+        endMinute: signalSettings.sessionEndMinute
+      })
+      ?? `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), signalSettings.timezone ?? 'America/New_York')}`;
   }
   heroStackEl.textContent = diagnostics?.notifications?.telegramReady
     ? 'Web Push • Mac • Telegram'
