@@ -3022,19 +3022,18 @@ const describeApiBase = (value) => {
 };
 
 const describeDeskRules = (config) => {
-  if (!config) {
+  const activeWindow = resolveQuietWindow();
+  if (!config && !activeWindow) {
     return 'Loading morning rules';
   }
 
   const timeWindow =
-    formatViewerLocalWindow({
-      timezone: config.timezone ?? 'America/New_York',
-      startHour: config.sessionStartHour,
-      startMinute: config.sessionStartMinute,
-      endHour: config.sessionEndHour,
-      endMinute: config.sessionEndMinute
-    })
-    ?? `${formatTimeValue(config.sessionStartHour, config.sessionStartMinute)}-${formatTimeValue(config.sessionEndHour, config.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), config.timezone ?? 'America/New_York')}`;
+    (activeWindow
+      ? formatViewerLocalWindow(activeWindow)
+      : null)
+    ?? (activeWindow
+      ? `${formatTimeValue(activeWindow.startHour, activeWindow.startMinute)}-${formatTimeValue(activeWindow.endHour, activeWindow.endMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), activeWindow.timezone)}`
+      : `${formatTimeValue(config.sessionStartHour, config.sessionStartMinute)}-${formatTimeValue(config.sessionEndHour, config.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), config.timezone ?? 'America/New_York')}`);
   const setupCount = (config.enabledSetups ?? []).length;
   const aPlusMode = config.aPlusOnlyAfterFirstHour ? 'A+ after hour 1' : 'Normal scoring all morning';
   return `${timeWindow} • ${setupCount} setups • ${aPlusMode}`;
@@ -3048,14 +3047,14 @@ const updateSystemSummary = () => {
   const connection = diagnostics
     ? `${feedState.summary}. ${feedState.detail}`
     : 'Checking desk connection.';
+  const activeWindow = resolveQuietWindow();
   const rules = signalSettings
-    ? `Morning window ${formatViewerLocalWindow({
-        timezone: signalSettings.timezone ?? 'America/New_York',
-        startHour: signalSettings.sessionStartHour,
-        startMinute: signalSettings.sessionStartMinute,
-        endHour: signalSettings.sessionEndHour,
-        endMinute: signalSettings.sessionEndMinute
-      }) ?? `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), signalSettings.timezone ?? 'America/New_York')}`}.`
+    ? `Morning window ${(activeWindow
+        ? formatViewerLocalWindow(activeWindow)
+        : null)
+        ?? (activeWindow
+          ? `${formatTimeValue(activeWindow.startHour, activeWindow.startMinute)}-${formatTimeValue(activeWindow.endHour, activeWindow.endMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), activeWindow.timezone)}`
+          : `${formatTimeValue(signalSettings.sessionStartHour, signalSettings.sessionStartMinute)}-${formatTimeValue(signalSettings.sessionEndHour, signalSettings.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), signalSettings.timezone ?? 'America/New_York')}`)}.`
     : 'Morning rules are loading.';
   const alerts = describeNotificationPreferenceState(notificationPrefs);
   const learning = diagnostics?.training?.enabled
@@ -3292,6 +3291,10 @@ const isWithinClockWindow = (nowIso, window) => {
 const isWithinRiskWindow = (nowIso, riskConfig) => isWithinClockWindow(nowIso, riskConfig?.tradingWindow);
 
 const resolveQuietWindow = () => {
+  if (latestRiskConfig?.config?.tradingWindow) {
+    return latestRiskConfig.config.tradingWindow;
+  }
+
   if (signalSettings) {
     return {
       enabled: true,
@@ -8401,14 +8404,20 @@ const renderHero = () => {
   const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
   const blockedCount = latestAlerts.length - readyCount;
 
-  heroWindowEl.textContent = formatViewerLocalWindow({
-    timezone: 'America/New_York',
-    startHour: 8,
-    startMinute: 30,
-    endHour: 10,
-    endMinute: 30
-  }) ?? '08:30-10:30 ET';
-  if (signalSettings) {
+  const activeWindow = resolveQuietWindow();
+  heroWindowEl.textContent =
+    (activeWindow
+      ? formatViewerLocalWindow(activeWindow)
+      : null)
+    ?? formatViewerLocalWindow({
+      timezone: 'America/New_York',
+      startHour: 8,
+      startMinute: 30,
+      endHour: 10,
+      endMinute: 30
+    })
+    ?? '08:30-10:30 ET';
+  if (signalSettings && !activeWindow) {
     heroWindowEl.textContent =
       formatViewerLocalWindow({
         timezone: signalSettings.timezone ?? 'America/New_York',
