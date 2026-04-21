@@ -2641,6 +2641,74 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.recovery-evidence {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(152, 189, 225, 0.08);
+}
+
+.recovery-evidence-head {
+  display: grid;
+  gap: 4px;
+}
+
+.recovery-evidence-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.recovery-evidence-empty {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.recovery-evidence-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(152, 189, 225, 0.1);
+  background: rgba(8, 18, 29, 0.76);
+  text-decoration: none;
+  color: inherit;
+}
+
+.recovery-evidence-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(152, 189, 225, 0.1);
+  background: rgba(5, 12, 21, 0.88);
+}
+
+.recovery-evidence-body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.recovery-evidence-title,
+.recovery-evidence-meta {
+  margin: 0;
+}
+
+.recovery-evidence-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.recovery-evidence-meta {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .recovery-timeline {
   margin-top: 16px;
   padding-top: 16px;

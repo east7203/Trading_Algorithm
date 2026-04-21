@@ -68,6 +68,7 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Copy Diagnostics Summary');
     expect(mobile.body).toContain('Share / Export History');
     expect(mobile.body).toContain('Last repair action');
+    expect(mobile.body).toContain('Latest Auth Evidence');
     expect(mobile.body).toContain('Recent Security Events');
     expect(mobile.body).toContain('Manual Trade Alerts');
     expect(mobile.body).toContain('Paper Trade Updates');
@@ -103,6 +104,61 @@ describe('mobile app endpoints', () => {
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe('/mobile/?restore=f3ec911&refresh=v30');
+  });
+
+  it('serves IBKR recovery artifact files through app routes', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-artifact-route-'));
+    tempDirs.push(tempDir);
+    const statePath = path.join(tempDir, 'ibkr-reconnect-state.json');
+    const artifactDir = path.join(tempDir, 'artifacts');
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(path.join(artifactDir, 'capture.txt'), 'stuck on auth dialog\n', 'utf8');
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: statePath,
+      ibkrRecoveryArtifactDir: artifactDir,
+      ibkrLoginTrigger: async () => ({
+        ok: false,
+        stderr: `Could not find Second Factor Authentication on :99\nARTIFACT:${path.join(artifactDir, 'capture.txt')}`
+      }),
+      ibkrResendPushTrigger: async () => ({ ok: true }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async () => ({ attempted: 1, delivered: 1, removed: 0 })
+      } as never,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifyGeneric: async () => ({ sent: true })
+      } as never
+    });
+    contexts.push(ctx);
+
+    const trigger = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/login-required',
+      payload: {
+        symbols: ['NQ'],
+        source: 'mobile-artifact-test',
+        reason: 'Artifact route test',
+        fallbackDelaySeconds: 30
+      }
+    });
+    expect(trigger.statusCode).toBe(200);
+
+    const diagnostics = await ctx.app.inject({ method: 'GET', path: '/diagnostics' });
+    expect(diagnostics.statusCode).toBe(200);
+    const artifactFile = diagnostics.json().diagnostics.ibkrRecovery.latestArtifactFiles[0];
+    expect(artifactFile.url).toBe('/ibkr/recovery/artifacts/capture.txt');
+
+    const artifactResponse = await ctx.app.inject({
+      method: 'GET',
+      path: artifactFile.url
+    });
+    expect(artifactResponse.statusCode).toBe(200);
+    expect(artifactResponse.headers['content-type']).toContain('text/plain');
+    expect(artifactResponse.body).toContain('stuck on auth dialog');
   });
 
   it('serves compact ai context with bounded arrays', async () => {

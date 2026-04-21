@@ -144,6 +144,7 @@ interface BuildAppOptions {
   selfLearningService?: SelfLearningService | null;
   ibkrReconnectStateStore?: IbkrReconnectStateStore;
   ibkrReconnectStateStorePath?: string;
+  ibkrRecoveryArtifactDir?: string;
   continuousTrainingEnabled?: boolean;
   continuousTrainingConfig?: Partial<ContinuousTrainingConfig>;
   continuousTrainingService?: ContinuousTrainingService | null;
@@ -283,6 +284,14 @@ interface IbkrLoginTriggerResult {
   artifacts?: string[];
 }
 
+interface IbkrRecoveryArtifactFile {
+  name: string;
+  fileName: string;
+  path: string;
+  url: string;
+  kind: 'image' | 'text' | 'file';
+}
+
 const parseOrThrow = <T>(result: { success: true; data: T } | { success: false; error: unknown }): T => {
   if (!result.success) {
     throw result.error;
@@ -396,6 +405,17 @@ const formatIbkrArtifactSummary = (artifacts: string[]): string | undefined => {
   }
 
   return `Evidence: ${artifacts.slice(0, 2).join(', ')}`;
+};
+
+const ibkrArtifactKindFromName = (fileName: string): IbkrRecoveryArtifactFile['kind'] => {
+  const ext = path.extname(fileName).toLowerCase();
+  if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) {
+    return 'image';
+  }
+  if (['.txt', '.log', '.json'].includes(ext)) {
+    return 'text';
+  }
+  return 'file';
 };
 
 const parseHeaderValue = (value: string | string[] | undefined): string | undefined => {
@@ -1308,6 +1328,19 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const ibkrReconnectStateStore =
     options.ibkrReconnectStateStore ??
     new IbkrReconnectStateStore(resolveIbkrReconnectStateStorePath(options.ibkrReconnectStateStorePath));
+  const ibkrRecoveryArtifactDir = path.resolve(
+    options.ibkrRecoveryArtifactDir ?? process.env.IBKR_CAPTURE_DIR ?? '/opt/ibkr-runtime/logs/ibkr-auth'
+  );
+  const buildIbkrRecoveryArtifactFile = (artifactPath: string): IbkrRecoveryArtifactFile => {
+    const fileName = path.basename(artifactPath);
+    return {
+      name: fileName,
+      fileName,
+      path: artifactPath,
+      url: `/ibkr/recovery/artifacts/${encodeURIComponent(fileName)}`,
+      kind: ibkrArtifactKindFromName(fileName)
+    };
+  };
   const tradeLockerClient = options.tradeLockerClient ?? new InMemoryTradeLockerClient();
   const calendarClient = resolveCalendarClient(options.calendarClient);
   const rankingModelStore = options.rankingModelStore ?? new RankingModelStore(resolveInitialRankingModel(options.rankingModel));
@@ -3102,6 +3135,42 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   const mobileRoot = path.resolve(process.cwd(), 'public', 'mobile');
 
+  app.get('/ibkr/recovery/artifacts/:artifactName', async (request, reply) => {
+    const params = request.params as { artifactName?: string };
+    const rawName = typeof params.artifactName === 'string' ? params.artifactName : '';
+    const artifactName = path.basename(rawName);
+    if (!artifactName || artifactName === '.' || artifactName === '..') {
+      return reply.status(400).send({ error: 'Invalid artifact name.' });
+    }
+
+    const artifactPath = path.join(ibkrRecoveryArtifactDir, artifactName);
+    try {
+      const stats = await fs.stat(artifactPath);
+      if (!stats.isFile()) {
+        return reply.status(404).send({ error: 'Artifact not found.' });
+      }
+
+      const ext = path.extname(artifactName).toLowerCase();
+      const contentType =
+        ext === '.png'
+          ? 'image/png'
+          : ext === '.jpg' || ext === '.jpeg'
+            ? 'image/jpeg'
+            : ext === '.webp'
+              ? 'image/webp'
+              : ext === '.gif'
+                ? 'image/gif'
+                : ext === '.txt' || ext === '.log' || ext === '.json'
+                  ? 'text/plain; charset=utf-8'
+                  : 'application/octet-stream';
+
+      const payload = await fs.readFile(artifactPath);
+      return reply.header('Cache-Control', 'no-store').type(contentType).send(payload);
+    } catch {
+      return reply.status(404).send({ error: 'Artifact not found.' });
+    }
+  });
+
   app.register(fastifyStatic, {
     root: mobileRoot,
     prefix: '/mobile/'
@@ -3624,6 +3693,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       latestArtifacts: [
         ...new Set(ibkrReconnectState.history.flatMap((entry) => entry.artifacts ?? []))
       ].slice(0, 6),
+      latestArtifactFiles: [...new Set(ibkrReconnectState.history.flatMap((entry) => entry.artifacts ?? []))]
+        .slice(0, 6)
+        .map((artifactPath) => buildIbkrRecoveryArtifactFile(artifactPath)),
       history: ibkrReconnectState.history.map((entry) => ({
         kind: entry.kind,
         at: new Date(entry.atMs).toISOString(),

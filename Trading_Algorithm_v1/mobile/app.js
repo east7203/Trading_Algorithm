@@ -340,6 +340,7 @@ const ibkrRetryLoginEl = document.getElementById('ibkrRetryLogin');
 const ibkrResendPushEl = document.getElementById('ibkrResendPush');
 const ibkrWebsiteFallbackEl = document.getElementById('ibkrWebsiteFallback');
 const ibkrRecoveryTimelineEl = document.getElementById('ibkrRecoveryTimeline');
+const ibkrRecoveryEvidenceEl = document.getElementById('ibkrRecoveryEvidence');
 const systemOverviewEl = document.getElementById('systemOverview');
 const apiBaseSummaryEl = document.getElementById('apiBaseSummary');
 const sysGlanceFeedEl = document.getElementById('sysGlanceFeed');
@@ -3386,10 +3387,139 @@ const getLatestRecoveryDetail = (recovery) => {
   return compactRecoveryReason(latestEntry?.detail);
 };
 
+const normalizeRecoveryArtifactFile = (artifact) => {
+  if (!artifact) {
+    return null;
+  }
+
+  if (typeof artifact === 'string') {
+    const fileName = artifact.split('/').pop() || artifact;
+    return {
+      name: fileName,
+      fileName,
+      path: artifact,
+      url: `/ibkr/recovery/artifacts/${encodeURIComponent(fileName)}`,
+      kind: /\.(png|jpe?g|webp|gif)$/i.test(fileName)
+        ? 'image'
+        : /\.(txt|log|json)$/i.test(fileName)
+          ? 'text'
+          : 'file'
+    };
+  }
+
+  if (typeof artifact !== 'object') {
+    return null;
+  }
+
+  const fileName = typeof artifact.fileName === 'string' && artifact.fileName
+    ? artifact.fileName
+    : typeof artifact.name === 'string' && artifact.name
+      ? artifact.name
+      : typeof artifact.path === 'string'
+        ? artifact.path.split('/').pop() || artifact.path
+        : '';
+
+  if (!fileName) {
+    return null;
+  }
+
+  return {
+    name: typeof artifact.name === 'string' && artifact.name ? artifact.name : fileName,
+    fileName,
+    path: typeof artifact.path === 'string' ? artifact.path : fileName,
+    url:
+      typeof artifact.url === 'string' && artifact.url
+        ? artifact.url
+        : `/ibkr/recovery/artifacts/${encodeURIComponent(fileName)}`,
+    kind:
+      artifact.kind === 'image' || artifact.kind === 'text' || artifact.kind === 'file'
+        ? artifact.kind
+        : /\.(png|jpe?g|webp|gif)$/i.test(fileName)
+          ? 'image'
+          : /\.(txt|log|json)$/i.test(fileName)
+            ? 'text'
+            : 'file'
+  };
+};
+
+const getRecoveryArtifactFiles = (recovery) => {
+  const explicitFiles = Array.isArray(recovery?.latestArtifactFiles)
+    ? recovery.latestArtifactFiles.map(normalizeRecoveryArtifactFile).filter(Boolean)
+    : [];
+  const fallbackFiles =
+    explicitFiles.length > 0
+      ? explicitFiles
+      : Array.isArray(recovery?.latestArtifacts)
+        ? recovery.latestArtifacts.map(normalizeRecoveryArtifactFile).filter(Boolean)
+        : [];
+
+  return fallbackFiles
+    .sort((left, right) => {
+      const leftRank = left.kind === 'image' ? 0 : left.kind === 'text' ? 1 : 2;
+      const rightRank = right.kind === 'image' ? 0 : right.kind === 'text' ? 1 : 2;
+      return leftRank - rightRank;
+    })
+    .slice(0, 3);
+};
+
 const isGatewayConnectionIssue = (detail) =>
   /code=502|couldn't connect to tws|socket port|code=1100|connectivity between ibkr and trader workstation has been lost/i.test(
     detail || ''
   );
+
+const renderRecoveryEvidence = (recovery) => {
+  if (!ibkrRecoveryEvidenceEl) {
+    return;
+  }
+
+  ibkrRecoveryEvidenceEl.innerHTML = '';
+  const artifacts = getRecoveryArtifactFiles(recovery);
+
+  if (!artifacts.length) {
+    const empty = document.createElement('p');
+    empty.className = 'recovery-evidence-empty';
+    empty.textContent = 'No live auth captures yet. The next stuck recovery screen will show up here.';
+    ibkrRecoveryEvidenceEl.appendChild(empty);
+    return;
+  }
+
+  artifacts.forEach((artifact) => {
+    const link = document.createElement('a');
+    link.className = 'recovery-evidence-card';
+    link.href = artifact.url;
+    link.target = '_blank';
+    link.rel = 'noreferrer noopener';
+
+    if (artifact.kind === 'image') {
+      const preview = document.createElement('img');
+      preview.className = 'recovery-evidence-preview';
+      preview.src = artifact.url;
+      preview.alt = `IBKR auth capture ${artifact.name}`;
+      preview.loading = 'lazy';
+      link.appendChild(preview);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'recovery-evidence-body';
+
+    const title = document.createElement('p');
+    title.className = 'recovery-evidence-title';
+    title.textContent =
+      artifact.kind === 'image'
+        ? 'Open auth screenshot'
+        : artifact.kind === 'text'
+          ? 'Open auth log'
+          : 'Open recovery artifact';
+
+    const meta = document.createElement('p');
+    meta.className = 'recovery-evidence-meta';
+    meta.textContent = artifact.name;
+
+    body.append(title, meta);
+    link.appendChild(body);
+    ibkrRecoveryEvidenceEl.appendChild(link);
+  });
+};
 
 const renderRecoveryTimeline = (recovery) => {
   if (!ibkrRecoveryTimelineEl) {
@@ -3501,6 +3631,7 @@ const renderStatusRail = () => {
 
   if (!diagnostics) {
     setRecoveryState('warn', 'Checking', 'Waiting for the current IBKR recovery state.');
+    renderRecoveryEvidence(null);
     renderRecoveryTimeline(null);
     return;
   }
@@ -3520,6 +3651,7 @@ const renderStatusRail = () => {
       'Reauth Needed',
       `${lastAttemptText}${latestDetailText} Tap Run Full Recovery first. If the official IBKR phone alert still does not arrive after a few seconds, tap Run Broker Fallback. Only use Last-Resort Website if the broker prompt never shows up.`
     );
+    renderRecoveryEvidence(recovery);
     renderRecoveryTimeline(recovery);
     return;
   }
@@ -3531,11 +3663,13 @@ const renderStatusRail = () => {
       'IBKR API Connected',
       `${connectedText} ${feedState.detail}`
     );
+    renderRecoveryEvidence(recovery);
     renderRecoveryTimeline(recovery);
     return;
   }
 
   setRecoveryState(feedState.tone, feedState.summary, feedState.detail);
+  renderRecoveryEvidence(recovery);
   renderRecoveryTimeline(recovery);
 };
 
