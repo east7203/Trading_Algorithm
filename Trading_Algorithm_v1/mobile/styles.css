@@ -959,7 +959,13 @@ textarea {
   background: var(--good-bg);
 }
 
-.signalState.BLOCKED {
+.signalState.WAIT {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.signalState.BLOCKED,
+.signalState.AVOID {
   color: var(--danger);
   background: var(--danger-bg);
 }
@@ -6905,7 +6911,13 @@ h2, h3 {
   background: var(--rh-green-dim);
 }
 
-.signalState.BLOCKED {
+.signalState.WAIT {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.signalState.BLOCKED,
+.signalState.AVOID {
   color: var(--rh-red);
   background: var(--rh-red-dim);
 }
@@ -7146,6 +7158,20 @@ select {
   margin: 0;
   color: var(--rh-muted);
   line-height: 1.55;
+}
+
+.board-spotlight-action {
+  margin: 0;
+  color: #ffffff;
+  line-height: 1.55;
+  font-weight: 600;
+}
+
+.board-spotlight-legend {
+  margin: -2px 0 0;
+  color: var(--rh-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .board-spotlight-levels {

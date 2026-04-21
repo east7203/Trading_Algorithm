@@ -381,58 +381,60 @@
             <div>
               <p class="section-kicker board-section-kicker">Execution Desk</p>
               <h2>Trade Board</h2>
-              <p class="board-section-copy">Keep the live queue readable, filter fast, and surface the cleanest tradeable setup first.</p>
+              <p class="board-section-copy">See the clearest idea first, know whether to act, and keep the rest of the queue easy to understand.</p>
             </div>
             <span id="signalFilterSummary" class="chip chip-neutral">All signals</span>
           </div>
           <section class="signal-workspace board-workspace">
             <section class="desk-grid">
               <article class="desk-card desk-card-spotlight">
-                <p class="stat-label">Lead Idea</p>
-                <p id="signalLeadIdea" class="desk-value">No live idea yet</p>
-                <p id="signalLeadWhy" class="desk-note">Waiting for opening range structure.</p>
+                <p class="stat-label">Best Current Idea</p>
+                <p id="signalLeadIdea" class="desk-value">No clear trade right now</p>
+                <p id="signalLeadWhy" class="desk-note">The queue is waiting for a cleaner setup.</p>
               </article>
               <article class="desk-card">
-                <p class="stat-label">Ready vs Blocked</p>
+                <p class="stat-label">Ready Now</p>
                 <p id="signalReadyBlocked" class="desk-value">0 / 0</p>
-                <p class="desk-note">Immediate tradeability snapshot.</p>
+                <p class="desk-note">How many ideas are usable versus not ready.</p>
               </article>
               <article class="desk-card">
-                <p class="stat-label">Lead Symbol</p>
+                <p class="stat-label">Lead Market</p>
                 <p id="signalLeadSymbol" class="desk-value">--</p>
-                <p class="desk-note">Highest-ranked idea market.</p>
+                <p class="desk-note">The market currently leading the board.</p>
               </article>
             </section>
 
             <section class="board-spotlight">
               <div class="board-spotlight-copy">
-                <p class="section-kicker board-list-kicker">Lead Alert Visual</p>
-                <h3 id="boardSpotlightTitle">No live trade alert</h3>
-                <p id="boardSpotlightMeta" class="board-spotlight-meta">Waiting for the next qualified setup.</p>
+                <p class="section-kicker board-list-kicker">Simple View</p>
+                <h3 id="boardSpotlightTitle">No clear trade right now</h3>
+                <p id="boardSpotlightMeta" class="board-spotlight-meta">Waiting for the next clean setup.</p>
                 <div class="signal-levels board-spotlight-levels">
                   <span class="level-chip level-chip-entry">Entry <b id="boardSpotlightEntry">--</b></span>
-                  <span class="level-chip level-chip-stop">SL <b id="boardSpotlightStopLoss">--</b></span>
-                  <span class="level-chip level-chip-target">TP1 <b id="boardSpotlightTakeProfit">--</b></span>
+                  <span class="level-chip level-chip-stop">Stop <b id="boardSpotlightStopLoss">--</b></span>
+                  <span class="level-chip level-chip-target">Target <b id="boardSpotlightTakeProfit">--</b></span>
                   <span class="level-chip">R:R <b id="boardSpotlightRr">--</b></span>
                 </div>
-                <p id="boardSpotlightReason" class="board-spotlight-reason">All trade alerts stay queued below. The cleanest current idea will stay pinned here with a visual read.</p>
+                <p id="boardSpotlightReason" class="board-spotlight-reason">The board is watching for an idea that is simple enough to act on safely.</p>
+                <p id="boardSpotlightAction" class="board-spotlight-action">Action: Watch only until a clearer setup appears.</p>
+                <p class="board-spotlight-legend">Green box = target zone. Red box = risk zone.</p>
                 <div class="signal-chart-tools board-spotlight-actions">
-                  <button id="boardSpotlightTradingView" class="chip-btn secondary-btn" type="button">Open TradingView</button>
-                  <button id="boardSpotlightReview" class="chip-btn secondary-btn" type="button">Open Review</button>
+                  <button id="boardSpotlightTradingView" class="chip-btn secondary-btn" type="button">Open Full Chart</button>
+                  <button id="boardSpotlightReview" class="chip-btn secondary-btn" type="button">More Detail</button>
                 </div>
               </div>
               <div class="board-spotlight-visuals">
                 <article class="board-spotlight-panel">
                   <div class="board-spotlight-panel-head">
-                    <p class="card-section-label">Trigger Snapshot</p>
-                    <span class="chip chip-neutral">Saved at alert time</span>
+                    <p class="card-section-label">Chart At Alert Time</p>
+                    <span class="chip chip-neutral">Saved when detected</span>
                   </div>
                   <div id="boardSpotlightSnapshot" class="signalChart board-spotlight-chart"></div>
                 </article>
                 <article class="board-spotlight-panel">
                   <div class="board-spotlight-panel-head">
-                    <p class="card-section-label">Futures Confirm</p>
-                    <span id="boardSpotlightConfirmMode" class="chip chip-neutral">Live 5m chart</span>
+                    <p class="card-section-label">Current 5m View</p>
+                    <span id="boardSpotlightConfirmMode" class="chip chip-neutral">Current chart</span>
                   </div>
                   <div id="boardSpotlightTradingViewFrame" class="board-spotlight-tv-frame"></div>
                 </article>
@@ -444,7 +446,7 @@
                 <div class="segmented-control" id="signalStatusFilters">
                   <button class="segment-btn is-active" type="button" data-status-filter="ALL">All</button>
                   <button class="segment-btn" type="button" data-status-filter="READY">Ready</button>
-                  <button class="segment-btn" type="button" data-status-filter="BLOCKED">Blocked</button>
+                  <button class="segment-btn" type="button" data-status-filter="BLOCKED">Not Ready</button>
                 </div>
                 <div class="segmented-control segmented-control-compact" id="signalSymbolFilters">
                   <button class="segment-btn is-active" type="button" data-symbol-filter="ALL">All Mkts</button>
@@ -460,8 +462,8 @@
           </section>
           <div class="section-subhead board-list-head">
             <div>
-              <p class="section-kicker board-list-kicker">Live Queue</p>
-              <h3>Live Board</h3>
+              <p class="section-kicker board-list-kicker">Signal Queue</p>
+              <h3>Current Ideas</h3>
             </div>
           </div>
           <div id="alertsList" class="stack"></div>
@@ -1449,58 +1451,58 @@
         <p class="signalResearchNote">--</p>
         <div class="signal-guidance">
           <div class="signal-guidance-block">
-            <p class="card-section-label">What It Is</p>
+            <p class="card-section-label">What This Means</p>
             <p class="signalSummary"></p>
           </div>
           <div class="signal-guidance-block">
-            <p class="card-section-label">What To Do Next</p>
+            <p class="card-section-label">Action</p>
             <p class="signalNextStep"></p>
           </div>
         </div>
-        <p class="card-section-label">Trigger Snapshot</p>
+        <p class="card-section-label">Chart At Alert Time</p>
         <div class="signalChart"></div>
         <div class="signal-chart-tools">
-          <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open in TradingView</button>
+          <button class="openTradingViewBtn chip-btn secondary-btn" type="button">Open Full Chart</button>
         </div>
         <div class="signal-levels">
           <span class="level-chip level-chip-entry">Entry <b class="entry"></b></span>
-          <span class="level-chip level-chip-stop">SL <b class="stopLoss"></b></span>
-          <span class="level-chip level-chip-target">TP1 <b class="takeProfitOne"></b></span>
+          <span class="level-chip level-chip-stop">Stop <b class="stopLoss"></b></span>
+          <span class="level-chip level-chip-target">Target <b class="takeProfitOne"></b></span>
         </div>
         <div class="projection-grid">
           <div class="projection-card projection-card-target">
-            <p class="card-section-label">Projected Take Profit</p>
+            <p class="card-section-label">If It Works</p>
             <p class="projection-value signalProjectedTakeProfit">--</p>
             <p class="projection-note signalProjectedTakeProfitNote">--</p>
           </div>
           <div class="projection-card projection-card-stop">
-            <p class="card-section-label">Projected Stop Loss</p>
+            <p class="card-section-label">If It Fails</p>
             <p class="projection-value signalProjectedStopLoss">--</p>
             <p class="projection-note signalProjectedStopLossNote">--</p>
           </div>
         </div>
-        <p class="card-section-label">Quick Read</p>
+        <p class="card-section-label">At A Glance</p>
         <div class="item-meta">
-          <span>Score <b class="signalScore"></b></span>
+          <span>Strength <b class="signalScore"></b></span>
           <span>Risk <b class="signalRisk"></b></span>
         </div>
         <div class="item-meta">
-          <span>Bias <b class="signalBias"></b></span>
-          <span>1m Conf <b class="oneMinuteConfidence"></b></span>
+          <span>Direction <b class="signalBias"></b></span>
+          <span>1m Read <b class="oneMinuteConfidence"></b></span>
         </div>
         <div class="item-meta">
           <span>R:R <b class="rr"></b></span>
           <span class="signalIntentHint"></span>
         </div>
-        <p class="card-section-label">Why It Matters</p>
+        <p class="card-section-label">Why</p>
         <div class="evidence-strip signalEvidence"></div>
         <div class="item-meta item-meta-stack">
           <span class="signalReasons"></span>
           <span class="detectedAt"></span>
         </div>
         <div class="signal-actions">
-          <button class="acknowledgeBtn chip-btn secondary-btn" type="button">Acknowledge</button>
-          <button class="reviewSignalBtn chip-btn secondary-btn" type="button">Review</button>
+          <button class="acknowledgeBtn chip-btn secondary-btn" type="button">Mark Seen</button>
+          <button class="reviewSignalBtn chip-btn secondary-btn" type="button">More Detail</button>
         </div>
       </article>
     </template>

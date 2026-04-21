@@ -143,6 +143,7 @@ const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
 const boardSpotlightTitleEl = document.getElementById('boardSpotlightTitle');
 const boardSpotlightMetaEl = document.getElementById('boardSpotlightMeta');
 const boardSpotlightReasonEl = document.getElementById('boardSpotlightReason');
+const boardSpotlightActionEl = document.getElementById('boardSpotlightAction');
 const boardSpotlightEntryEl = document.getElementById('boardSpotlightEntry');
 const boardSpotlightStopLossEl = document.getElementById('boardSpotlightStopLoss');
 const boardSpotlightTakeProfitEl = document.getElementById('boardSpotlightTakeProfit');
@@ -935,6 +936,53 @@ const humanizeRiskReason = (code) => {
     .split('_')
     .join(' ');
 };
+
+const BOARD_AVOID_REASON_CODES = new Set([
+  'TRADING_WINDOW_CLOSED',
+  'OUTSIDE_ALLOWED_TRADING_WINDOW',
+  'DAILY_LOSS_CAP_REACHED',
+  'SESSION_LOSS_CAP_REACHED',
+  'MAX_CONSECUTIVE_LOSSES_REACHED',
+  'POLICY_GUARD_BLOCKED',
+  'KILL_SWITCH_ACTIVE',
+  'INVALID_STOP_DISTANCE'
+]);
+
+const boardDirectionLabel = (alert, capitalized = false) => {
+  const label = alert?.side === 'SHORT' ? 'short' : 'long';
+  return capitalized ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : label;
+};
+
+const boardDecisionState = (alert) => {
+  if (alert?.riskDecision?.allowed) {
+    return 'READY';
+  }
+
+  const reasonCodes = Array.isArray(alert?.riskDecision?.reasonCodes) ? alert.riskDecision.reasonCodes : [];
+  return reasonCodes.some((code) => BOARD_AVOID_REASON_CODES.has(code)) ? 'AVOID' : 'WAIT';
+};
+
+const boardDecisionLabel = (state) => {
+  const labels = {
+    READY: 'Ready',
+    WAIT: 'Wait',
+    AVOID: 'Avoid'
+  };
+  return labels[state] ?? 'Wait';
+};
+
+const boardPrimaryReason = (alert) => {
+  const primaryCode = alert?.riskDecision?.reasonCodes?.[0];
+  return primaryCode ? humanizeRiskReason(primaryCode) : '';
+};
+
+const boardSentenceCase = (value) =>
+  value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : '';
+
+const buildBoardSpotlightTitle = (alert) =>
+  `${boardDecisionLabel(boardDecisionState(alert))}: ${alert.symbol} ${boardDirectionLabel(alert, true)}`;
+
+const buildBoardSpotlightMeta = (alert) => `Detected ${fmtRelativeMinutes(alert.detectedAt)}`;
 
 const parseEconomicValue = (value) => {
   if (value === null || value === undefined) {
@@ -2688,26 +2736,55 @@ const renderHomeDashboard = () => {
 };
 
 const summarizeSignalSetup = (alert) => {
-  const setup = setupLabel(alert.setupType);
-  if (alert.riskDecision.allowed) {
-    return `${alert.symbol} is showing a ${setup} and it has passed the current rule checks.`;
+  const setup = setupLabel(alert.setupType).toLowerCase();
+  const direction = boardDirectionLabel(alert);
+  const state = boardDecisionState(alert);
+
+  if (state === 'READY') {
+    return `${alert.symbol} ${direction} is the clearest current idea. This is a ${setup}.`;
   }
-  return `${alert.symbol} is shaping a ${setup}, but it is still blocked by one or more guardrails.`;
+
+  if (state === 'WAIT') {
+    return `${alert.symbol} ${direction} is on watch. This ${setup} needs more confirmation first.`;
+  }
+
+  return `${alert.symbol} ${direction} is on the board, but current rules say skip this ${setup} for now.`;
 };
 
 const summarizeSignalNextStep = (alert) => {
-  if (alert.reviewState?.acknowledgedAt) {
-    return 'You already acknowledged this idea. Use the chart to review whether the setup was actually clean.';
+  const state = boardDecisionState(alert);
+  const primaryReason = boardPrimaryReason(alert);
+
+  if (state === 'READY') {
+    return 'Action: Check that price is still near the entry, then decide whether you want to enter manually.';
   }
 
-  if (alert.riskDecision.allowed) {
-    return 'Check the chart, confirm the levels, and decide whether you want to act manually in Tradovate.';
+  if (state === 'WAIT') {
+    return primaryReason
+      ? `Action: Wait. Do not enter yet because ${primaryReason}.`
+      : 'Action: Wait. Let the chart confirm before doing anything.';
   }
 
-  const primaryReason = alert.riskDecision.reasonCodes?.[0];
   return primaryReason
-    ? `Wait for now. Do not enter until ${humanizeRiskReason(primaryReason)}.`
-    : 'Wait for now and review the chart only.';
+    ? `Action: Avoid this setup for now because ${primaryReason}.`
+    : 'Action: Avoid this setup for now.';
+};
+
+const summarizeSignalPlainWhy = (alert) => {
+  const state = boardDecisionState(alert);
+  const primaryReason = boardPrimaryReason(alert);
+
+  if (state === 'READY') {
+    return 'Why: the setup, direction, and risk checks all line up right now.';
+  }
+
+  if (primaryReason) {
+    return `Why: ${boardSentenceCase(primaryReason)}.`;
+  }
+
+  return state === 'WAIT'
+    ? 'Why: one or more checks still need to improve.'
+    : 'Why: a hard rule is blocking this setup right now.';
 };
 
 const hasSavedSignalSnapshot = (alert) => Array.isArray(alert?.chartSnapshot?.bars) && alert.chartSnapshot.bars.length > 0;
@@ -2783,18 +2860,18 @@ const renderBoardSpotlightTradingView = async (context) => {
   const requestId = ++boardSpotlightTradingViewRequestId;
 
   if (!context?.symbol) {
-    setBoardSpotlightConfirmMode('Live 5m chart');
+    setBoardSpotlightConfirmMode('Current chart');
     boardSpotlightTradingViewFrameEl.innerHTML = `
       <div class="board-spotlight-empty">
-        <p class="board-spotlight-empty-title">Futures confirm waiting</p>
-        <p class="board-spotlight-empty-note">Once a trade alert is active, the lead idea will load a live 5m futures chart here.</p>
+        <p class="board-spotlight-empty-title">Current chart waiting</p>
+        <p class="board-spotlight-empty-note">When a trade alert appears, the latest 5m futures chart will show here.</p>
       </div>
     `;
     return;
   }
 
-  setBoardSpotlightConfirmMode('Live 5m chart');
-  boardSpotlightTradingViewFrameEl.innerHTML = '<div class="signalChartPlaceholder">Loading live futures chart...</div>';
+  setBoardSpotlightConfirmMode('Current chart');
+  boardSpotlightTradingViewFrameEl.innerHTML = '<div class="signalChartPlaceholder">Loading current chart...</div>';
 
   let liveSnapshot = null;
   const liveChartPath = buildBoardSpotlightLiveChartPath(context);
@@ -2806,13 +2883,13 @@ const renderBoardSpotlightTradingView = async (context) => {
       }
       liveSnapshot = payload?.snapshot ?? null;
       if (payload?.source === 'saved' || (!liveSnapshot && payload?.source !== 'live')) {
-        setBoardSpotlightConfirmMode('Saved 5m chart');
+        setBoardSpotlightConfirmMode('Saved chart');
       }
     } catch {
       if (requestId !== boardSpotlightTradingViewRequestId) {
         return;
       }
-      setBoardSpotlightConfirmMode('Saved 5m chart');
+      setBoardSpotlightConfirmMode('Saved chart');
     }
   }
 
@@ -2824,8 +2901,8 @@ const renderBoardSpotlightTradingView = async (context) => {
   if (!confirmSnapshot?.bars?.length) {
     boardSpotlightTradingViewFrameEl.innerHTML = `
       <div class="board-spotlight-empty">
-        <p class="board-spotlight-empty-title">Confirm chart unavailable</p>
-        <p class="board-spotlight-empty-note">Open the full futures chart in TradingView for the live view.</p>
+        <p class="board-spotlight-empty-title">Current chart unavailable</p>
+        <p class="board-spotlight-empty-note">Use the full chart button if you want to check the live view directly.</p>
       </div>
     `;
     return;
@@ -2842,6 +2919,7 @@ const renderBoardSpotlight = (alert) => {
     !boardSpotlightTitleEl
     || !boardSpotlightMetaEl
     || !boardSpotlightReasonEl
+    || !boardSpotlightActionEl
     || !boardSpotlightEntryEl
     || !boardSpotlightStopLossEl
     || !boardSpotlightTakeProfitEl
@@ -2853,10 +2931,11 @@ const renderBoardSpotlight = (alert) => {
 
   if (!alert) {
     boardSpotlightContext = null;
-    boardSpotlightTitleEl.textContent = 'No live trade alert';
-    boardSpotlightMetaEl.textContent = 'Waiting for the next qualified setup.';
+    boardSpotlightTitleEl.textContent = 'No clear trade right now';
+    boardSpotlightMetaEl.textContent = 'Waiting for the next clean setup.';
     boardSpotlightReasonEl.textContent =
-      'All trade alerts stay queued below. The lead idea will pin here once the board has a clean setup.';
+      'The board is watching for an idea that is simple enough to act on safely.';
+    boardSpotlightActionEl.textContent = 'Action: Watch only until a clearer setup appears.';
     boardSpotlightEntryEl.textContent = '--';
     boardSpotlightStopLossEl.textContent = '--';
     boardSpotlightTakeProfitEl.textContent = '--';
@@ -2873,19 +2952,17 @@ const renderBoardSpotlight = (alert) => {
     return;
   }
 
-  const readiness = alert.riskDecision.allowed ? 'Ready to execute manually' : 'Blocked for now';
+  const decisionState = boardDecisionState(alert);
   const hasSavedSnapshot = hasSavedSignalSnapshot(alert);
-  const blockedReason = alert.riskDecision.allowed
-    ? summarizeSignalNextStep(alert)
-    : `Blocked by ${alert.riskDecision.reasonCodes.map(humanizeRiskReason).join(' • ') || 'guardrails'}`;
   boardSpotlightContext = buildSignalVisualContext(alert, {
     meta: `${alert.chartSnapshot?.timeframe ?? '5m'} lead alert • confirm before manual execution`,
     chartVariant: 'replay-trade-box',
     tradeBoxMinimal: true
   });
-  boardSpotlightTitleEl.textContent = `${alert.symbol} ${alert.side} • ${setupLabel(alert.setupType)}`;
-  boardSpotlightMetaEl.textContent = `${fmtDateTimeCompact(alert.detectedAt)} • ${readiness}`;
-  boardSpotlightReasonEl.textContent = `${formatSignalWhy(alert)} • ${blockedReason}`;
+  boardSpotlightTitleEl.textContent = buildBoardSpotlightTitle(alert);
+  boardSpotlightMetaEl.textContent = buildBoardSpotlightMeta(alert);
+  boardSpotlightReasonEl.textContent = summarizeSignalPlainWhy(alert);
+  boardSpotlightActionEl.textContent = summarizeSignalNextStep(alert);
   boardSpotlightEntryEl.textContent = fmtNum(alert.candidate.entry, 2);
   boardSpotlightStopLossEl.textContent = fmtNum(alert.candidate.stopLoss, 2);
   boardSpotlightTakeProfitEl.textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
@@ -8636,17 +8713,15 @@ const renderHero = () => {
   if (!topAlert) {
     heroFocusEl.textContent = 'Waiting for structure';
     heroSublineEl.textContent = 'The system is watching for qualified morning setups.';
-    signalLeadIdeaEl.textContent = 'No live idea yet';
-    signalLeadWhyEl.textContent = 'Waiting for opening range structure.';
+    signalLeadIdeaEl.textContent = 'No clear trade right now';
+    signalLeadWhyEl.textContent = 'The queue is waiting for a cleaner setup.';
     signalLeadSymbolEl.textContent = '--';
   } else {
     heroFocusEl.textContent = `${topAlert.symbol} ${topAlert.side} ${topAlert.riskDecision.allowed ? 'ready' : 'watch'}`;
     heroSublineEl.textContent = formatSignalWhy(topAlert);
-    signalLeadIdeaEl.textContent = `${setupLabel(topAlert.setupType)} • ${topAlert.symbol}`;
-    signalLeadWhyEl.textContent = topAlert.riskDecision.allowed
-      ? formatSignalWhy(topAlert)
-      : `Blocked by ${topAlert.riskDecision.reasonCodes.join(' • ') || 'guardrails'}`;
-    signalLeadSymbolEl.textContent = `${topAlert.symbol} • ${signalBiasLabel(topAlert)}`;
+    signalLeadIdeaEl.textContent = buildBoardSpotlightTitle(topAlert);
+    signalLeadWhyEl.textContent = summarizeSignalNextStep(topAlert);
+    signalLeadSymbolEl.textContent = `${topAlert.symbol} • ${boardDirectionLabel(topAlert, true)}`;
   }
   renderBoardSpotlight(topAlert);
 
@@ -8656,10 +8731,15 @@ const renderHero = () => {
   heroLastAlertEl.textContent = diagnostics?.lastAlert
     ? `Last alert ${fmtTime(diagnostics.lastAlert.detectedAt)}`
     : 'No alert yet';
-  signalReadyBlockedEl.textContent = `${readyCount} ready / ${blockedCount} blocked`;
-  signalQueueSummaryEl.textContent = `${filteredAlerts.length} shown • ${readyCount} ready`;
+  signalReadyBlockedEl.textContent = `${readyCount} ready / ${blockedCount} not ready`;
+  signalQueueSummaryEl.textContent = `${filteredAlerts.length} ideas • ${readyCount} ready now`;
 
-  const statusText = signalFilters.status === 'ALL' ? 'All' : signalFilters.status;
+  const statusText =
+    signalFilters.status === 'ALL'
+      ? 'All'
+      : signalFilters.status === 'BLOCKED'
+        ? 'Not ready'
+        : 'Ready';
   const symbolText = signalFilters.symbol === 'ALL' ? 'all markets' : signalFilters.symbol;
   signalFilterSummaryEl.textContent = `${statusText} • ${symbolText}`;
 };
@@ -8815,10 +8895,11 @@ const loadAlerts = async () => {
 
     let focusedNode = null;
     filteredAlerts.forEach((alert) => {
+      const decisionState = boardDecisionState(alert);
       const node = signalTemplate.content.firstElementChild.cloneNode(true);
       node.dataset.alertId = alert.alertId;
-      node.querySelector('.symbol').textContent = `${alert.symbol} ${alert.side}`;
-      node.querySelector('.setupType').textContent = setupLabel(alert.setupType);
+      node.querySelector('.symbol').textContent = `${alert.symbol} ${boardDirectionLabel(alert, true)}`;
+      node.querySelector('.setupType').textContent = `${boardDecisionLabel(decisionState)} • ${boardDirectionLabel(alert, true)} idea`;
       renderResearchAgreement(
         node.querySelector('.engineAgreementRow'),
         node.querySelector('.signalResearchNote'),
@@ -8853,7 +8934,7 @@ const loadAlerts = async () => {
         typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
       node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
         ? `${fmtNum(alert.riskDecision.finalRiskPct, 2)}%`
-        : 'Blocked';
+        : 'Not ready';
       node.querySelector('.entry').textContent = fmtNum(alert.candidate.entry, 2);
       node.querySelector('.stopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
       node.querySelector('.takeProfitOne').textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
@@ -8876,12 +8957,7 @@ const loadAlerts = async () => {
         alert.candidate.stopLoss,
         alert.candidate.takeProfit?.[0]
       );
-      const whySignal = formatSignalWhy(alert);
-      const blockedReason =
-        alert.riskDecision.reasonCodes.length > 0
-          ? `Guardrails: ${alert.riskDecision.reasonCodes.map(humanizeRiskReason).join(' • ')}`
-          : null;
-      node.querySelector('.signalReasons').textContent = blockedReason ? `${whySignal} • ${blockedReason}` : whySignal;
+      node.querySelector('.signalReasons').textContent = summarizeSignalPlainWhy(alert);
       node.querySelector('.signalIntentHint').textContent = alert.executionIntentId
         ? `Approval log ${alert.executionIntentId.slice(0, 8)}`
         : 'Manual entry only';
@@ -8891,13 +8967,8 @@ const loadAlerts = async () => {
       node.querySelector('.detectedAt').textContent = detectedAtLabel;
 
       const statePill = node.querySelector('.signalState');
-      if (alert.reviewState?.acknowledgedAt) {
-        statePill.textContent = 'SEEN';
-        statePill.classList.add('REVIEWED');
-      } else {
-        statePill.textContent = alert.riskDecision.allowed ? 'READY' : 'WAIT';
-        statePill.classList.add(alert.riskDecision.allowed ? 'READY' : 'BLOCKED');
-      }
+      statePill.textContent = boardDecisionLabel(decisionState).toUpperCase();
+      statePill.classList.add(decisionState);
 
       const evidenceEl = node.querySelector('.signalEvidence');
       signalEvidenceTags(alert).forEach((tag) => {
