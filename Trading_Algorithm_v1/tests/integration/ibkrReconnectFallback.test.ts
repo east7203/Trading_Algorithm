@@ -72,8 +72,14 @@ describe('IBKR reconnect fallback notifications', () => {
     const ctx = buildApp({
       operationalReminderEnabled: false,
       ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
-      ibkrLoginTrigger: async () => ({ ok: true }),
-      ibkrResendPushTrigger: async () => ({ ok: true }),
+      ibkrLoginTrigger: async () => ({
+        ok: false,
+        stderr: 'Could not find Second Factor Authentication on :99\nARTIFACT:/tmp/ibkr-login-failure.png'
+      }),
+      ibkrResendPushTrigger: async () => ({
+        ok: true,
+        stdout: 'Triggered fallback controls\nARTIFACT:/tmp/ibkr-auth-dialog.png'
+      }),
       webPushNotificationService: {
         start: async () => {},
         status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
@@ -122,10 +128,18 @@ describe('IBKR reconnect fallback notifications', () => {
       path: '/diagnostics'
     });
     expect(diagnosticsResponse.statusCode).toBe(200);
+    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.latestArtifacts).toEqual([
+      '/tmp/ibkr-login-failure.png',
+      '/tmp/ibkr-auth-dialog.png'
+    ]);
     expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.history).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'RECOVERY_REQUESTED', source: 'manual-phone-retry' }),
-        expect.objectContaining({ kind: 'RECOVERY_ATTEMPT', source: 'manual-phone-retry' })
+        expect.objectContaining({
+          kind: 'RECOVERY_ATTEMPT',
+          source: 'manual-phone-retry',
+          artifacts: ['/tmp/ibkr-login-failure.png', '/tmp/ibkr-auth-dialog.png']
+        })
       ])
     );
   });

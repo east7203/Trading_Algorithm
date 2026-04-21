@@ -24,6 +24,7 @@ export interface IbkrReconnectHistoryEntry {
   source?: string;
   symbols: string[];
   detail?: string;
+  artifacts?: string[];
 }
 
 const defaultIbkrReconnectState = (): IbkrReconnectStateSnapshot => ({
@@ -52,6 +53,18 @@ const normalizeSymbols = (value: unknown): string[] => {
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+};
+
+const normalizeArtifacts = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
 };
 
 const normalizeSource = (value: unknown): string | undefined => {
@@ -90,7 +103,8 @@ const normalizeHistoryEntry = (value: unknown): IbkrReconnectHistoryEntry | null
     atMs: normalizeTimestamp(candidate.atMs),
     source: normalizeSource(candidate.source),
     symbols: normalizeSymbols(candidate.symbols),
-    detail: typeof candidate.detail === 'string' && candidate.detail.trim().length > 0 ? candidate.detail.trim() : undefined
+    detail: typeof candidate.detail === 'string' && candidate.detail.trim().length > 0 ? candidate.detail.trim() : undefined,
+    artifacts: normalizeArtifacts(candidate.artifacts)
   };
 };
 
@@ -133,7 +147,8 @@ export class IbkrReconnectStateStore {
       lastSymbols: [...this.state.lastSymbols],
       history: this.state.history.map((entry) => ({
         ...entry,
-        symbols: [...entry.symbols]
+        symbols: [...entry.symbols],
+        artifacts: [...(entry.artifacts ?? [])]
       }))
     };
   }

@@ -49,6 +49,7 @@ ssh -i "${SSH_KEY}" -p "${SSH_PORT}" "${REMOTE_HOST}" "
   npm ci --include=dev
   npm run build
   chmod +x \
+    scripts/ibkr-capture-auth-state-vps.sh \
     scripts/launch-ibgateway-vps.sh \
     scripts/launch-ibkr-bridge-vps.sh \
     scripts/ibkr-autologin-vps.sh \

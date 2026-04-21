@@ -11,6 +11,7 @@ WINDOW_HEIGHT="${IBKR_WINDOW_HEIGHT:-610}"
 USERNAME_X="${IBKR_USERNAME_FIELD_X:-300}"
 USERNAME_Y="${IBKR_USERNAME_FIELD_Y:-277}"
 LOGIN_ENV_JSON="${IBKR_LOGIN_ENV_JSON:-/opt/ibkr-runtime/run/ibkr-login.json}"
+CAPTURE_SCRIPT="${IBKR_CAPTURE_SCRIPT:-/opt/trading-algorithm/scripts/ibkr-capture-auth-state-vps.sh}"
 
 if [ ! -f "${LOGIN_ENV_JSON}" ]; then
   echo "Missing IBKR login JSON: ${LOGIN_ENV_JSON}" >&2
@@ -108,6 +109,9 @@ for _ in $(seq 1 "${WINDOW_WAIT_SECONDS}"); do
 done
 
 if [ -z "${WINDOW_ID}" ]; then
+  if [ -x "${CAPTURE_SCRIPT}" ]; then
+    "${CAPTURE_SCRIPT}" "${SOURCE}" "autologin-missing-window" || true
+  fi
   echo "Could not find ${WINDOW_NAME} window on ${DISPLAY_ID}" >&2
   exit 1
 fi

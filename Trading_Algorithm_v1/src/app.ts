@@ -280,6 +280,7 @@ interface IbkrLoginTriggerResult {
   reason?: string;
   stdout?: string;
   stderr?: string;
+  artifacts?: string[];
 }
 
 const parseOrThrow = <T>(result: { success: true; data: T } | { success: false; error: unknown }): T => {
@@ -346,6 +347,55 @@ const compactText = (value: string | undefined, maxLength = 180): string | undef
     return trimmed;
   }
   return `${trimmed.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+};
+
+const IBKR_ARTIFACT_PREFIX = 'ARTIFACT:';
+
+const extractIbkrArtifactsFromText = (value: string | undefined): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(IBKR_ARTIFACT_PREFIX))
+    .map((line) => line.slice(IBKR_ARTIFACT_PREFIX.length).trim())
+    .filter((line) => line.length > 0);
+};
+
+const stripIbkrArtifactLines = (value: string | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const stripped = value
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => !line.trimStart().startsWith(IBKR_ARTIFACT_PREFIX))
+    .join('\n')
+    .trim();
+
+  return stripped.length > 0 ? stripped : undefined;
+};
+
+const resolveIbkrArtifacts = (attempt: IbkrLoginTriggerResult): string[] =>
+  [...new Set([
+    ...(attempt.artifacts ?? []),
+    ...extractIbkrArtifactsFromText(attempt.stdout),
+    ...extractIbkrArtifactsFromText(attempt.stderr)
+  ])].slice(0, 6);
+
+const formatIbkrArtifactSummary = (artifacts: string[]): string | undefined => {
+  if (artifacts.length === 0) {
+    return undefined;
+  }
+
+  if (artifacts.length === 1) {
+    return `Evidence: ${artifacts[0]}`;
+  }
+
+  return `Evidence: ${artifacts.slice(0, 2).join(', ')}`;
 };
 
 const parseHeaderValue = (value: string | string[] | undefined): string | undefined => {
@@ -1529,12 +1579,18 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           maxBuffer: 1024 * 1024
         },
         (error, stdout, stderr) => {
+          const artifacts = resolveIbkrArtifacts({
+            ok: false,
+            stdout,
+            stderr
+          });
           if (error) {
             resolve({
               ok: false,
               reason: error.message,
               stdout,
-              stderr
+              stderr,
+              artifacts
             });
             return;
           }
@@ -1542,7 +1598,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           resolve({
             ok: true,
             stdout,
-            stderr
+            stderr,
+            artifacts
           });
         }
       );
@@ -1579,11 +1636,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const canNotifyIbkrRecovery = (source: string): boolean =>
     shouldNotifyIbkrRecovery(source, new Date().toISOString(), riskConfigStore.get().tradingWindow);
   const compactIbkrRecoveryDetail = (value?: string): string | undefined => {
-    if (typeof value !== 'string') {
+    const cleanedValue = stripIbkrArtifactLines(value);
+    if (typeof cleanedValue !== 'string') {
       return undefined;
     }
 
-    const normalized = value.replace(/\s+/g, ' ').trim();
+    const normalized = cleanedValue.replace(/\s+/g, ' ').trim();
     if (!normalized) {
       return undefined;
     }
@@ -1591,8 +1649,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
   };
   const describeIbkrLoginAttempt = (attempt: IbkrLoginTriggerResult): string => {
+    const artifactSummary = formatIbkrArtifactSummary(resolveIbkrArtifacts(attempt));
     if (attempt.ok) {
-      return 'The server submitted the IB Gateway username/password.';
+      return artifactSummary
+        ? `The server submitted the IB Gateway username/password. ${artifactSummary}`
+        : 'The server submitted the IB Gateway username/password.';
     }
     if (attempt.skipped) {
       if (attempt.reason === 'manual-resend-only') {
@@ -1608,23 +1669,32 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
 
     const detail = compactIbkrRecoveryDetail(attempt.stderr || attempt.stdout || attempt.reason);
-    return detail
+    const baseMessage = detail
       ? `The server could not resubmit the IB Gateway login automatically: ${detail}`
       : 'The server could not resubmit the IB Gateway login automatically.';
+    return artifactSummary ? `${baseMessage} ${artifactSummary}` : baseMessage;
   };
   const describeIbkrResendAttempt = (attempt: IbkrLoginTriggerResult): string => {
+    const artifactSummary = formatIbkrArtifactSummary(resolveIbkrArtifacts(attempt));
     if (attempt.ok) {
-      return 'The server ran the built-in broker fallback controls: resend notification, challenge/response, and QR code.';
+      return artifactSummary
+        ? `The server ran the built-in broker fallback controls: resend notification, challenge/response, and QR code. ${artifactSummary}`
+        : 'The server ran the built-in broker fallback controls: resend notification, challenge/response, and QR code.';
     }
     if (attempt.skipped) {
       return 'The server skipped the broker fallback controls.';
     }
 
     const detail = compactIbkrRecoveryDetail(attempt.stderr || attempt.stdout || attempt.reason);
-    return detail
+    const baseMessage = detail
       ? `The server could not run the broker fallback controls from the current auth screen: ${detail}`
       : 'The server could not run the broker fallback controls from the current auth screen.';
+    return artifactSummary ? `${baseMessage} ${artifactSummary}` : baseMessage;
   };
+  const buildIbkrRecoveryArtifacts = (
+    loginAttempt: IbkrLoginTriggerResult,
+    resendAttempt: IbkrLoginTriggerResult
+  ): string[] => [...new Set([...resolveIbkrArtifacts(loginAttempt), ...resolveIbkrArtifacts(resendAttempt)])].slice(0, 6);
   const buildIbkrRecoveryAttemptDetail = (
     loginAttempt: IbkrLoginTriggerResult,
     resendAttempt: IbkrLoginTriggerResult
@@ -1748,7 +1818,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       lastSource: ibkrReconnectState.lastSource,
       history: ibkrReconnectState.history.map((entry) => ({
         ...entry,
-        symbols: [...entry.symbols]
+        symbols: [...entry.symbols],
+        artifacts: [...(entry.artifacts ?? [])]
       }))
     });
   };
@@ -1756,11 +1827,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     ibkrReconnectState.history = [
       {
         ...entry,
-        symbols: [...entry.symbols]
+        symbols: [...entry.symbols],
+        artifacts: [...(entry.artifacts ?? [])]
       },
       ...ibkrReconnectState.history.map((item) => ({
         ...item,
-        symbols: [...item.symbols]
+        symbols: [...item.symbols],
+        artifacts: [...(item.artifacts ?? [])]
       }))
     ]
       .sort((left, right) => right.atMs - left.atMs)
@@ -1785,7 +1858,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       atMs: Date.now(),
       source,
       symbols,
-      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt)
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt),
+      artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt)
     });
   };
   const notifyIbkrRecoveryAttempt = async (
@@ -1924,7 +1998,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       atMs: ibkrReconnectState.lastFallbackAtMs,
       source,
       symbols,
-      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt)
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt),
+      artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt)
     });
     scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, ibkrReconnectReminderIntervalMs);
   };
@@ -2366,7 +2441,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     ibkrReconnectState.lastSymbols = [...persistedState.lastSymbols];
     ibkrReconnectState.history = persistedState.history.map((entry) => ({
       ...entry,
-      symbols: [...entry.symbols]
+      symbols: [...entry.symbols],
+      artifacts: [...(entry.artifacts ?? [])]
     }));
 
     if (ibkrReconnectState.history.length === 0) {
@@ -3545,12 +3621,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ibkrReconnectState.lastFallbackAtMs > 0 ? new Date(ibkrReconnectState.lastFallbackAtMs).toISOString() : undefined,
       lastResortWebsiteUrl: ibkrMobileUrl,
       websiteFallbackUrl: ibkrMobileUrl,
+      latestArtifacts: [
+        ...new Set(ibkrReconnectState.history.flatMap((entry) => entry.artifacts ?? []))
+      ].slice(0, 6),
       history: ibkrReconnectState.history.map((entry) => ({
         kind: entry.kind,
         at: new Date(entry.atMs).toISOString(),
         source: entry.source,
         symbols: [...entry.symbols],
-        detail: entry.detail
+        detail: entry.detail,
+        artifacts: [...(entry.artifacts ?? [])]
       }))
     };
     const recentArchiveBars = await readRecentArchiveBars(resolvedContinuousConfig.liveArchivePath);
@@ -4319,7 +4399,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       atMs: Date.now(),
       source: 'manual-phone-resend',
       symbols,
-      detail: describeIbkrResendAttempt(result)
+      detail: describeIbkrResendAttempt(result),
+      artifacts: resolveIbkrArtifacts(result)
     });
     await notifyIbkrRecoveryAttempt(
       'IBKR broker fallback started',
