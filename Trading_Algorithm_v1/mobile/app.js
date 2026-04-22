@@ -435,6 +435,7 @@ let serviceWorkerReloading = false;
 let deferredInstallPrompt = null;
 let activeRouteAlertId = null;
 let focusedAlertId = null;
+let pendingAlertScrollId = null;
 let localNotificationListenersBound = false;
 let pullRefreshFrame = 0;
 let chartLightboxListenersBound = false;
@@ -983,6 +984,14 @@ const buildBoardSpotlightTitle = (alert) =>
   `${boardDecisionLabel(boardDecisionState(alert))}: ${alert.symbol} ${boardDirectionLabel(alert, true)}`;
 
 const buildBoardSpotlightMeta = (alert) => `Detected ${fmtRelativeMinutes(alert.detectedAt)}`;
+
+const resolveBoardSpotlightAlert = (filteredAlerts, allAlerts = latestAlerts) =>
+  filteredAlerts.find((alert) => alert.alertId === focusedAlertId)
+  ?? filteredAlerts.find(hasSavedSignalSnapshot)
+  ?? filteredAlerts[0]
+  ?? allAlerts.find(hasSavedSignalSnapshot)
+  ?? allAlerts[0]
+  ?? null;
 
 const parseEconomicValue = (value) => {
   if (value === null || value === undefined) {
@@ -3071,6 +3080,7 @@ const routeToSignalAlert = (alertId, tab = 'signals') => {
   const normalizedTab = normalizeTabName(tab);
   activeRouteAlertId = alertId || null;
   focusedAlertId = alertId || null;
+  pendingAlertScrollId = alertId || null;
   if (normalizedTab === 'signals') {
     signalFilters.status = 'ALL';
     signalFilters.symbol = 'ALL';
@@ -3080,6 +3090,31 @@ const routeToSignalAlert = (alertId, tab = 'signals') => {
     tab: normalizedTab,
     alertId
   });
+};
+
+const selectBoardAlert = (alertId, options = {}) => {
+  if (!alertId) {
+    return;
+  }
+
+  const { scrollSpotlight = true } = options;
+  activeRouteAlertId = alertId;
+  focusedAlertId = alertId;
+  pendingAlertScrollId = null;
+  updateRouteState({
+    tab: 'signals',
+    alertId
+  });
+  renderHero();
+  alertsListEl?.querySelectorAll('.signal-card').forEach((card) => {
+    card.classList.toggle('is-selected', card.dataset.alertId === alertId);
+  });
+  if (scrollSpotlight) {
+    boardSpotlightTitleEl?.scrollIntoView({
+      block: 'start',
+      behavior: document.documentElement.classList.contains('reduce-motion') ? 'auto' : 'smooth'
+    });
+  }
 };
 
 const alertNotificationFingerprint = (alert) =>
@@ -8673,12 +8708,7 @@ const renderDiagnostics = () => {
 const renderHero = () => {
   const diagnostics = latestDiagnostics?.diagnostics;
   const filteredAlerts = getFilteredAlerts(latestAlerts);
-  const topAlert =
-    filteredAlerts.find(hasSavedSignalSnapshot)
-    ?? filteredAlerts[0]
-    ?? latestAlerts.find(hasSavedSignalSnapshot)
-    ?? latestAlerts[0]
-    ?? null;
+  const topAlert = resolveBoardSpotlightAlert(filteredAlerts, latestAlerts);
   const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
   const blockedCount = latestAlerts.length - readyCount;
 
@@ -8872,6 +8902,15 @@ const loadAlerts = async () => {
   try {
     const { alerts } = await apiFetch('/signals/alerts?limit=100');
     latestAlerts = alerts ?? [];
+    if (focusedAlertId && !latestAlerts.some((alert) => alert.alertId === focusedAlertId)) {
+      focusedAlertId = null;
+      activeRouteAlertId = null;
+      pendingAlertScrollId = null;
+      updateRouteState({
+        tab: 'signals',
+        alertId: null
+      });
+    }
     alertsListEl.innerHTML = '';
     await syncSeenAlerts(latestAlerts);
     const autoAcknowledged = await autoAcknowledgeAlerts(latestAlerts);
@@ -8993,7 +9032,23 @@ const loadAlerts = async () => {
       });
       reviewBtn.textContent = 'Open Review';
 
-      if (activeRouteAlertId && alert.alertId === activeRouteAlertId) {
+      node.addEventListener('click', (event) => {
+        const eventTarget = event.target instanceof Element ? event.target : null;
+        if (
+          eventTarget?.closest('button, a, input, label, textarea, select, .signalChart.is-expandable, .signal-chart-tools')
+        ) {
+          return;
+        }
+
+        selectBoardAlert(alert.alertId);
+        setStatus(`Status: ${alert.symbol} ${boardDirectionLabel(alert)} pinned to the top of the board.`);
+      });
+
+      if (focusedAlertId && alert.alertId === focusedAlertId) {
+        node.classList.add('is-selected');
+      }
+
+      if (pendingAlertScrollId && alert.alertId === pendingAlertScrollId) {
         node.classList.add('is-focus');
         focusedNode = node;
       }
@@ -9008,7 +9063,8 @@ const loadAlerts = async () => {
         behavior: document.documentElement.classList.contains('reduce-motion') ? 'auto' : 'smooth'
       });
       setStatus('Status: routed to the alert that triggered your notification.');
-      focusedAlertId = activeRouteAlertId;
+      focusedAlertId = pendingAlertScrollId;
+      pendingAlertScrollId = null;
     }
   } catch (error) {
     latestAlerts = [];
@@ -10059,6 +10115,7 @@ const bootstrap = async () => {
   const initialTab = normalizeTabName(routeState.tab);
   activeRouteAlertId = routeState.alertId;
   focusedAlertId = routeState.alertId;
+  pendingAlertScrollId = routeState.alertId;
   applyUiPrefs(prefs);
   bindUiPreferenceControls();
   bindNotificationControls();
@@ -10133,6 +10190,7 @@ const bootstrap = async () => {
     const nextRoute = parseRouteState();
     activeRouteAlertId = nextRoute.alertId;
     focusedAlertId = nextRoute.alertId;
+    pendingAlertScrollId = nextRoute.alertId;
     const nextTab = normalizeTabName(nextRoute.tab);
     if (nextTab) {
       setActiveTab(nextTab);

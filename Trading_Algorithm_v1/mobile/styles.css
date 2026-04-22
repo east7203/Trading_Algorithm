@@ -741,6 +741,7 @@ textarea {
 .signal-card {
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .signal-card::after {
@@ -2050,6 +2051,13 @@ h1 {
   box-shadow:
     0 0 0 1px rgba(45, 199, 183, 0.24),
     0 20px 36px rgba(4, 11, 20, 0.22);
+}
+
+.signal-card.is-selected {
+  border-color: rgba(247, 193, 94, 0.38);
+  box-shadow:
+    0 0 0 1px rgba(247, 193, 94, 0.18),
+    0 18px 30px rgba(4, 11, 20, 0.2);
 }
 
 .opener-body {
@@ -7263,6 +7271,12 @@ select {
 .board-list-head > div {
   display: grid;
   gap: 4px;
+}
+
+.board-list-note {
+  margin: 0;
+  color: var(--rh-muted);
+  line-height: 1.45;
 }
 
 .view-settings {

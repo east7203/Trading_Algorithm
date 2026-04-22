@@ -54,6 +54,7 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Research Lab');
     expect(mobile.body).toContain('Board Signal');
     expect(mobile.body).toContain('Macro Read');
+    expect(mobile.body).toContain('Tap any card to pin it above.');
     expect(mobile.body).toContain('symbolDetailViewer');
     expect(mobile.body).not.toContain('TradingView Checklist');
     expect(mobile.body).not.toContain('TV checklist 0/5');
