@@ -1063,7 +1063,10 @@ export class PaperAutonomyService {
           .sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
         30
       );
-      this.lastEvaluatedAt = typeof parsed.lastEvaluatedAt === 'string' ? parsed.lastEvaluatedAt : undefined;
+      this.lastEvaluatedAt =
+        typeof parsed.lastEvaluatedAt === 'string'
+          ? parsed.lastEvaluatedAt
+          : this.recentDecisions.at(-1)?.timestamp;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err.code !== 'ENOENT') {

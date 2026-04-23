@@ -352,6 +352,14 @@ describe('paper autonomy service', () => {
     expect(disabledService.status().recentDecisions.some((entry) => entry.outcome === 'BLOCKED')).toBe(true);
     expect(disabledAlerts.some((alert) => String(alert.candidate.metadata.autonomyThesis) === failingThesis)).toBe(false);
 
+    const persistedState = JSON.parse(await fs.readFile(statePath, 'utf8')) as {
+      ideas: unknown[];
+      recentDecisions?: unknown[];
+      lastEvaluatedAt?: string;
+    };
+    delete persistedState.lastEvaluatedAt;
+    await fs.writeFile(statePath, JSON.stringify(persistedState, null, 2));
+
     const reloadedService = new PaperAutonomyService({
       enabled: true,
       statePath,
