@@ -393,9 +393,9 @@
                 <p id="signalLeadWhy" class="desk-note">The queue is waiting for a cleaner setup.</p>
               </article>
               <article class="desk-card">
-                <p class="stat-label">Ready Now</p>
-                <p id="signalReadyBlocked" class="desk-value">0 / 0</p>
-                <p class="desk-note">How many ideas are usable versus not ready.</p>
+                <p class="stat-label">Queue Split</p>
+                <p id="signalReadyBlocked" class="desk-value">0 / 0 / 0</p>
+                <p class="desk-note">Ready / Wait / Avoid across the visible board.</p>
               </article>
               <article class="desk-card">
                 <p class="stat-label">Lead Market</p>
@@ -446,7 +446,8 @@
                 <div class="segmented-control" id="signalStatusFilters">
                   <button class="segment-btn is-active" type="button" data-status-filter="ALL">All</button>
                   <button class="segment-btn" type="button" data-status-filter="READY">Ready</button>
-                  <button class="segment-btn" type="button" data-status-filter="BLOCKED">Not Ready</button>
+                  <button class="segment-btn" type="button" data-status-filter="WAIT">Wait</button>
+                  <button class="segment-btn" type="button" data-status-filter="AVOID">Avoid</button>
                 </div>
                 <div class="segmented-control segmented-control-compact" id="signalSymbolFilters">
                   <button class="segment-btn is-active" type="button" data-symbol-filter="ALL">All Mkts</button>
@@ -464,7 +465,7 @@
             <div>
               <p class="section-kicker board-list-kicker">Signal Queue</p>
               <h3>Current Ideas</h3>
-              <p class="board-list-note">Tap any card to pin it above.</p>
+              <p class="board-list-note">Grouped by what you should do next. Tap any card to pin it above.</p>
             </div>
           </div>
           <div id="alertsList" class="stack"></div>

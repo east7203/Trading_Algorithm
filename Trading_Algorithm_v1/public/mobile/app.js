@@ -972,6 +972,23 @@ const boardDecisionLabel = (state) => {
   return labels[state] ?? 'Wait';
 };
 
+const BOARD_LANE_ORDER = ['READY', 'WAIT', 'AVOID'];
+
+const BOARD_LANE_META = {
+  READY: {
+    title: 'Ready',
+    note: 'These are the clearest ideas right now if you want action.'
+  },
+  WAIT: {
+    title: 'Wait',
+    note: 'These have promise, but price or timing still needs confirmation.'
+  },
+  AVOID: {
+    title: 'Avoid',
+    note: 'The desk rules say skip these for now.'
+  }
+};
+
 const boardPrimaryReason = (alert) => {
   const primaryCode = alert?.riskDecision?.reasonCodes?.[0];
   return primaryCode ? humanizeRiskReason(primaryCode) : '';
@@ -6538,15 +6555,22 @@ const hydrateTradingViewChecklist = (node, context) => {
   applySummary(initialState);
 };
 
+const getSymbolScopedAlerts = (alerts) =>
+  alerts.filter((alert) => signalFilters.symbol === 'ALL' || alert.symbol === signalFilters.symbol);
+
 const getFilteredAlerts = (alerts) =>
-  alerts.filter((alert) => {
-    const statusMatch =
-      signalFilters.status === 'ALL' ||
-      (signalFilters.status === 'READY' && alert.riskDecision.allowed) ||
-      (signalFilters.status === 'BLOCKED' && !alert.riskDecision.allowed);
-    const symbolMatch = signalFilters.symbol === 'ALL' || alert.symbol === signalFilters.symbol;
-    return statusMatch && symbolMatch;
-  });
+  getSymbolScopedAlerts(alerts).filter(
+    (alert) => signalFilters.status === 'ALL' || boardDecisionState(alert) === signalFilters.status
+  );
+
+const getBoardLaneCounts = (alerts) =>
+  alerts.reduce(
+    (counts, alert) => {
+      counts[boardDecisionState(alert)] += 1;
+      return counts;
+    },
+    { READY: 0, WAIT: 0, AVOID: 0 }
+  );
 
 const updateSegmentedControls = () => {
   signalStatusFilterButtons.forEach((button) => {
@@ -8707,10 +8731,13 @@ const renderDiagnostics = () => {
 
 const renderHero = () => {
   const diagnostics = latestDiagnostics?.diagnostics;
+  const symbolScopedAlerts = getSymbolScopedAlerts(latestAlerts);
   const filteredAlerts = getFilteredAlerts(latestAlerts);
   const topAlert = resolveBoardSpotlightAlert(filteredAlerts, latestAlerts);
-  const readyCount = latestAlerts.filter((alert) => alert.riskDecision.allowed).length;
-  const blockedCount = latestAlerts.length - readyCount;
+  const laneCounts = getBoardLaneCounts(symbolScopedAlerts);
+  const readyCount = laneCounts.READY;
+  const waitCount = laneCounts.WAIT;
+  const avoidCount = laneCounts.AVOID;
 
   const activeWindow = resolveQuietWindow();
   heroWindowEl.textContent =
@@ -8761,15 +8788,13 @@ const renderHero = () => {
   heroLastAlertEl.textContent = diagnostics?.lastAlert
     ? `Last alert ${fmtTime(diagnostics.lastAlert.detectedAt)}`
     : 'No alert yet';
-  signalReadyBlockedEl.textContent = `${readyCount} ready / ${blockedCount} not ready`;
-  signalQueueSummaryEl.textContent = `${filteredAlerts.length} ideas • ${readyCount} ready now`;
+  signalReadyBlockedEl.textContent = `${readyCount} / ${waitCount} / ${avoidCount}`;
+  signalQueueSummaryEl.textContent = `${symbolScopedAlerts.length} ideas • ${readyCount} ready • ${waitCount} wait • ${avoidCount} avoid`;
 
   const statusText =
     signalFilters.status === 'ALL'
-      ? 'All'
-      : signalFilters.status === 'BLOCKED'
-        ? 'Not ready'
-        : 'Ready';
+      ? 'All lanes'
+      : `${boardDecisionLabel(signalFilters.status)} only`;
   const symbolText = signalFilters.symbol === 'ALL' ? 'all markets' : signalFilters.symbol;
   signalFilterSummaryEl.textContent = `${statusText} • ${symbolText}`;
 };
@@ -8898,6 +8923,164 @@ const loadSignalSettings = async () => {
   }
 };
 
+const buildBoardLaneSection = (state, alerts) => {
+  const laneMeta = BOARD_LANE_META[state] ?? BOARD_LANE_META.WAIT;
+  const section = document.createElement('section');
+  section.className = `board-lane board-lane-${state.toLowerCase()}`;
+
+  const head = document.createElement('div');
+  head.className = 'board-lane-head';
+
+  const copy = document.createElement('div');
+  copy.className = 'board-lane-copy';
+
+  const title = document.createElement('h4');
+  title.textContent = laneMeta.title;
+  copy.appendChild(title);
+
+  const note = document.createElement('p');
+  note.className = 'board-lane-note';
+  note.textContent = laneMeta.note;
+  copy.appendChild(note);
+
+  const chip = document.createElement('span');
+  chip.className = `chip board-lane-chip board-lane-chip-${state.toLowerCase()}`;
+  chip.textContent = `${alerts.length} ${alerts.length === 1 ? 'idea' : 'ideas'}`;
+
+  head.append(copy, chip);
+  section.appendChild(head);
+
+  const list = document.createElement('div');
+  list.className = 'stack board-lane-list';
+  section.appendChild(list);
+
+  return {
+    section,
+    list
+  };
+};
+
+const buildSignalAlertCard = (alert) => {
+  const decisionState = boardDecisionState(alert);
+  const node = signalTemplate.content.firstElementChild.cloneNode(true);
+  node.dataset.alertId = alert.alertId;
+  node.querySelector('.symbol').textContent = `${alert.symbol} ${boardDirectionLabel(alert, true)}`;
+  node.querySelector('.setupType').textContent = `${boardDecisionLabel(decisionState)} • ${boardDirectionLabel(alert, true)} idea`;
+  renderResearchAgreement(
+    node.querySelector('.engineAgreementRow'),
+    node.querySelector('.signalResearchNote'),
+    alert
+  );
+  node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
+  node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
+  const signalVisualContext = buildSignalVisualContext(alert, {
+    meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
+    chartVariant: 'replay-trade-box',
+    tradeBoxMinimal: true
+  });
+  const signalChartEl = node.querySelector('.signalChart');
+  if (hasSavedSignalSnapshot(alert)) {
+    signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
+      minimal: true
+    });
+    configureExpandableChart(signalChartEl, signalVisualContext);
+  } else {
+    signalChartEl.innerHTML = '<div class="signalChartPlaceholder">Saved snapshot unavailable</div>';
+    configureExpandableChart(signalChartEl, null);
+  }
+  hydrateTradingViewChecklist(
+    node,
+    buildSignalVisualContext(alert, {
+      meta: 'Confirm structure, stop placement, and timing before manual execution.',
+      chartVariant: 'replay-trade-box',
+      tradeBoxMinimal: true
+    })
+  );
+  node.querySelector('.signalScore').textContent =
+    typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
+  node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
+    ? `${fmtNum(alert.riskDecision.finalRiskPct, 2)}%`
+    : 'Not ready';
+  node.querySelector('.entry').textContent = fmtNum(alert.candidate.entry, 2);
+  node.querySelector('.stopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
+  node.querySelector('.takeProfitOne').textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
+  node.querySelector('.signalProjectedTakeProfit').textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
+  node.querySelector('.signalProjectedTakeProfitNote').textContent = formatProjectionNote(
+    alert.candidate.entry,
+    alert.candidate.takeProfit?.[0],
+    'target'
+  );
+  node.querySelector('.signalProjectedStopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
+  node.querySelector('.signalProjectedStopLossNote').textContent = formatProjectionNote(
+    alert.candidate.entry,
+    alert.candidate.stopLoss,
+    'stop'
+  );
+  node.querySelector('.signalBias').textContent = signalBiasLabel(alert);
+  node.querySelector('.oneMinuteConfidence').textContent = fmtNum(alert.candidate.oneMinuteConfidence, 2);
+  node.querySelector('.rr').textContent = calcRr(
+    alert.candidate.entry,
+    alert.candidate.stopLoss,
+    alert.candidate.takeProfit?.[0]
+  );
+  node.querySelector('.signalReasons').textContent = summarizeSignalPlainWhy(alert);
+  node.querySelector('.signalIntentHint').textContent = alert.executionIntentId
+    ? `Approval log ${alert.executionIntentId.slice(0, 8)}`
+    : 'Manual entry only';
+  const detectedAtLabel = alert.reviewState?.acknowledgedAt
+    ? `${fmtDateTime(alert.detectedAt)} • Ack ${fmtDateTime(alert.reviewState.acknowledgedAt)}`
+    : fmtDateTime(alert.detectedAt);
+  node.querySelector('.detectedAt').textContent = detectedAtLabel;
+
+  const statePill = node.querySelector('.signalState');
+  statePill.textContent = boardDecisionLabel(decisionState).toUpperCase();
+  statePill.classList.add(decisionState);
+
+  const evidenceEl = node.querySelector('.signalEvidence');
+  signalEvidenceTags(alert).forEach((tag) => {
+    const chip = document.createElement('span');
+    chip.className = 'evidence-chip';
+    chip.textContent = tag;
+    evidenceEl.appendChild(chip);
+  });
+
+  const ackBtn = node.querySelector('.acknowledgeBtn');
+  const reviewBtn = node.querySelector('.reviewSignalBtn');
+  if (alert.reviewState?.acknowledgedAt) {
+    ackBtn.disabled = true;
+    ackBtn.textContent = 'Seen';
+  } else {
+    ackBtn.addEventListener('click', () => acknowledgeAlert(alert.alertId, ackBtn));
+  }
+
+  reviewBtn.addEventListener('click', () => {
+    routeToSignalAlert(alert.alertId, 'learning');
+    setActiveTab('learning');
+  });
+  reviewBtn.textContent = 'Open Review';
+
+  node.addEventListener('click', (event) => {
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (
+      eventTarget?.closest('button, a, input, label, textarea, select, .signalChart.is-expandable, .signal-chart-tools')
+    ) {
+      return;
+    }
+
+    selectBoardAlert(alert.alertId);
+    setStatus(`Status: ${alert.symbol} ${boardDirectionLabel(alert)} pinned to the top of the board.`);
+  });
+
+  if (focusedAlertId && alert.alertId === focusedAlertId) {
+    node.classList.add('is-selected');
+  }
+
+  return {
+    decisionState,
+    node
+  };
+};
+
 const loadAlerts = async () => {
   try {
     const { alerts } = await apiFetch('/signals/alerts?limit=100');
@@ -8927,122 +9110,22 @@ const loadAlerts = async () => {
     }
 
     if (!filteredAlerts.length) {
-      renderEmpty(alertsListEl, 'No signals match the current filters.');
+      const emptyMessage = signalFilters.status === 'READY'
+        ? 'No ready ideas match the current filters.'
+        : signalFilters.status === 'WAIT'
+          ? 'Nothing is waiting on confirmation for the current filters.'
+          : signalFilters.status === 'AVOID'
+            ? 'Nothing is marked avoid for the current filters.'
+            : 'No signals match the current filters.';
+      renderEmpty(alertsListEl, emptyMessage);
       updateStats();
       return;
     }
 
+    const laneSections = new Map();
     let focusedNode = null;
     filteredAlerts.forEach((alert) => {
-      const decisionState = boardDecisionState(alert);
-      const node = signalTemplate.content.firstElementChild.cloneNode(true);
-      node.dataset.alertId = alert.alertId;
-      node.querySelector('.symbol').textContent = `${alert.symbol} ${boardDirectionLabel(alert, true)}`;
-      node.querySelector('.setupType').textContent = `${boardDecisionLabel(decisionState)} • ${boardDirectionLabel(alert, true)} idea`;
-      renderResearchAgreement(
-        node.querySelector('.engineAgreementRow'),
-        node.querySelector('.signalResearchNote'),
-        alert
-      );
-      node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
-      node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
-      const signalVisualContext = buildSignalVisualContext(alert, {
-        meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
-        chartVariant: 'replay-trade-box',
-        tradeBoxMinimal: true
-      });
-      const signalChartEl = node.querySelector('.signalChart');
-      if (hasSavedSignalSnapshot(alert)) {
-        signalChartEl.innerHTML = renderReplayTradeBoxChartMarkup(alert.chartSnapshot, alert.candidate, {
-          minimal: true
-        });
-        configureExpandableChart(signalChartEl, signalVisualContext);
-      } else {
-        signalChartEl.innerHTML = '<div class="signalChartPlaceholder">Saved snapshot unavailable</div>';
-        configureExpandableChart(signalChartEl, null);
-      }
-      hydrateTradingViewChecklist(
-        node,
-        buildSignalVisualContext(alert, {
-          meta: 'Confirm structure, stop placement, and timing before manual execution.',
-          chartVariant: 'replay-trade-box',
-          tradeBoxMinimal: true
-        })
-      );
-      node.querySelector('.signalScore').textContent =
-        typeof alert.candidate.finalScore === 'number' ? fmtNum(alert.candidate.finalScore, 1) : '--';
-      node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
-        ? `${fmtNum(alert.riskDecision.finalRiskPct, 2)}%`
-        : 'Not ready';
-      node.querySelector('.entry').textContent = fmtNum(alert.candidate.entry, 2);
-      node.querySelector('.stopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
-      node.querySelector('.takeProfitOne').textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
-      node.querySelector('.signalProjectedTakeProfit').textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);
-      node.querySelector('.signalProjectedTakeProfitNote').textContent = formatProjectionNote(
-        alert.candidate.entry,
-        alert.candidate.takeProfit?.[0],
-        'target'
-      );
-      node.querySelector('.signalProjectedStopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
-      node.querySelector('.signalProjectedStopLossNote').textContent = formatProjectionNote(
-        alert.candidate.entry,
-        alert.candidate.stopLoss,
-        'stop'
-      );
-      node.querySelector('.signalBias').textContent = signalBiasLabel(alert);
-      node.querySelector('.oneMinuteConfidence').textContent = fmtNum(alert.candidate.oneMinuteConfidence, 2);
-      node.querySelector('.rr').textContent = calcRr(
-        alert.candidate.entry,
-        alert.candidate.stopLoss,
-        alert.candidate.takeProfit?.[0]
-      );
-      node.querySelector('.signalReasons').textContent = summarizeSignalPlainWhy(alert);
-      node.querySelector('.signalIntentHint').textContent = alert.executionIntentId
-        ? `Approval log ${alert.executionIntentId.slice(0, 8)}`
-        : 'Manual entry only';
-      const detectedAtLabel = alert.reviewState?.acknowledgedAt
-        ? `${fmtDateTime(alert.detectedAt)} • Ack ${fmtDateTime(alert.reviewState.acknowledgedAt)}`
-        : fmtDateTime(alert.detectedAt);
-      node.querySelector('.detectedAt').textContent = detectedAtLabel;
-
-      const statePill = node.querySelector('.signalState');
-      statePill.textContent = boardDecisionLabel(decisionState).toUpperCase();
-      statePill.classList.add(decisionState);
-
-      const evidenceEl = node.querySelector('.signalEvidence');
-      signalEvidenceTags(alert).forEach((tag) => {
-        const chip = document.createElement('span');
-        chip.className = 'evidence-chip';
-        chip.textContent = tag;
-        evidenceEl.appendChild(chip);
-      });
-
-      const ackBtn = node.querySelector('.acknowledgeBtn');
-      const reviewBtn = node.querySelector('.reviewSignalBtn');
-      if (alert.reviewState?.acknowledgedAt) {
-        ackBtn.disabled = true;
-        ackBtn.textContent = 'Seen';
-      } else {
-        ackBtn.addEventListener('click', () => acknowledgeAlert(alert.alertId, ackBtn));
-      }
-
-      reviewBtn.addEventListener('click', () => {
-        routeToSignalAlert(alert.alertId, 'learning');
-        setActiveTab('learning');
-      });
-      reviewBtn.textContent = 'Open Review';
-
-      node.addEventListener('click', (event) => {
-        const eventTarget = event.target instanceof Element ? event.target : null;
-        if (
-          eventTarget?.closest('button, a, input, label, textarea, select, .signalChart.is-expandable, .signal-chart-tools')
-        ) {
-          return;
-        }
-
-        selectBoardAlert(alert.alertId);
-        setStatus(`Status: ${alert.symbol} ${boardDirectionLabel(alert)} pinned to the top of the board.`);
-      });
+      const { decisionState, node } = buildSignalAlertCard(alert);
 
       if (focusedAlertId && alert.alertId === focusedAlertId) {
         node.classList.add('is-selected');
@@ -9053,7 +9136,19 @@ const loadAlerts = async () => {
         focusedNode = node;
       }
 
-      alertsListEl.appendChild(node);
+      if (!laneSections.has(decisionState)) {
+        laneSections.set(decisionState, buildBoardLaneSection(decisionState, filteredAlerts.filter(
+          (candidate) => boardDecisionState(candidate) === decisionState
+        )));
+      }
+      laneSections.get(decisionState).list.appendChild(node);
+    });
+
+    BOARD_LANE_ORDER.forEach((state) => {
+      const lane = laneSections.get(state);
+      if (lane) {
+        alertsListEl.appendChild(lane.section);
+      }
     });
     updateStats();
 
