@@ -564,6 +564,67 @@ export class SignalMonitorService {
     return this.alerts.slice(0, Math.max(1, limit));
   }
 
+  async refreshLatestAlerts(options: {
+    notifyChannels?: boolean;
+    recordJournal?: boolean;
+    source?: string;
+  } = {}): Promise<{
+    started: boolean;
+    scannedSymbols: number;
+    matchedAlerts: number;
+    publishedAlerts: number;
+    skippedAlerts: number;
+    alertCount: number;
+    lastAlertAt?: string;
+  }> {
+    if (!this.config.enabled || !this.started) {
+      return {
+        started: this.started,
+        scannedSymbols: 0,
+        matchedAlerts: 0,
+        publishedAlerts: 0,
+        skippedAlerts: 0,
+        alertCount: this.alerts.length,
+        lastAlertAt: this.lastAlertAt
+      };
+    }
+
+    const settings = this.getSettings();
+    let scannedSymbols = 0;
+    let matchedAlerts = 0;
+    let publishedAlerts = 0;
+    let skippedAlerts = 0;
+
+    for (const symbol of settings.enabledSymbols) {
+      const latestBar = this.barsBySymbol.get(symbol)?.at(-1);
+      if (!latestBar) {
+        continue;
+      }
+
+      scannedSymbols += 1;
+      const result = await this.evaluateSymbolAtBar(symbol, latestBar.timestamp, {
+        source: options.source ?? 'manual-refresh',
+        publishAlerts: true,
+        notifyChannels: options.notifyChannels ?? true,
+        recordJournal: options.recordJournal ?? true,
+        seenAlertKeys: this.alertKeys
+      });
+      matchedAlerts += result.matchedAlerts;
+      publishedAlerts += result.publishedAlerts;
+      skippedAlerts += result.skippedAlerts;
+    }
+
+    return {
+      started: this.started,
+      scannedSymbols,
+      matchedAlerts,
+      publishedAlerts,
+      skippedAlerts,
+      alertCount: this.alerts.length,
+      lastAlertAt: this.lastAlertAt
+    };
+  }
+
   buildLiveChartSnapshot(candidate: SetupCandidate): SignalChartSnapshot | undefined {
     const symbolBars = this.barsBySymbol.get(candidate.symbol) ?? [];
     const latestBar = symbolBars[symbolBars.length - 1];

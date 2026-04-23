@@ -140,6 +140,7 @@ const signalLeadWhyEl = document.getElementById('signalLeadWhy');
 const signalReadyBlockedEl = document.getElementById('signalReadyBlocked');
 const signalLeadSymbolEl = document.getElementById('signalLeadSymbol');
 const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
+const boardRefreshBtn = document.getElementById('boardRefresh');
 const boardSpotlightTitleEl = document.getElementById('boardSpotlightTitle');
 const boardSpotlightMetaEl = document.getElementById('boardSpotlightMeta');
 const boardSpotlightReasonEl = document.getElementById('boardSpotlightReason');
@@ -1001,6 +1002,49 @@ const buildBoardSpotlightTitle = (alert) =>
   `${boardDecisionLabel(boardDecisionState(alert))}: ${alert.symbol} ${boardDirectionLabel(alert, true)}`;
 
 const buildBoardSpotlightMeta = (alert) => `Detected ${fmtRelativeMinutes(alert.detectedAt)}`;
+
+const describeBoardFreshness = (detectedAt) => {
+  const minutes = getMinutesUntil(detectedAt);
+  const ageMinutes = typeof minutes === 'number' ? Math.max(0, -minutes) : null;
+
+  if (ageMinutes === null) {
+    return {
+      tone: 'recent',
+      label: 'Freshness unavailable',
+      detail: 'time unknown'
+    };
+  }
+
+  if (ageMinutes <= 5) {
+    return {
+      tone: 'fresh',
+      label: 'Fresh',
+      detail: fmtRelativeMinutes(detectedAt)
+    };
+  }
+
+  if (ageMinutes <= 15) {
+    return {
+      tone: 'recent',
+      label: 'Recent',
+      detail: fmtRelativeMinutes(detectedAt)
+    };
+  }
+
+  if (ageMinutes <= 40) {
+    return {
+      tone: 'aging',
+      label: 'Older',
+      detail: fmtRelativeMinutes(detectedAt)
+    };
+  }
+
+  return {
+    tone: 'stale',
+    label: 'Stale',
+    detail: fmtRelativeMinutes(detectedAt)
+  };
+};
 
 const resolveBoardSpotlightAlert = (filteredAlerts, allAlerts = latestAlerts) =>
   filteredAlerts.find((alert) => alert.alertId === focusedAlertId)
@@ -8963,6 +9007,7 @@ const buildBoardLaneSection = (state, alerts) => {
 const buildSignalAlertCard = (alert) => {
   const decisionState = boardDecisionState(alert);
   const node = signalTemplate.content.firstElementChild.cloneNode(true);
+  const freshness = describeBoardFreshness(alert.detectedAt);
   node.dataset.alertId = alert.alertId;
   node.querySelector('.symbol').textContent = `${alert.symbol} ${boardDirectionLabel(alert, true)}`;
   node.querySelector('.setupType').textContent = `${boardDecisionLabel(decisionState)} • ${boardDirectionLabel(alert, true)} idea`;
@@ -8973,6 +9018,9 @@ const buildSignalAlertCard = (alert) => {
   );
   node.querySelector('.signalSummary').textContent = summarizeSignalSetup(alert);
   node.querySelector('.signalNextStep').textContent = summarizeSignalNextStep(alert);
+  const freshnessEl = node.querySelector('.signalFreshness');
+  freshnessEl.textContent = `${freshness.label} • seen ${freshness.detail}`;
+  freshnessEl.classList.add(`is-${freshness.tone}`);
   const signalVisualContext = buildSignalVisualContext(alert, {
     meta: `${alert.chartSnapshot?.timeframe ?? '5m'} case at ${fmtTime(alert.detectedAt)} • swipe down to return`,
     chartVariant: 'replay-trade-box',
@@ -9028,8 +9076,8 @@ const buildSignalAlertCard = (alert) => {
     ? `Approval log ${alert.executionIntentId.slice(0, 8)}`
     : 'Manual entry only';
   const detectedAtLabel = alert.reviewState?.acknowledgedAt
-    ? `${fmtDateTime(alert.detectedAt)} • Ack ${fmtDateTime(alert.reviewState.acknowledgedAt)}`
-    : fmtDateTime(alert.detectedAt);
+    ? `Detected ${fmtDateTime(alert.detectedAt)} • Seen ${fmtDateTime(alert.reviewState.acknowledgedAt)}`
+    : `Detected ${fmtDateTime(alert.detectedAt)}`;
   node.querySelector('.detectedAt').textContent = detectedAtLabel;
 
   const statePill = node.querySelector('.signalState');
@@ -9079,6 +9127,45 @@ const buildSignalAlertCard = (alert) => {
     decisionState,
     node
   };
+};
+
+const refreshBoardAlerts = async () => {
+  if (boardRefreshBtn) {
+    boardRefreshBtn.disabled = true;
+    boardRefreshBtn.textContent = 'Checking...';
+  }
+
+  try {
+    const response = await apiFetch('/signals/alerts/refresh', {
+      method: 'POST'
+    });
+    await Promise.all([loadAlerts(), loadDiagnostics()]);
+    lastSyncAt = new Date().toISOString();
+    updateStats();
+
+    const refresh = response?.refresh ?? {};
+    if (!response?.ok || !refresh.started) {
+      setStatus('Status: board reloaded, but live signal scanning is not active right now.', true);
+      return;
+    }
+
+    const scannedSymbols = Number(refresh.scannedSymbols) || 0;
+    const publishedAlerts = Number(refresh.publishedAlerts) || 0;
+    const matchedAlerts = Number(refresh.matchedAlerts) || 0;
+    setStatus(
+      `Status: board checked ${scannedSymbols} ${scannedSymbols === 1 ? 'market' : 'markets'} • ${publishedAlerts} new alert${publishedAlerts === 1 ? '' : 's'} • ${matchedAlerts} match${matchedAlerts === 1 ? '' : 'es'} reviewed.`
+    );
+  } catch (error) {
+    await Promise.all([loadAlerts(), loadDiagnostics()]);
+    lastSyncAt = new Date().toISOString();
+    updateStats();
+    setStatus(`Status: board reloaded from saved alerts, but live check failed (${error.message}).`, true);
+  } finally {
+    if (boardRefreshBtn) {
+      boardRefreshBtn.disabled = false;
+      boardRefreshBtn.textContent = 'Check Again';
+    }
+  }
 };
 
 const loadAlerts = async () => {
@@ -10278,6 +10365,9 @@ const bootstrap = async () => {
     }
     routeToSignalAlert(boardSpotlightContext.alertId, 'learning');
     setActiveTab('learning');
+  });
+  boardRefreshBtn?.addEventListener('click', () => {
+    void refreshBoardAlerts();
   });
   updateSegmentedControls();
 

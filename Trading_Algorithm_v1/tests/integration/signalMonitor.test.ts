@@ -176,6 +176,66 @@ describe('signal monitor integration', () => {
     expect(top.chartSnapshot.referenceLevels.some((level: { key: string }) => level.key === 'entry')).toBe(true);
   });
 
+  it('can refresh the latest board alerts on demand without duplicating the queue', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-refresh-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const beforeRefresh = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+
+    expect(beforeRefresh.statusCode).toBe(200);
+    const beforeAlerts = beforeRefresh.json().alerts;
+    expect(beforeAlerts.length).toBeGreaterThan(0);
+
+    const refreshResponse = await ctx.app.inject({
+      method: 'POST',
+      path: '/signals/alerts/refresh'
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    const refreshPayload = refreshResponse.json();
+    expect(refreshPayload.ok).toBe(true);
+    expect(refreshPayload.refresh.started).toBe(true);
+    expect(refreshPayload.refresh.scannedSymbols).toBeGreaterThan(0);
+
+    const afterRefresh = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+
+    expect(afterRefresh.statusCode).toBe(200);
+    expect(afterRefresh.json().alerts.length).toBe(beforeAlerts.length);
+  });
+
   it('uses Telegram only when trade alerts fail to deliver through app push', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-telegram-fallback-'));
     tempDirs.push(tempDir);

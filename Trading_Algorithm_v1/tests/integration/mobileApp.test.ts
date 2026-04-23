@@ -55,6 +55,8 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Board Signal');
     expect(mobile.body).toContain('Macro Read');
     expect(mobile.body).toContain('Queue Split');
+    expect(mobile.body).toContain('Check Again');
+    expect(mobile.body).toContain('Freshness --');
     expect(mobile.body).toContain('data-status-filter="WAIT"');
     expect(mobile.body).toContain('data-status-filter="AVOID"');
     expect(mobile.body).toContain('Grouped by what you should do next. Tap any card to pin it above.');

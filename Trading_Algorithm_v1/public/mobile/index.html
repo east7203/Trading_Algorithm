@@ -457,7 +457,10 @@
               </div>
               <div class="signal-toolbar-meta">
                 <p class="hint hint-banner">Background push works from the hosted app once notifications are allowed.</p>
-                <span id="signalQueueSummary" class="chip chip-neutral">Queue --</span>
+                <div class="board-toolbar-actions">
+                  <button id="boardRefresh" class="chip-btn secondary-btn" type="button">Check Again</button>
+                  <span id="signalQueueSummary" class="chip chip-neutral">Queue --</span>
+                </div>
               </div>
             </section>
           </section>
@@ -1461,6 +1464,7 @@
             <p class="signalNextStep"></p>
           </div>
         </div>
+        <p class="signalFreshness">Freshness --</p>
         <p class="card-section-label">Chart At Alert Time</p>
         <div class="signalChart"></div>
         <div class="signal-chart-tools">

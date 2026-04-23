@@ -3281,6 +3281,32 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.post('/signals/alerts/refresh', async (_request, reply) => {
+    if (!signalMonitorService) {
+      return reply.status(200).send({
+        ok: false,
+        refresh: {
+          started: false,
+          scannedSymbols: 0,
+          matchedAlerts: 0,
+          publishedAlerts: 0,
+          skippedAlerts: 0,
+          alertCount: 0,
+          lastAlertAt: null
+        }
+      });
+    }
+
+    const refresh = await signalMonitorService.refreshLatestAlerts({
+      source: 'manual-refresh'
+    });
+
+    return reply.status(200).send({
+      ok: refresh.started,
+      refresh
+    });
+  });
+
   app.get('/signals/chart/live', async (request, reply) => {
     const query = (request.query as {
       alertId?: string;
