@@ -351,6 +351,31 @@ describe('paper autonomy service', () => {
     expect(disabledPattern?.cooldownSummary).toContain('disable guardrail');
     expect(disabledService.status().recentDecisions.some((entry) => entry.outcome === 'BLOCKED')).toBe(true);
     expect(disabledAlerts.some((alert) => String(alert.candidate.metadata.autonomyThesis) === failingThesis)).toBe(false);
+
+    const reloadedService = new PaperAutonomyService({
+      enabled: true,
+      statePath,
+      bootstrapRecursive: false,
+      timezone: 'America/New_York',
+      sessionStartHour: 0,
+      sessionStartMinute: 0,
+      sessionEndHour: 23,
+      sessionEndMinute: 59,
+      focusSymbols: ['NQ'],
+      maxBarsPerSymbol: 6000,
+      maxIdeas: 300,
+      maxHoldMinutes: 180,
+      minTrendConfidence: 0,
+      breakoutLookbackBars5m: 6,
+      pullbackLookbackBars5m: 8,
+      getPaperTradingStatus: () => buildPaperStatus(),
+      submitAlert: async () => null
+    });
+
+    await reloadedService.start();
+
+    expect(reloadedService.status().lastEvaluatedAt).toBe(disabledService.status().lastEvaluatedAt);
+    expect(reloadedService.status().explorationBudget.sessionDay).toBe('2026-04-01');
   });
 
   it('allows one tiny next-session probe for a disabled pattern so learning can continue', async () => {

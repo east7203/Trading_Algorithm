@@ -247,6 +247,7 @@ export interface PaperAutonomyLearningUpdate {
 interface PersistedPaperAutonomyState {
   ideas: PaperAutonomyIdeaRecord[];
   recentDecisions?: PaperAutonomyDecisionRecord[];
+  lastEvaluatedAt?: string;
 }
 
 export interface PaperAutonomyConfig {
@@ -1062,6 +1063,7 @@ export class PaperAutonomyService {
           .sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
         30
       );
+      this.lastEvaluatedAt = typeof parsed.lastEvaluatedAt === 'string' ? parsed.lastEvaluatedAt : undefined;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err.code !== 'ENOENT') {
@@ -1069,6 +1071,7 @@ export class PaperAutonomyService {
       }
       this.ideas.clear();
       this.recentDecisions = [];
+      this.lastEvaluatedAt = undefined;
     }
   }
 
@@ -1080,7 +1083,8 @@ export class PaperAutonomyService {
       ideas: [...this.ideas.values()]
         .sort((left, right) => left.openedAt.localeCompare(right.openedAt))
         .slice(-this.config.maxIdeas),
-      recentDecisions: [...this.recentDecisions]
+      recentDecisions: [...this.recentDecisions],
+      lastEvaluatedAt: this.lastEvaluatedAt
     };
     this.writeChain = this.writeChain.then(async () => {
       await fs.mkdir(path.dirname(this.config.statePath as string), { recursive: true });
