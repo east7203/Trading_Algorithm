@@ -142,6 +142,7 @@ const signalLeadSymbolEl = document.getElementById('signalLeadSymbol');
 const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
 const boardRefreshBtn = document.getElementById('boardRefresh');
 const boardRefreshMetaEl = document.getElementById('boardRefreshMeta');
+const boardNewSinceCheckEl = document.getElementById('boardNewSinceCheck');
 const boardSpotlightTitleEl = document.getElementById('boardSpotlightTitle');
 const boardSpotlightMetaEl = document.getElementById('boardSpotlightMeta');
 const boardSpotlightReasonEl = document.getElementById('boardSpotlightReason');
@@ -417,7 +418,9 @@ let latestHealth = null;
 let latestSelfLearningStatus = null;
 let lastSyncAt = null;
 let lastBoardCheckAt = null;
+let lastBoardNewAlertCount = null;
 let pushHealthRenderToken = 0;
+let lastBoardAlertIds = new Set();
 const latestReplayLearningByAlertId = new Map();
 let serviceWorkerRegistrationPromise = null;
 let serviceWorkerMessageListenerBound = false;
@@ -1056,6 +1059,20 @@ const renderBoardRefreshMeta = () => {
   boardRefreshMetaEl.textContent = lastBoardCheckAt
     ? `Last board check ${fmtRelativeMinutes(lastBoardCheckAt)}`
     : 'Last board check --';
+
+  if (!boardNewSinceCheckEl) {
+    return;
+  }
+
+  const chipText =
+    lastBoardNewAlertCount === null
+      ? 'New --'
+      : lastBoardNewAlertCount > 0
+        ? `New ${lastBoardNewAlertCount}`
+        : 'No new';
+  boardNewSinceCheckEl.textContent = chipText;
+  boardNewSinceCheckEl.classList.toggle('has-new', Number(lastBoardNewAlertCount) > 0);
+  boardNewSinceCheckEl.classList.toggle('no-new', lastBoardNewAlertCount === 0);
 };
 
 const resolveBoardSpotlightAlert = (filteredAlerts, allAlerts = latestAlerts) =>
@@ -9184,6 +9201,11 @@ const loadAlerts = async () => {
   try {
     const { alerts } = await apiFetch('/signals/alerts?limit=100');
     latestAlerts = alerts ?? [];
+    const nextAlertIds = new Set(latestAlerts.map((alert) => alert.alertId));
+    lastBoardNewAlertCount = lastBoardAlertIds.size > 0
+      ? latestAlerts.filter((alert) => !lastBoardAlertIds.has(alert.alertId)).length
+      : 0;
+    lastBoardAlertIds = nextAlertIds;
     lastBoardCheckAt = new Date().toISOString();
     renderBoardRefreshMeta();
     if (focusedAlertId && !latestAlerts.some((alert) => alert.alertId === focusedAlertId)) {

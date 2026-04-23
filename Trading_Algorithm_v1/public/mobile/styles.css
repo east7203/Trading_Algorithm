@@ -2152,6 +2152,15 @@ h1 {
   line-height: 1.4;
 }
 
+.board-new-chip.has-new {
+  background: rgba(45, 199, 183, 0.18);
+  color: #9bf3e9;
+}
+
+.board-new-chip.no-new {
+  color: var(--rh-muted);
+}
+
 .tv-checklist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
