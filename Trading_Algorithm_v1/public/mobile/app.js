@@ -141,6 +141,7 @@ const signalReadyBlockedEl = document.getElementById('signalReadyBlocked');
 const signalLeadSymbolEl = document.getElementById('signalLeadSymbol');
 const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
 const boardRefreshBtn = document.getElementById('boardRefresh');
+const boardRefreshMetaEl = document.getElementById('boardRefreshMeta');
 const boardSpotlightTitleEl = document.getElementById('boardSpotlightTitle');
 const boardSpotlightMetaEl = document.getElementById('boardSpotlightMeta');
 const boardSpotlightReasonEl = document.getElementById('boardSpotlightReason');
@@ -415,6 +416,7 @@ let latestRiskConfig = null;
 let latestHealth = null;
 let latestSelfLearningStatus = null;
 let lastSyncAt = null;
+let lastBoardCheckAt = null;
 let pushHealthRenderToken = 0;
 const latestReplayLearningByAlertId = new Map();
 let serviceWorkerRegistrationPromise = null;
@@ -1044,6 +1046,16 @@ const describeBoardFreshness = (detectedAt) => {
     label: 'Stale',
     detail: fmtRelativeMinutes(detectedAt)
   };
+};
+
+const renderBoardRefreshMeta = () => {
+  if (!boardRefreshMetaEl) {
+    return;
+  }
+
+  boardRefreshMetaEl.textContent = lastBoardCheckAt
+    ? `Last board check ${fmtRelativeMinutes(lastBoardCheckAt)}`
+    : 'Last board check --';
 };
 
 const resolveBoardSpotlightAlert = (filteredAlerts, allAlerts = latestAlerts) =>
@@ -9172,6 +9184,8 @@ const loadAlerts = async () => {
   try {
     const { alerts } = await apiFetch('/signals/alerts?limit=100');
     latestAlerts = alerts ?? [];
+    lastBoardCheckAt = new Date().toISOString();
+    renderBoardRefreshMeta();
     if (focusedAlertId && !latestAlerts.some((alert) => alert.alertId === focusedAlertId)) {
       focusedAlertId = null;
       activeRouteAlertId = null;
@@ -9250,6 +9264,7 @@ const loadAlerts = async () => {
     }
   } catch (error) {
     latestAlerts = [];
+    renderBoardRefreshMeta();
     updateStats();
     renderEmpty(alertsListEl, `Failed to load signals: ${error.message}`);
   }
