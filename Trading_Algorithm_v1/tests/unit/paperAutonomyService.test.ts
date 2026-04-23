@@ -44,6 +44,33 @@ const buildAutonomyTrendBars = (symbol: 'NQ' | 'ES' = 'NQ', count = 330, startAt
   return bars;
 };
 
+const buildAutonomyBreakoutBars = (symbol: 'NQ' | 'ES' = 'NQ', count = 330, startAt = '2026-04-02T13:00:00.000Z') => {
+  const bars = [];
+  const startMs = Date.parse(startAt);
+
+  for (let index = 0; index < count; index += 1) {
+    const base = 20000 + index * 0.07;
+    const compression = index < count - 30 ? Math.sin(index / 20) * 0.05 : 0;
+    const breakout = index >= count - 18 ? (index - (count - 18)) * 0.42 : 0;
+    const close = base + compression + breakout;
+    const open = close - (index >= count - 18 ? 0.02 : 0.05);
+    const high = close + (index >= count - 18 ? 0.18 : 0.08);
+    const low = close - (index >= count - 18 ? 0.08 : 0.1);
+
+    bars.push({
+      symbol,
+      timestamp: new Date(startMs + index * 60_000).toISOString(),
+      open: Number(open.toFixed(2)),
+      high: Number(high.toFixed(2)),
+      low: Number(low.toFixed(2)),
+      close: Number(close.toFixed(2)),
+      volume: 120 + index
+    });
+  }
+
+  return bars;
+};
+
 const buildPaperStatus = (overrides: Partial<PaperTradingStatus> = {}): PaperTradingStatus => ({
   enabled: true,
   started: true,
@@ -324,6 +351,115 @@ describe('paper autonomy service', () => {
     expect(disabledPattern?.cooldownSummary).toContain('disable guardrail');
     expect(disabledService.status().recentDecisions.some((entry) => entry.outcome === 'BLOCKED')).toBe(true);
     expect(disabledAlerts.some((alert) => String(alert.candidate.metadata.autonomyThesis) === failingThesis)).toBe(false);
+  });
+
+  it('allows one tiny next-session probe for a disabled pattern so learning can continue', async () => {
+    const bars = buildAutonomyBreakoutBars('NQ', 420, '2026-04-02T13:00:00.000Z');
+    const referenceAlerts: SignalAlert[] = [];
+    let referenceTradeIndex = 0;
+
+    const referenceService = new PaperAutonomyService({
+      enabled: true,
+      bootstrapRecursive: false,
+      timezone: 'America/New_York',
+      sessionStartHour: 0,
+      sessionStartMinute: 0,
+      sessionEndHour: 23,
+      sessionEndMinute: 59,
+      focusSymbols: ['NQ'],
+      maxBarsPerSymbol: 6000,
+      maxIdeas: 300,
+      maxHoldMinutes: 180,
+      minTrendConfidence: 0,
+      breakoutLookbackBars5m: 6,
+      pullbackLookbackBars5m: 8,
+      getPaperTradingStatus: () => buildPaperStatus(),
+      submitAlert: async (alert) => {
+        referenceAlerts.push(alert);
+        referenceTradeIndex += 1;
+        return buildTrade(alert, referenceTradeIndex);
+      }
+    });
+
+    await referenceService.ingestBars(bars);
+    expect(referenceAlerts.length).toBeGreaterThan(0);
+
+    const referenceAlert = referenceAlerts[0];
+    const failingThesis = String(referenceAlert.candidate.metadata.autonomyThesis);
+    const researchDirection = String(referenceAlert.candidate.metadata.researchDirection);
+    const exploratory = referenceAlert.candidate.metadata.exploratory === true;
+    const referenceRiskPct = Number(referenceAlert.candidate.metadata.paperAutonomyRiskPct);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-probe-pattern-'));
+    tempDirs.push(tempDir);
+    const statePath = path.join(tempDir, 'paper-autonomy.json');
+
+    const seedIdeas = Array.from({ length: 8 }, (_, index) => {
+      const openedAt = new Date(Date.parse('2026-04-01T13:00:00.000Z') + index * 60 * 60_000).toISOString();
+      const closedAt = new Date(Date.parse(openedAt) + 30 * 60_000).toISOString();
+      return {
+        alertId: `seed-probe-loss-${index}`,
+        candidateId: `seed-probe-candidate-${index}`,
+        symbol: referenceAlert.symbol,
+        side: referenceAlert.side,
+        thesis: failingThesis,
+        score: 61,
+        reason: 'Seeded disabled pattern',
+        researchDirection,
+        researchConfidence: 0.62,
+        exploratory,
+        patternKey: `${failingThesis}|${referenceAlert.symbol}|${researchDirection}|${exploratory ? 'exploratory' : 'aligned'}`,
+        patternState: 'DISABLED',
+        allocation: 'EXPLORATION',
+        openedAt,
+        status: 'CLOSED',
+        closedAt,
+        realizedPnl: -125,
+        realizedR: -1,
+        outcome: 'LOSS'
+      };
+    });
+
+    await fs.writeFile(statePath, JSON.stringify({ ideas: seedIdeas }, null, 2));
+
+    const probeAlerts: SignalAlert[] = [];
+    let probeTradeIndex = 0;
+    const probeService = new PaperAutonomyService({
+      enabled: true,
+      statePath,
+      bootstrapRecursive: false,
+      timezone: 'America/New_York',
+      sessionStartHour: 0,
+      sessionStartMinute: 0,
+      sessionEndHour: 23,
+      sessionEndMinute: 59,
+      focusSymbols: ['NQ'],
+      maxBarsPerSymbol: 6000,
+      maxIdeas: 300,
+      maxHoldMinutes: 180,
+      minTrendConfidence: 0,
+      breakoutLookbackBars5m: 6,
+      pullbackLookbackBars5m: 8,
+      explorationBudgetFraction: 0.5,
+      maxExplorationIdeasPerDay: 2,
+      getPaperTradingStatus: () => buildPaperStatus(),
+      submitAlert: async (alert) => {
+        probeAlerts.push(alert);
+        probeTradeIndex += 1;
+        return buildTrade(alert, probeTradeIndex);
+      }
+    });
+
+    await probeService.ingestBars(bars);
+
+    const probeAlert = probeAlerts.find((alert) => String(alert.candidate.metadata.autonomyThesis) === failingThesis);
+    expect(probeAlert).toBeTruthy();
+    expect(probeAlert?.candidate.metadata.autonomyPatternState).toBe('DISABLED');
+    expect(probeAlert?.candidate.metadata.autonomyPatternAllocation).toBe('EXPLORATION');
+    expect(probeAlert?.candidate.metadata.autonomyProbeRetest).toBe(true);
+    expect(Number(probeAlert?.candidate.metadata.paperAutonomyRiskPct)).toBeLessThan(referenceRiskPct);
+    expect(probeService.status().openIdeas).toBeGreaterThan(0);
+    expect(probeService.status().explorationBudget.usedToday).toBe(1);
+    expect(probeService.status().explorationBudget.sessionDay).toBe('2026-04-02');
   });
 
   it('keeps exploratory ideas inside a strict daily exploration budget', async () => {

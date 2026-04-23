@@ -294,6 +294,7 @@ interface PaperAutonomyPatternDecision {
   blocked: boolean;
   allocation: PaperAutonomyIdeaAllocation;
   status: PaperAutonomyPatternStatus;
+  probeRetest: boolean;
   scoreAdjustment: number;
   riskMultiplier: number;
   minimumScoreBoost: number;
@@ -807,6 +808,29 @@ export class PaperAutonomyService {
     return this.getExplorationBudgetStatus(timestamp).available;
   }
 
+  private canProbeDisabledPattern(status: PaperAutonomyPatternStatus, generatedAt: string): boolean {
+    const timezone = this.getTradingWindow().timezone;
+    const currentDay = getLocalDayKey(generatedAt, timezone);
+    const lastPatternActivityAt = status.lastClosedAt ?? status.lastOpenedAt;
+    if (!lastPatternActivityAt) {
+      return false;
+    }
+
+    const lastPatternDay = getLocalDayKey(lastPatternActivityAt, timezone);
+    if (lastPatternDay >= currentDay) {
+      return false;
+    }
+
+    const patternIdeasToday = this.listPatternIdeas(status.key).filter(
+      (idea) => getLocalDayKey(idea.openedAt, timezone) === currentDay
+    );
+    if (patternIdeasToday.length > 0) {
+      return false;
+    }
+
+    return true;
+  }
+
   private buildPatternDecision(input: {
     thesis: PaperAutonomyThesis;
     symbol: SymbolCode;
@@ -820,16 +844,18 @@ export class PaperAutonomyService {
       input.researchDirection,
       input.exploratory
     );
+    const probeRetest = status.state === 'DISABLED' && this.canProbeDisabledPattern(status, input.generatedAt);
     const allocation: PaperAutonomyIdeaAllocation =
-      input.exploratory || status.state === 'EXPERIMENTAL'
+      input.exploratory || status.state === 'EXPERIMENTAL' || probeRetest
         ? 'EXPLORATION'
         : 'CORE';
 
-    if (status.state === 'DISABLED') {
+    if (status.state === 'DISABLED' && !probeRetest) {
       return {
         blocked: true,
         allocation,
         status,
+        probeRetest: false,
         scoreAdjustment: -100,
         riskMultiplier: 0,
         minimumScoreBoost: 100,
@@ -842,6 +868,7 @@ export class PaperAutonomyService {
         blocked: true,
         allocation,
         status,
+        probeRetest,
         scoreAdjustment: -100,
         riskMultiplier: 0,
         minimumScoreBoost: 100,
@@ -868,24 +895,40 @@ export class PaperAutonomyService {
         riskMultiplier *= 0.75;
         minimumScoreBoost += 2;
         break;
+      case 'DISABLED':
+        if (probeRetest) {
+          scoreAdjustment -= 0.5;
+          riskMultiplier *= 0.3;
+        } else {
+          scoreAdjustment -= 1.5;
+          riskMultiplier *= 0.35;
+          minimumScoreBoost += 4;
+        }
+        break;
       default:
         break;
     }
 
     if (allocation === 'EXPLORATION') {
-      scoreAdjustment -= 2.5;
-      riskMultiplier *= 0.7;
-      minimumScoreBoost += 2;
+      if (probeRetest) {
+        scoreAdjustment -= 0.5;
+        riskMultiplier *= 0.85;
+      } else {
+        scoreAdjustment -= 2.5;
+        riskMultiplier *= 0.7;
+        minimumScoreBoost += 2;
+      }
     }
 
     return {
       blocked: false,
       allocation,
       status,
+      probeRetest,
       scoreAdjustment: round(scoreAdjustment, 2),
       riskMultiplier: round(riskMultiplier, 2),
       minimumScoreBoost,
-      summary: `${allocation === 'EXPLORATION' ? 'Exploration budget' : 'Core allocation'} • ${status.reason}`
+      summary: `${probeRetest ? 'Probe retest' : allocation === 'EXPLORATION' ? 'Exploration budget' : 'Core allocation'} • ${status.reason}`
     };
   }
 
@@ -1984,8 +2027,11 @@ export class PaperAutonomyService {
           }));
           return null;
         }
+        const effectivePortfolioScoreAdjustment = patternDecision.probeRetest
+          ? Math.max(adjustment.scoreAdjustment, -10)
+          : adjustment.scoreAdjustment;
         const adjustedScore = round(
-          clamp(idea.score + adjustment.scoreAdjustment + patternDecision.scoreAdjustment, 0, 100),
+          clamp(idea.score + effectivePortfolioScoreAdjustment + patternDecision.scoreAdjustment, 0, 100),
           2
         );
         const selfLearnedScore = round(
@@ -2062,6 +2108,7 @@ export class PaperAutonomyService {
     const acceptedAsReduced =
       bestIdea.patternDecision.status.state !== 'PROVEN'
       || bestIdea.patternDecision.allocation !== 'CORE'
+      || bestIdea.patternDecision.probeRetest
       || bestIdea.patternDecision.riskMultiplier < 1
       || bestIdea.portfolioAdjustment.riskMultiplier < 1
       || (bestIdea.selfLearningAdjustment?.riskMultiplier ?? 1) < 1
@@ -2128,6 +2175,7 @@ export class PaperAutonomyService {
         autonomyPortfolioAdjustment: bestIdea.portfolioAdjustment.summary,
         autonomyPatternAdjustment: bestIdea.patternDecision.summary,
         autonomySelfLearningAdjustment: bestIdea.selfLearningAdjustment?.summary ?? 'neutral self-learning',
+        autonomyProbeRetest: bestIdea.patternDecision.probeRetest,
         paperAutonomyRiskPct: bestIdea.adaptiveRiskPct,
         paperTradeExpiresAt: this.buildTradeExpiry(currentBar.timestamp)
       },
@@ -2428,7 +2476,7 @@ export class PaperAutonomyService {
       );
     const symbolStatus = this.config.focusSymbols.map((symbol) => this.buildSymbolStatus(symbol));
     const tradingWindow = this.getTradingWindow();
-    const statusTimestamp = ideas[0]?.openedAt ?? new Date().toISOString();
+    const statusTimestamp = this.lastEvaluatedAt ?? ideas[0]?.openedAt ?? new Date().toISOString();
     const explorationBudget = this.getExplorationBudgetStatus(statusTimestamp);
     const dailyChanges = this.buildDailyChangeSummary(patternStates, explorationBudget.sessionDay, ideas);
 

@@ -478,8 +478,7 @@ describe('signal monitor integration', () => {
       path: '/signals/alerts?limit=10'
     });
     expect(alertsResponse.statusCode).toBe(200);
-    expect(alertsResponse.json().alerts.length).toBe(1);
-    expect(alertsResponse.json().alerts[0].chartSnapshot).toBeTruthy();
+    expect(alertsResponse.json().alerts.length).toBe(0);
 
     const paperStatus = await ctx.app.inject({
       method: 'GET',
@@ -500,6 +499,12 @@ describe('signal monitor integration', () => {
     });
     expect(reviewsResponse.statusCode).toBe(200);
     expect(reviewsResponse.json().reviews.length).toBeGreaterThan(0);
+    expect(
+      reviewsResponse
+        .json()
+        .reviews
+        .some((review: { alertSnapshot?: { source?: string } }) => review.alertSnapshot?.source === 'PAPER_AUTONOMY')
+    ).toBe(true);
   });
 
   it('updates the paper trade concurrency cap through the API, including unlimited mode', async () => {
