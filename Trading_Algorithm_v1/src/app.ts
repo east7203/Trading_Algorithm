@@ -3242,8 +3242,22 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const parsedLimit = Number.parseInt(limitRaw ?? '30', 10);
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 30;
     const liveAlerts = signalMonitorService ? signalMonitorService.listAlerts(limit) : [];
+    const maxPersistedBoardAlertAgeMs = 12 * 60 * 60_000;
+    const nowMs = Date.now();
     const persistedReviews = (await signalReviewStore.listReviews('ALL', Math.min(limit * 3, 200)))
-      .filter((review) => review.alertSnapshot?.source !== 'PAPER_AUTONOMY')
+      .filter((review) => {
+        const snapshot = review.alertSnapshot;
+        if (!snapshot || snapshot.source === 'PAPER_AUTONOMY') {
+          return false;
+        }
+
+        const detectedAtMs = Date.parse(snapshot.detectedAt ?? review.detectedAt);
+        if (!Number.isFinite(detectedAtMs)) {
+          return false;
+        }
+
+        return nowMs - detectedAtMs <= maxPersistedBoardAlertAgeMs;
+      })
       .sort((left, right) => {
       const leftHasSnapshot = Array.isArray(left.alertSnapshot?.chartSnapshot?.bars) && left.alertSnapshot.chartSnapshot.bars.length > 0;
       const rightHasSnapshot = Array.isArray(right.alertSnapshot?.chartSnapshot?.bars) && right.alertSnapshot.chartSnapshot.bars.length > 0;

@@ -829,6 +829,93 @@ describe('signal monitor integration', () => {
     expect(acknowledgedAlerts.json().alerts[0].reviewState.acknowledgedBy).toBe('tester');
   });
 
+  it('does not recycle stale persisted board alerts back into the live board queue', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-board-stale-persisted-'));
+    tempDirs.push(tempDir);
+    const reviewStorePath = path.join(tempDir, 'signal-reviews.json');
+
+    const firstCtx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: reviewStorePath,
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(firstCtx);
+
+    const response = await firstCtx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: {
+        symbol: 'NQ'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const persisted = JSON.parse(await fs.readFile(reviewStorePath, 'utf8')) as {
+      reviews?: Array<Record<string, unknown>>;
+    };
+    const staleDetectedAt = '2026-04-20T14:00:00.000Z';
+    const staleGeneratedAt = '2026-04-20T13:55:00.000Z';
+    persisted.reviews = (persisted.reviews ?? []).map((review) => ({
+      ...review,
+      detectedAt: staleDetectedAt,
+      createdAt: staleDetectedAt,
+      updatedAt: staleDetectedAt,
+      acknowledgedAt: staleDetectedAt,
+      lastEscalatedAt: staleDetectedAt,
+      reviewedAt: staleDetectedAt,
+      alertSnapshot: review.alertSnapshot
+        ? {
+            ...review.alertSnapshot,
+            detectedAt: staleDetectedAt,
+            chartSnapshot: review.alertSnapshot.chartSnapshot
+              ? {
+                  ...review.alertSnapshot.chartSnapshot,
+                  detectedAt: staleDetectedAt,
+                  generatedAt: staleGeneratedAt
+                }
+              : review.alertSnapshot.chartSnapshot,
+            candidate: review.alertSnapshot.candidate
+              ? {
+                  ...review.alertSnapshot.candidate,
+                  generatedAt: staleGeneratedAt
+                }
+              : review.alertSnapshot.candidate
+          }
+        : review.alertSnapshot
+    }));
+    await fs.writeFile(reviewStorePath, `${JSON.stringify(persisted, null, 2)}\n`, 'utf8');
+
+    const secondCtx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: reviewStorePath,
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(secondCtx);
+
+    const alertsResponse = await secondCtx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+
+    expect(alertsResponse.statusCode).toBe(200);
+    expect(alertsResponse.json().alerts).toHaveLength(0);
+  });
+
   it('auto-labels signal outcomes after future bars resolve the setup', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-auto-outcome-'));
     tempDirs.push(tempDir);
