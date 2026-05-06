@@ -66,10 +66,10 @@ export interface PromotionDecision {
   challengerModelId: string;
   championWinRate: number;
   challengerWinRate: number;
-  championPrecision: number;
-  challengerPrecision: number;
-  championRecall: number;
-  challengerRecall: number;
+  championPrecision?: number;
+  challengerPrecision?: number;
+  championRecall?: number;
+  challengerRecall?: number;
   delta: number;
   decidedAt: string;
 }
@@ -448,11 +448,11 @@ const normalizePromotionDecision = (raw: unknown): PromotionDecision | undefined
     championRecall:
       typeof obj.championRecall === 'number' && Number.isFinite(obj.championRecall)
         ? obj.championRecall
-        : 0,
+        : undefined,
     challengerRecall:
       typeof obj.challengerRecall === 'number' && Number.isFinite(obj.challengerRecall)
         ? obj.challengerRecall
-        : 0,
+        : undefined,
     delta: obj.delta,
     decidedAt: obj.decidedAt
   };
