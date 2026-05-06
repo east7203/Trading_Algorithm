@@ -29,6 +29,8 @@ interface EvaluationSummary {
   delta: number;
 }
 
+const formatPct = (value: number): string => `${(value * 100).toFixed(2)}%`;
+
 const parseSymbol = (raw: string): SymbolCode => {
   const normalized = raw.trim().toUpperCase();
   const allowed: SymbolCode[] = ['NAS100', 'US30', 'NQ', 'ES', 'YM', 'MNQ', 'MYM'];
@@ -388,13 +390,23 @@ const run = async (): Promise<void> => {
     console.log(`Bars parsed: ${allBarsRaw.length}`);
     console.log(`Bars after dedupe: ${allBars.length}`);
     console.log(`Examples: ${examples.length}`);
-    console.log(`Full-history baseline top-pick: ${(fullMetrics.baselineTopPick.winRate * 100).toFixed(2)}%`);
-    console.log(`Full-history trained top-pick: ${(fullMetrics.trainedTopPick.winRate * 100).toFixed(2)}%`);
-    console.log(`Full-history delta: ${(fullMetrics.delta * 100).toFixed(2)}%`);
+    console.log(
+      `Full-history baseline top-pick: ${formatPct(fullMetrics.baselineTopPick.winRate)} `
+        + `(precision ${formatPct(fullMetrics.baselineTopPick.precision)}, recall ${formatPct(fullMetrics.baselineTopPick.recall)})`
+    );
+    console.log(
+      `Full-history trained top-pick: ${formatPct(fullMetrics.trainedTopPick.winRate)} `
+        + `(precision ${formatPct(fullMetrics.trainedTopPick.precision)}, recall ${formatPct(fullMetrics.trainedTopPick.recall)})`
+    );
+    console.log(`Full-history delta: ${formatPct(fullMetrics.delta)}`);
     if (validationMetrics) {
       console.log(`Validation split: newest ${parsed.validationPct.toFixed(2)}%`);
-      console.log(`Train delta: ${(trainMetrics.delta * 100).toFixed(2)}%`);
-      console.log(`Validation delta: ${(validationMetrics.delta * 100).toFixed(2)}%`);
+      console.log(`Train delta: ${formatPct(trainMetrics.delta)}`);
+      console.log(
+        `Validation trained precision/recall: ${formatPct(validationMetrics.trainedTopPick.precision)}`
+          + ` / ${formatPct(validationMetrics.trainedTopPick.recall)}`
+      );
+      console.log(`Validation delta: ${formatPct(validationMetrics.delta)}`);
     } else {
       console.log(`Validation skipped (insufficient examples or validationPct=0).`);
     }

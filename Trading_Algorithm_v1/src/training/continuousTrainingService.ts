@@ -40,6 +40,10 @@ export interface TrainingRunResult {
   validationDelta?: number;
   championWinRate?: number;
   challengerWinRate?: number;
+  championPrecision?: number;
+  challengerPrecision?: number;
+  championRecall?: number;
+  challengerRecall?: number;
   promotionDelta?: number;
   promoted?: boolean;
   promotionReason?: string;
@@ -62,6 +66,10 @@ export interface PromotionDecision {
   challengerModelId: string;
   championWinRate: number;
   challengerWinRate: number;
+  championPrecision: number;
+  challengerPrecision: number;
+  championRecall: number;
+  challengerRecall: number;
   delta: number;
   decidedAt: string;
 }
@@ -384,6 +392,10 @@ const normalizeTrainingRunHistoryEntry = (raw: unknown): TrainingRunHistoryEntry
     validationDelta: toOptionalNumber(obj.validationDelta),
     championWinRate: toOptionalNumber(obj.championWinRate),
     challengerWinRate: toOptionalNumber(obj.challengerWinRate),
+    championPrecision: toOptionalNumber(obj.championPrecision),
+    challengerPrecision: toOptionalNumber(obj.challengerPrecision),
+    championRecall: toOptionalNumber(obj.championRecall),
+    challengerRecall: toOptionalNumber(obj.challengerRecall),
     promotionDelta: toOptionalNumber(obj.promotionDelta),
     promoted: typeof obj.promoted === 'boolean' ? obj.promoted : undefined,
     promotionReason: typeof obj.promotionReason === 'string' ? obj.promotionReason : undefined,
@@ -425,6 +437,22 @@ const normalizePromotionDecision = (raw: unknown): PromotionDecision | undefined
     challengerModelId: obj.challengerModelId,
     championWinRate: obj.championWinRate,
     challengerWinRate: obj.challengerWinRate,
+    championPrecision:
+      typeof obj.championPrecision === 'number' && Number.isFinite(obj.championPrecision)
+        ? obj.championPrecision
+        : obj.championWinRate,
+    challengerPrecision:
+      typeof obj.challengerPrecision === 'number' && Number.isFinite(obj.challengerPrecision)
+        ? obj.challengerPrecision
+        : obj.challengerWinRate,
+    championRecall:
+      typeof obj.championRecall === 'number' && Number.isFinite(obj.championRecall)
+        ? obj.championRecall
+        : 0,
+    challengerRecall:
+      typeof obj.challengerRecall === 'number' && Number.isFinite(obj.challengerRecall)
+        ? obj.challengerRecall
+        : 0,
     delta: obj.delta,
     decidedAt: obj.decidedAt
   };
@@ -846,6 +874,10 @@ export class ContinuousTrainingService {
         challengerModelId: challengerValidationModel.modelId,
         championWinRate: promotionMetrics.championTopPick.winRate,
         challengerWinRate: promotionMetrics.challengerTopPick.winRate,
+        championPrecision: promotionMetrics.championTopPick.precision,
+        challengerPrecision: promotionMetrics.challengerTopPick.precision,
+        championRecall: promotionMetrics.championTopPick.recall,
+        challengerRecall: promotionMetrics.challengerTopPick.recall,
         delta: promotionMetrics.delta,
         decidedAt: new Date().toISOString()
       };
@@ -919,6 +951,10 @@ export class ContinuousTrainingService {
         validationDelta: validationMetrics?.delta,
         championWinRate: promotionMetrics.championTopPick.winRate,
         challengerWinRate: promotionMetrics.challengerTopPick.winRate,
+        championPrecision: promotionMetrics.championTopPick.precision,
+        challengerPrecision: promotionMetrics.challengerTopPick.precision,
+        championRecall: promotionMetrics.championTopPick.recall,
+        challengerRecall: promotionMetrics.challengerTopPick.recall,
         promotionDelta: promotionMetrics.delta,
         promoted: this.lastPromotionDecision.promoted,
         promotionReason: this.lastPromotionDecision.reason,

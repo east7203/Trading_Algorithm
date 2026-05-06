@@ -3,6 +3,7 @@ import type { SetupCandidate, SetupType, SymbolCode } from '../../src/domain/typ
 import { rankCandidates } from '../../src/services/ranker.js';
 import { defaultRankingModel } from '../../src/services/rankingModel.js';
 import {
+  evaluateTopPickWinRate,
   parseOneMinuteCsv,
   trainRankingModelFromExamples,
   type TrainingExample
@@ -104,6 +105,47 @@ describe('historical trainer', () => {
     expect(defaultRanked).toHaveLength(2);
     expect(trainedRanked).toHaveLength(2);
     expect(trainedRanked[0].id).toBe('A');
+  });
+
+  it('reports top-pick precision and opportunity recall', () => {
+    const examples: TrainingExample[] = [
+      {
+        snapshotId: 'snap-missed-winner',
+        candidate: baseCandidate('loss-picked', 'NY_BREAK_RETEST_MOMENTUM', 'NQ', 0.9),
+        outcome: 'LOSS'
+      },
+      {
+        snapshotId: 'snap-missed-winner',
+        candidate: baseCandidate('winner-missed', 'NY_BREAK_RETEST_MOMENTUM', 'NQ', 0.1),
+        outcome: 'WIN'
+      },
+      {
+        snapshotId: 'snap-caught-winner',
+        candidate: baseCandidate('winner-picked', 'NY_BREAK_RETEST_MOMENTUM', 'NQ', 0.9),
+        outcome: 'WIN'
+      },
+      {
+        snapshotId: 'snap-caught-winner',
+        candidate: baseCandidate('loss-missed', 'NY_BREAK_RETEST_MOMENTUM', 'NQ', 0.1),
+        outcome: 'LOSS'
+      },
+      {
+        snapshotId: 'snap-no-winner',
+        candidate: baseCandidate('loss-only', 'NY_BREAK_RETEST_MOMENTUM', 'NQ', 0.9),
+        outcome: 'LOSS'
+      }
+    ];
+
+    const metrics = evaluateTopPickWinRate(examples, defaultRankingModel());
+
+    expect(metrics.topPickCount).toBe(3);
+    expect(metrics.truePositives).toBe(1);
+    expect(metrics.falsePositives).toBe(2);
+    expect(metrics.falseNegatives).toBe(1);
+    expect(metrics.opportunityCount).toBe(2);
+    expect(metrics.precision).toBeCloseTo(1 / 3);
+    expect(metrics.recall).toBeCloseTo(1 / 2);
+    expect(metrics.f1Score).toBeCloseTo(0.4);
   });
 
   it('learns ai-context weight when higher-timeframe score is predictive', () => {

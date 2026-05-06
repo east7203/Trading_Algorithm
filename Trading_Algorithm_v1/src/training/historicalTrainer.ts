@@ -38,6 +38,13 @@ export interface TopPickWinRate {
   wins: number;
   losses: number;
   winRate: number;
+  truePositives: number;
+  falsePositives: number;
+  falseNegatives: number;
+  opportunityCount: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
 }
 
 export interface TrainedModelResult {
@@ -618,33 +625,62 @@ export const evaluateTopPickWinRate = (
 
   let wins = 0;
   let losses = 0;
+  let truePositives = 0;
+  let falsePositives = 0;
+  let falseNegatives = 0;
 
   for (const bucket of grouped.values()) {
+    const hasWinningCandidate = bucket.some((example) => example.outcome === 'WIN');
     const candidates = bucket.map((example) => example.candidate);
     const ranked = rankCandidates({ candidates }, model);
     const top = ranked[0];
     if (!top) {
+      if (hasWinningCandidate) {
+        falseNegatives += 1;
+      }
       continue;
     }
 
     const picked = bucket.find((example) => example.candidate.id === top.id);
     if (!picked) {
+      if (hasWinningCandidate) {
+        falseNegatives += 1;
+      }
       continue;
     }
 
     if (picked.outcome === 'WIN') {
       wins += 1;
+      truePositives += 1;
     } else {
       losses += 1;
+      falsePositives += 1;
+      if (hasWinningCandidate) {
+        falseNegatives += 1;
+      }
     }
   }
 
   const total = wins + losses;
+  const opportunityCount = truePositives + falseNegatives;
+  const precisionDenominator = truePositives + falsePositives;
+  const recallDenominator = truePositives + falseNegatives;
+  const precision = precisionDenominator > 0 ? truePositives / precisionDenominator : 0;
+  const recall = recallDenominator > 0 ? truePositives / recallDenominator : 0;
+  const f1Score = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+
   return {
     topPickCount: total,
     wins,
     losses,
-    winRate: total > 0 ? wins / total : 0
+    winRate: total > 0 ? wins / total : 0,
+    truePositives,
+    falsePositives,
+    falseNegatives,
+    opportunityCount,
+    precision,
+    recall,
+    f1Score
   };
 };
 

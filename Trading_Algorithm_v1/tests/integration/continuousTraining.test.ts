@@ -380,7 +380,11 @@ describe('continuous training integration', () => {
     expect(run.executed).toBe(true);
     expect(run.promoted).toBe(true);
     expect(run.promotionDelta).toBeGreaterThan(0.01);
+    expect(run.challengerPrecision).toBeGreaterThanOrEqual(0);
+    expect(run.challengerRecall).toBeGreaterThanOrEqual(0);
     expect(status.promotion.promotions).toBe(1);
+    expect(status.promotion.lastDecision?.challengerPrecision).toBe(run.challengerPrecision);
+    expect(status.promotion.lastDecision?.challengerRecall).toBe(run.challengerRecall);
     expect(status.feedback.totalExamples).toBe(feedbackExamples.length);
     expect(status.model.modelId).not.toBe('default-rule-model');
   });
