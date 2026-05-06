@@ -41,6 +41,10 @@ export interface LearningFeedbackCounts {
   manualResolvedReviews: number;
   autoResolvedReviews: number;
   pendingOutcomeReviews: number;
+  nonTrainableOutcomeReviews: number;
+  breakevenOutcomeReviews: number;
+  missedOutcomeReviews: number;
+  skippedOutcomeReviews: number;
 }
 
 export interface LearningFeedbackDataset {
@@ -63,6 +67,10 @@ export interface LearningPerformanceSummary {
   manualResolvedReviews: number;
   autoResolvedReviews: number;
   winRate: number;
+  nonTrainableOutcomeReviews: number;
+  breakevenOutcomeReviews: number;
+  missedOutcomeReviews: number;
+  skippedOutcomeReviews: number;
   bySetup: LearningPerformanceBucket[];
   byTimeBucket: LearningPerformanceBucket[];
   byScoreBucket: LearningPerformanceBucket[];
@@ -98,6 +106,31 @@ const toTrainingOutcome = (outcome: SignalReviewOutcome | undefined): TrainingOu
     return 'LOSS';
   }
   return null;
+};
+
+const countNonTrainableOutcome = (
+  outcome: SignalReviewOutcome | undefined,
+  counters: {
+    nonTrainableOutcomeReviews: number;
+    breakevenOutcomeReviews: number;
+    missedOutcomeReviews: number;
+    skippedOutcomeReviews: number;
+  }
+): boolean => {
+  if (!outcome || WIN_LOSS_OUTCOMES.has(outcome)) {
+    return false;
+  }
+
+  counters.nonTrainableOutcomeReviews += 1;
+  if (outcome === 'BREAKEVEN') {
+    counters.breakevenOutcomeReviews += 1;
+  } else if (outcome === 'MISSED') {
+    counters.missedOutcomeReviews += 1;
+  } else if (outcome === 'SKIPPED') {
+    counters.skippedOutcomeReviews += 1;
+  }
+
+  return true;
 };
 
 const cloneCandidate = <T>(value: T): T => structuredClone(value);
@@ -194,6 +227,12 @@ export const buildLearningFeedbackDataset = (reviews: SignalReviewEntry[]): Lear
   let manualResolvedReviews = 0;
   let autoResolvedReviews = 0;
   let pendingOutcomeReviews = 0;
+  const nonTrainableCounters = {
+    nonTrainableOutcomeReviews: 0,
+    breakevenOutcomeReviews: 0,
+    missedOutcomeReviews: 0,
+    skippedOutcomeReviews: 0
+  };
 
   for (const review of reviews) {
     const effective = resolveEffectiveReviewOutcome(review);
@@ -221,7 +260,7 @@ export const buildLearningFeedbackDataset = (reviews: SignalReviewEntry[]): Lear
           autoOutcomeExamples += 1;
         }
       }
-    } else {
+    } else if (!countNonTrainableOutcome(effective.outcome, nonTrainableCounters)) {
       pendingOutcomeReviews += 1;
     }
 
@@ -248,7 +287,8 @@ export const buildLearningFeedbackDataset = (reviews: SignalReviewEntry[]): Lear
       resolvedReviews,
       manualResolvedReviews,
       autoResolvedReviews,
-      pendingOutcomeReviews
+      pendingOutcomeReviews,
+      ...nonTrainableCounters
     }
   };
 };
@@ -267,6 +307,12 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
   let manualResolvedReviews = 0;
   let autoResolvedReviews = 0;
   let pendingOutcomeReviews = 0;
+  const nonTrainableCounters = {
+    nonTrainableOutcomeReviews: 0,
+    breakevenOutcomeReviews: 0,
+    missedOutcomeReviews: 0,
+    skippedOutcomeReviews: 0
+  };
   let wins = 0;
   let losses = 0;
   let readyResolved = 0;
@@ -281,7 +327,9 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
     const outcome = toTrainingOutcome(effective.outcome);
 
     if (!outcome) {
-      pendingOutcomeReviews += 1;
+      if (!countNonTrainableOutcome(effective.outcome, nonTrainableCounters)) {
+        pendingOutcomeReviews += 1;
+      }
     } else {
       const isWin = outcome === 'WIN';
       resolvedReviews += 1;
@@ -357,6 +405,7 @@ export const summarizeLearningPerformance = (reviews: SignalReviewEntry[]): Lear
     manualResolvedReviews,
     autoResolvedReviews,
     winRate: resolvedReviews > 0 ? wins / resolvedReviews : 0,
+    ...nonTrainableCounters,
     bySetup: summarizeBuckets(bySetup),
     byTimeBucket: summarizeBuckets(byTimeBucket),
     byScoreBucket: summarizeBuckets(byScoreBucket, (key) => `Score ${key}`),

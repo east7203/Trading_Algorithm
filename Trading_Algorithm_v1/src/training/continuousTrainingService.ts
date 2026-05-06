@@ -458,7 +458,11 @@ export class ContinuousTrainingService {
     resolvedReviews: 0,
     manualResolvedReviews: 0,
     autoResolvedReviews: 0,
-    pendingOutcomeReviews: 0
+    pendingOutcomeReviews: 0,
+    nonTrainableOutcomeReviews: 0,
+    breakevenOutcomeReviews: 0,
+    missedOutcomeReviews: 0,
+    skippedOutcomeReviews: 0
   };
   private promotions = 0;
   private blockedPromotions = 0;
@@ -781,7 +785,11 @@ export class ContinuousTrainingService {
             resolvedReviews: 0,
             manualResolvedReviews: 0,
             autoResolvedReviews: 0,
-            pendingOutcomeReviews: 0
+            pendingOutcomeReviews: 0,
+            nonTrainableOutcomeReviews: 0,
+            breakevenOutcomeReviews: 0,
+            missedOutcomeReviews: 0,
+            skippedOutcomeReviews: 0
           }
         };
       this.feedbackCounts = feedbackDataset.counts;

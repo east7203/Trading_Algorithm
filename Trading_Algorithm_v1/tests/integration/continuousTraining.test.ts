@@ -102,7 +102,11 @@ describe('continuous training integration', () => {
           resolvedReviews: feedbackExamples.length,
           manualResolvedReviews: feedbackExamples.length,
           autoResolvedReviews: 0,
-          pendingOutcomeReviews: 0
+          pendingOutcomeReviews: 0,
+          nonTrainableOutcomeReviews: 0,
+          breakevenOutcomeReviews: 0,
+          missedOutcomeReviews: 0,
+          skippedOutcomeReviews: 0
         }
       })
     });
@@ -349,7 +353,11 @@ describe('continuous training integration', () => {
           resolvedReviews: 12,
           manualResolvedReviews: 12,
           autoResolvedReviews: 0,
-          pendingOutcomeReviews: 0
+          pendingOutcomeReviews: 0,
+          nonTrainableOutcomeReviews: 0,
+          breakevenOutcomeReviews: 0,
+          missedOutcomeReviews: 0,
+          skippedOutcomeReviews: 0
         }
       })
     });
@@ -449,7 +457,11 @@ describe('continuous training integration', () => {
           resolvedReviews: feedbackExamples.length / 2,
           manualResolvedReviews: feedbackExamples.length / 2,
           autoResolvedReviews: 0,
-          pendingOutcomeReviews: 0
+          pendingOutcomeReviews: 0,
+          nonTrainableOutcomeReviews: 0,
+          breakevenOutcomeReviews: 0,
+          missedOutcomeReviews: 0,
+          skippedOutcomeReviews: 0
         }
       })
     };

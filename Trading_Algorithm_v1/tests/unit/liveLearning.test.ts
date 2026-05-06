@@ -125,6 +125,26 @@ describe('live learning helpers', () => {
     expect(dataset.examples.filter((example) => example.outcome === 'LOSS')).toHaveLength(2);
   });
 
+  it('separates breakeven outcomes from pending feedback', () => {
+    const breakeven = buildReview({
+      alertId: 'manual-breakeven',
+      reviewStatus: 'COMPLETED',
+      outcome: 'BREAKEVEN',
+      reviewedBy: 'east'
+    });
+
+    const dataset = buildLearningFeedbackDataset([breakeven]);
+    const summary = summarizeLearningPerformance([breakeven]);
+
+    expect(dataset.counts.totalExamples).toBe(0);
+    expect(dataset.counts.pendingOutcomeReviews).toBe(0);
+    expect(dataset.counts.nonTrainableOutcomeReviews).toBe(1);
+    expect(dataset.counts.breakevenOutcomeReviews).toBe(1);
+    expect(summary.pendingOutcomeReviews).toBe(0);
+    expect(summary.nonTrainableOutcomeReviews).toBe(1);
+    expect(summary.breakevenOutcomeReviews).toBe(1);
+  });
+
   it('summarizes effective performance and preferences', () => {
     const reviews = [
       buildReview({

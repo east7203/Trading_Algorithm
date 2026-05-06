@@ -2669,6 +2669,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       learning: {
         resolvedReviews: learningPerformance.resolvedReviews,
         pendingOutcomeReviews: learningPerformance.pendingOutcomeReviews,
+        nonTrainableOutcomeReviews: learningPerformance.nonTrainableOutcomeReviews,
+        breakevenOutcomeReviews: learningPerformance.breakevenOutcomeReviews,
+        missedOutcomeReviews: learningPerformance.missedOutcomeReviews,
+        skippedOutcomeReviews: learningPerformance.skippedOutcomeReviews,
         winRate: Number(learningPerformance.winRate.toFixed(3)),
         topSetup: topSetup
           ? {
