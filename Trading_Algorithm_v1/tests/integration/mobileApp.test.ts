@@ -68,6 +68,11 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('data-status-filter="WAIT"');
     expect(mobile.body).toContain('data-status-filter="AVOID"');
     expect(mobile.body).toContain('Grouped by what you should do next. Tap any card to pin it above.');
+
+    const mobileScript = await ctx.app.inject({ method: 'GET', path: '/mobile/app.js' });
+    expect(mobileScript.statusCode).toBe(200);
+    expect(mobileScript.body).toContain('Live data stale');
+    expect(mobileScript.body).toContain('Fresh futures data is stale because IBKR needs login.');
     expect(mobile.body).toContain('symbolDetailViewer');
     expect(mobile.body).not.toContain('TradingView Checklist');
     expect(mobile.body).not.toContain('TV checklist 0/5');

@@ -8135,6 +8135,44 @@ const formatLearningMetricPct = (value) => {
   return Number.isFinite(numeric) ? `${fmtNum(numeric * 100, 0)}%` : '--';
 };
 
+const learningFeedIsDegraded = (status) => ['FROZEN', 'STALE', 'OFFLINE'].includes(String(status ?? '').toUpperCase());
+
+const activeLearningBlockers = (blockers = []) =>
+  blockers.filter((blocker) => String(blocker?.severity ?? 'info').toLowerCase() !== 'info');
+
+const learningReportAttentionLabel = (report) => {
+  const feedStatus = String(report?.dataSources?.liveFeed?.status ?? '').toUpperCase();
+  const ibkrPending = Boolean(report?.dataSources?.ibkr?.pendingReconnect);
+
+  if (feedStatus === 'STALE') {
+    return 'Live data stale';
+  }
+  if (feedStatus === 'OFFLINE' || feedStatus === 'FROZEN') {
+    return 'Live data blocked';
+  }
+  if (ibkrPending) {
+    return 'IBKR login needed';
+  }
+  return 'Fix needed';
+};
+
+const learningFeedIssueHeadline = (status, ibkrPending = false) => {
+  const feedStatus = String(status ?? '').toUpperCase();
+  if (ibkrPending && learningFeedIsDegraded(feedStatus)) {
+    return 'Fresh futures data is stale because IBKR needs login.';
+  }
+  if (feedStatus === 'STALE') {
+    return 'Fresh futures data is stale, so live alerts and new learning may stay quiet.';
+  }
+  if (feedStatus === 'OFFLINE') {
+    return 'Fresh futures data is offline, so live alerts cannot be trusted yet.';
+  }
+  if (feedStatus === 'FROZEN') {
+    return 'Fresh futures data appears frozen, so the app is waiting for a reliable next bar.';
+  }
+  return `Fresh futures data is ${String(status ?? 'not live').toLowerCase()}.`;
+};
+
 const openLearningIbkrRecovery = () => {
   setActiveTab('status');
   setStatus('Status: opened IBKR recovery. Use Run Full Recovery first, then open the console if login is still waiting.');
@@ -8152,10 +8190,10 @@ const refreshLearningHealthReport = async () => {
   setStatus('Status: refreshing learning blockers...');
   await Promise.all([loadDiagnostics().catch(() => null), loadLearningHealth().catch(() => null)]);
   const report = getLearningHealthReport();
-  const blockers = report?.blockers ?? [];
+  const blockers = activeLearningBlockers(report?.blockers ?? []);
   setStatus(
     blockers.length
-      ? `Status: ${blockers.length} learning blocker${blockers.length === 1 ? '' : 's'} still active.`
+      ? `Status: ${blockers.length} active learning blocker${blockers.length === 1 ? '' : 's'} still needs attention.`
       : 'Status: no active learning blockers.'
   );
 };
@@ -8201,8 +8239,11 @@ const renderLearningBlockers = (blockers = []) => {
     return;
   }
 
+  const activeBlockers = activeLearningBlockers(blockers);
+  const infoNotes = blockers.filter((blocker) => String(blocker?.severity ?? 'info').toLowerCase() === 'info');
+
   learningBlockerListEl.innerHTML = '';
-  if (!blockers.length) {
+  if (!activeBlockers.length) {
     const card = document.createElement('article');
     card.className = 'learning-pattern-card learning-blocker-card learning-blocker-clear';
     card.innerHTML = `
@@ -8213,22 +8254,22 @@ const renderLearningBlockers = (blockers = []) => {
       <p class="learning-pattern-note">The app can keep collecting outcomes and let the promotion gate decide whether new models deserve to go live.</p>
     `;
     learningBlockerListEl.appendChild(card);
-    return;
   }
 
-  blockers.slice(0, 5).forEach((blocker) => {
+  [...activeBlockers.slice(0, 5), ...infoNotes.slice(0, activeBlockers.length ? 2 : 3)].forEach((blocker) => {
     const severity = String(blocker?.severity ?? 'info').toLowerCase();
     const chipClass = severity === 'attention'
       ? 'chip chip-offline'
       : severity === 'watch'
         ? 'chip chip-neutral'
         : 'chip chip-online';
+    const chipText = severity === 'info' ? 'NOTE' : severity.toUpperCase();
     const card = document.createElement('article');
     card.className = 'learning-pattern-card learning-blocker-card';
     card.innerHTML = `
       <div class="learning-pattern-head">
         <p class="learning-pattern-title">${escapeHtml(blocker?.title ?? 'Learning note')}</p>
-        <span class="${chipClass}">${escapeHtml(severity.toUpperCase())}</span>
+        <span class="${chipClass}">${escapeHtml(chipText)}</span>
       </div>
       <p class="learning-pattern-note">${escapeHtml(blocker?.detail ?? 'No detail available.')}</p>
       <p class="learning-pattern-note"><strong>Action:</strong> ${escapeHtml(blocker?.action ?? 'Keep monitoring the learning loop.')}</p>
@@ -8284,7 +8325,7 @@ const renderLearningHealthReport = () => {
       : severity === 'ATTENTION'
         ? 'chip chip-offline'
         : 'chip chip-neutral';
-    learningReportChipEl.textContent = severity === 'HEALTHY' ? 'Learning healthy' : severity === 'ATTENTION' ? 'Action needed' : 'Watch';
+    learningReportChipEl.textContent = severity === 'HEALTHY' ? 'No blockers' : severity === 'ATTENTION' ? learningReportAttentionLabel(report) : 'Watch';
   }
   if (learningReportHeadlineEl) {
     learningReportHeadlineEl.textContent = report.headline ?? 'Learning report is available.';
@@ -8645,6 +8686,12 @@ const renderReviewInsights = () => {
   const profile = getSelfLearningProfile();
   const diagnostics = latestDiagnostics?.diagnostics ?? null;
   const feedState = getFeedStateMeta(diagnostics);
+  const learningReport = getLearningHealthReport();
+  const learningFeedStatus = learningReport?.dataSources?.liveFeed?.status ?? feedState.status;
+  const learningIbkrPending = Boolean(
+    learningReport?.dataSources?.ibkr?.pendingReconnect
+      || diagnostics?.ibkrRecovery?.pendingReconnect
+  );
   const training = diagnostics?.training ?? null;
   const tradeLearning = diagnostics?.tradeLearning ?? null;
   const learningCases = diagnostics?.learningCases ?? reviewSummary;
@@ -8671,9 +8718,9 @@ const renderReviewInsights = () => {
     } else if (feedState.status === 'LIVE' && training?.enabled && tradeLearning?.totalRecords > 0) {
       learningHealthChipEl.className = 'chip chip-online';
       learningHealthChipEl.textContent = 'Healthy';
-    } else if (feedState.status === 'FROZEN' || feedState.status === 'STALE' || feedState.status === 'OFFLINE') {
+    } else if (learningFeedIsDegraded(learningFeedStatus)) {
       learningHealthChipEl.className = 'chip chip-offline';
-      learningHealthChipEl.textContent = 'Feed degraded';
+      learningHealthChipEl.textContent = String(learningFeedStatus).toUpperCase() === 'STALE' ? 'Live data stale' : 'Live data blocked';
     } else {
       learningHealthChipEl.className = 'chip chip-neutral';
       learningHealthChipEl.textContent = 'Watching closely';
@@ -8683,8 +8730,8 @@ const renderReviewInsights = () => {
   if (learningHealthHeadlineEl) {
     if (!diagnostics) {
       learningHealthHeadlineEl.textContent = 'Waiting for live diagnostics to load.';
-    } else if (feedState.status !== 'LIVE') {
-      learningHealthHeadlineEl.textContent = `Learning is healthy enough to read history, but the live feed is ${feedState.status.toLowerCase()}.`;
+    } else if (learningFeedStatus !== 'LIVE') {
+      learningHealthHeadlineEl.textContent = learningFeedIssueHeadline(learningFeedStatus, learningIbkrPending);
     } else if (!training?.enabled) {
       learningHealthHeadlineEl.textContent = 'The learning database is live, but scheduled training is paused.';
     } else if ((tradeLearning?.totalRecords ?? 0) === 0) {

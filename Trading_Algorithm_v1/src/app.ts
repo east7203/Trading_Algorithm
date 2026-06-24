@@ -583,6 +583,33 @@ const classifyLiveFeedStatus = (
   return { status: 'STALE', barAgeMs, sessionState };
 };
 
+const formatLearningFeedAge = (ageMinutes: number): string => {
+  if (!Number.isFinite(ageMinutes) || ageMinutes < 0) {
+    return 'an unknown amount of time';
+  }
+
+  if (ageMinutes < 60) {
+    const minutes = Math.max(1, Math.round(ageMinutes));
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+
+  const hours = Math.floor(ageMinutes / 60);
+  const minutes = Math.round(ageMinutes % 60);
+  if (hours < 48) {
+    return [
+      `${hours} hour${hours === 1 ? '' : 's'}`,
+      minutes > 0 ? `${minutes} minute${minutes === 1 ? '' : 's'}` : ''
+    ].filter(Boolean).join(' ');
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return [
+    `${days} day${days === 1 ? '' : 's'}`,
+    remainingHours > 0 ? `${remainingHours} hour${remainingHours === 1 ? '' : 's'}` : ''
+  ].filter(Boolean).join(' ');
+};
+
 const parseOptionalPathEnv = (name: string, fallback?: string): string | undefined => {
   const value = process.env[name];
   if (value === undefined) {
@@ -2656,14 +2683,20 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const ibkrPendingReconnect = ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs;
     const blockers: Array<{ severity: 'attention' | 'watch' | 'info'; title: string; detail: string; action: string }> = [];
 
+    const staleFeedMinutes = latestBarTimestamp
+      ? Math.round((nowMs - Date.parse(latestBarTimestamp)) / 60_000)
+      : undefined;
+
     if (liveFeed.status === 'OFFLINE' || liveFeed.status === 'FROZEN' || liveFeed.status === 'STALE') {
       blockers.push({
         severity: 'attention',
-        title: 'Live feed needs attention',
+        title: liveFeed.status === 'STALE' ? 'Fresh market data is stale' : 'Fresh market data is not reliable yet',
         detail: latestBarTimestamp
-          ? `Latest bar is ${Math.round((nowMs - Date.parse(latestBarTimestamp)) / 60_000)} minutes old.`
-          : 'No current live bar timestamp is available.',
-        action: 'Restore IBKR or keep Yahoo fallback running before trusting new learning.'
+          ? `Newest futures bar is ${formatLearningFeedAge(staleFeedMinutes ?? 0)} old. Live decisions expect a bar under 5 minutes, and anything over 20 minutes is treated as stale during the trading window.`
+          : 'No current futures bar timestamp is available, so the app cannot confirm fresh live data.',
+        action: ibkrPendingReconnect
+          ? 'Complete the IBKR Gateway login, approve the phone prompt, then tap Refresh Report.'
+          : 'Check the market-data bridge or fallback feed, then tap Refresh Report before trusting fresh learning.'
       });
     } else if (liveFeed.status !== 'LIVE') {
       blockers.push({
@@ -2686,9 +2719,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     if (ibkrPendingReconnect) {
       blockers.push({
         severity: 'attention',
-        title: 'IBKR is waiting for login',
-        detail: 'The bridge has requested broker recovery and cannot use the primary Gateway feed yet.',
-        action: 'Open the IBKR console and complete Gateway authentication.'
+        title: 'IBKR login is blocking the primary feed',
+        detail: 'The Gateway session is not authenticated, so the app may stop receiving fresh futures bars and trade alerts can stay quiet.',
+        action: 'Open the IBKR console, complete Gateway authentication, approve the phone prompt, then refresh this report.'
       });
     }
 
@@ -2737,7 +2770,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ? 'Learning is running and guarded by promotion checks.'
         : severity === 'WATCH'
           ? 'Learning is running, but one piece deserves monitoring.'
-          : 'Learning has a blocker to clear before it is fully trustworthy.';
+          : ibkrPendingReconnect && (liveFeed.status === 'STALE' || liveFeed.status === 'OFFLINE' || liveFeed.status === 'FROZEN')
+            ? 'Fresh market data is stale because IBKR needs login.'
+            : 'Learning has a live-data blocker to clear before fresh decisions are fully trustworthy.';
     const nextBestAction =
       blockers.find((blocker) => blocker.severity === 'attention')?.action
       ?? blockers.find((blocker) => blocker.severity === 'watch')?.action
