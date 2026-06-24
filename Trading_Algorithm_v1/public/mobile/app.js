@@ -171,6 +171,14 @@ const learningFeedHealthEl = document.getElementById('learningFeedHealth');
 const learningDatabaseHealthEl = document.getElementById('learningDatabaseHealth');
 const learningTrainingHealthEl = document.getElementById('learningTrainingHealth');
 const learningQueueHealthEl = document.getElementById('learningQueueHealth');
+const learningReportChipEl = document.getElementById('learningReportChip');
+const learningReportHeadlineEl = document.getElementById('learningReportHeadline');
+const learningReportNoteEl = document.getElementById('learningReportNote');
+const learningModelDecisionEl = document.getElementById('learningModelDecision');
+const learningPrecisionRecallEl = document.getElementById('learningPrecisionRecall');
+const learningDataSourcesEl = document.getElementById('learningDataSources');
+const learningNextActionEl = document.getElementById('learningNextAction');
+const learningBlockerListEl = document.getElementById('learningBlockerList');
 const learningBiasChipEl = document.getElementById('learningBiasChip');
 const learningBiasHeadlineEl = document.getElementById('learningBiasHeadline');
 const learningBiasNoteEl = document.getElementById('learningBiasNote');
@@ -416,6 +424,7 @@ let latestHomeDeck = null;
 let latestRiskConfig = null;
 let latestHealth = null;
 let latestSelfLearningStatus = null;
+let latestLearningHealth = null;
 let lastSyncAt = null;
 let lastBoardCheckAt = null;
 let lastBoardNewAlertCount = null;
@@ -8113,6 +8122,126 @@ const getSelfLearningStatus = () => latestSelfLearningStatus ?? latestDiagnostic
 
 const getSelfLearningProfile = () => getSelfLearningStatus()?.profile ?? null;
 
+const getLearningHealthReport = () =>
+  latestLearningHealth?.learningHealth ?? latestDiagnostics?.diagnostics?.learningHealth ?? null;
+
+const formatLearningMetricPct = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${fmtNum(numeric * 100, 0)}%` : '--';
+};
+
+const renderLearningBlockers = (blockers = []) => {
+  if (!learningBlockerListEl) {
+    return;
+  }
+
+  learningBlockerListEl.innerHTML = '';
+  if (!blockers.length) {
+    renderEmpty(learningBlockerListEl, 'No active learning blockers. Keep collecting outcomes and let the promotion gate work.');
+    return;
+  }
+
+  blockers.slice(0, 5).forEach((blocker) => {
+    const severity = String(blocker?.severity ?? 'info').toLowerCase();
+    const chipClass = severity === 'attention'
+      ? 'chip chip-offline'
+      : severity === 'watch'
+        ? 'chip chip-neutral'
+        : 'chip chip-online';
+    const card = document.createElement('article');
+    card.className = 'learning-pattern-card learning-blocker-card';
+    card.innerHTML = `
+      <div class="learning-pattern-head">
+        <p class="learning-pattern-title">${escapeHtml(blocker?.title ?? 'Learning note')}</p>
+        <span class="${chipClass}">${escapeHtml(severity.toUpperCase())}</span>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(blocker?.detail ?? 'No detail available.')}</p>
+      <p class="learning-pattern-note"><strong>Action:</strong> ${escapeHtml(blocker?.action ?? 'Keep monitoring the learning loop.')}</p>
+    `;
+    learningBlockerListEl.appendChild(card);
+  });
+};
+
+const renderLearningHealthReport = () => {
+  const report = getLearningHealthReport();
+
+  if (!report) {
+    if (learningReportChipEl) {
+      learningReportChipEl.className = 'chip chip-neutral';
+      learningReportChipEl.textContent = 'Report loading';
+    }
+    if (learningReportHeadlineEl) {
+      learningReportHeadlineEl.textContent = 'Waiting for the continual-improvement report.';
+    }
+    if (learningReportNoteEl) {
+      learningReportNoteEl.textContent = 'The app will summarize model decisions, precision/recall, feed readiness, and blockers here.';
+    }
+    if (learningModelDecisionEl) {
+      learningModelDecisionEl.textContent = '--';
+    }
+    if (learningPrecisionRecallEl) {
+      learningPrecisionRecallEl.textContent = '--';
+    }
+    if (learningDataSourcesEl) {
+      learningDataSourcesEl.textContent = '--';
+    }
+    if (learningNextActionEl) {
+      learningNextActionEl.textContent = '--';
+    }
+    renderLearningBlockers([]);
+    return;
+  }
+
+  const severity = String(report.severity ?? 'WATCH').toUpperCase();
+  if (learningReportChipEl) {
+    learningReportChipEl.className = severity === 'HEALTHY'
+      ? 'chip chip-online'
+      : severity === 'ATTENTION'
+        ? 'chip chip-offline'
+        : 'chip chip-neutral';
+    learningReportChipEl.textContent = severity === 'HEALTHY' ? 'Learning healthy' : severity === 'ATTENTION' ? 'Action needed' : 'Watch';
+  }
+  if (learningReportHeadlineEl) {
+    learningReportHeadlineEl.textContent = report.headline ?? 'Learning report is available.';
+  }
+  if (learningReportNoteEl) {
+    learningReportNoteEl.textContent = report.dailyReport?.summary ?? 'No daily learning summary is available yet.';
+  }
+
+  const promotion = report.model?.promotion ?? null;
+  if (learningModelDecisionEl) {
+    const decisionLabel = promotion?.promoted === true
+      ? 'Promoted challenger'
+      : promotion?.promoted === false
+        ? 'Rejected challenger'
+        : 'No decision yet';
+    const deltaText = Number.isFinite(Number(promotion?.delta)) ? ` • Δ ${fmtNum(Number(promotion.delta), 4)}` : '';
+    const reasonText = promotion?.reason ? ` • ${promotion.reason}` : '';
+    learningModelDecisionEl.textContent = `${decisionLabel}${deltaText}${reasonText}`;
+  }
+
+  if (learningPrecisionRecallEl) {
+    const precision = report.model?.precision ?? {};
+    const recall = report.model?.recall ?? {};
+    learningPrecisionRecallEl.textContent =
+      `P ${formatLearningMetricPct(precision.challenger)} vs ${formatLearningMetricPct(precision.champion)} • R ${formatLearningMetricPct(recall.challenger)} vs ${formatLearningMetricPct(recall.champion)}`;
+  }
+
+  if (learningDataSourcesEl) {
+    const sources = report.dataSources ?? {};
+    const feed = sources.liveFeed ?? {};
+    const notifications = sources.notifications ?? {};
+    learningDataSourcesEl.textContent =
+      `${feed.status ?? '--'} feed • ${feed.latestBarTimestamp ? fmtRelativeMinutes(feed.latestBarTimestamp) : 'no bar'} • ${notifications.webPushSubscribers ?? 0} push subs`;
+  }
+
+  if (learningNextActionEl) {
+    learningNextActionEl.textContent = report.nextBestAction ?? 'Keep collecting outcomes.';
+  }
+
+  renderLearningBlockers(report.blockers ?? []);
+};
+
 const describeLearningBucketLabel = (category, bucket) => {
   if (!bucket) {
     return '--';
@@ -8447,6 +8576,8 @@ const renderReviewInsights = () => {
     (profile?.byAutonomyThesis ?? []).map((bucket) => ({ category: 'autonomy', bucket })),
     'positive'
   ) ?? ((profile?.byAutonomyThesis?.[0] ?? null) ? { category: 'autonomy', bucket: profile.byAutonomyThesis[0] } : null);
+
+  renderLearningHealthReport();
 
   if (learningHealthChipEl) {
     if (!diagnostics) {
@@ -8954,6 +9085,15 @@ const loadTradeLearningProfile = async () => {
   }
   renderReviewInsights();
   renderHomeDashboard();
+};
+
+const loadLearningHealth = async () => {
+  try {
+    latestLearningHealth = await apiFetch('/learning/health');
+  } catch {
+    latestLearningHealth = null;
+  }
+  renderReviewInsights();
 };
 
 const loadHomeDeck = async () => {
@@ -9796,6 +9936,7 @@ const refreshAll = async () => {
     loadDiagnostics(),
     loadDeskBrief(),
     loadTradeLearningProfile(),
+    loadLearningHealth(),
     loadHomeDeck(),
     loadCalendar(),
     loadRiskConfig()

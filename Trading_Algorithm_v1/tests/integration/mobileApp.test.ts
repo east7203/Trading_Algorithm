@@ -42,6 +42,9 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Evan TradeAssist');
     expect(mobile.body).toContain('Learning Lab');
     expect(mobile.body).toContain('Live Engine Health');
+    expect(mobile.body).toContain('Continual Improvement Report');
+    expect(mobile.body).toContain('Model Decision');
+    expect(mobile.body).toContain('Precision / Recall');
     expect(mobile.body).toContain('Live Bias Context');
     expect(mobile.body).toContain('Top 3 Learned Edges');
     expect(mobile.body).toContain('Top 3 Failing Patterns');
@@ -255,6 +258,24 @@ describe('mobile app endpoints', () => {
     expect(payload.signalAlerts.sourceLabel).toBe('Manual engine');
     expect(payload.webPush).toBeTruthy();
     expect(payload.telegram).toBeTruthy();
+  });
+
+  it('serves a continual learning health report for the Learn tab', async () => {
+    const ctx = withApp();
+
+    const response = await ctx.app.inject({ method: 'GET', path: '/learning/health' });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.learningHealth.generatedAt).toBeTruthy();
+    expect(['HEALTHY', 'WATCH', 'ATTENTION']).toContain(payload.learningHealth.severity);
+    expect(payload.learningHealth.model.activeModelId).toBeTruthy();
+    expect(payload.learningHealth.model.precision).toBeTruthy();
+    expect(payload.learningHealth.model.recall).toBeTruthy();
+    expect(payload.learningHealth.dataSources.liveFeed.status).toBeTruthy();
+    expect(payload.learningHealth.feedback.database).toBeTruthy();
+    expect(Array.isArray(payload.learningHealth.blockers)).toBe(true);
+    expect(typeof payload.learningHealth.nextBestAction).toBe('string');
   });
 
   it('sends a manual-engine test alert payload', async () => {

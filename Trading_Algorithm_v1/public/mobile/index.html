@@ -683,6 +683,34 @@
             </div>
           </section>
 
+          <section class="session-summary-card replay-command-card learning-report-card">
+            <div class="section-subhead">
+              <h3>Continual Improvement Report</h3>
+              <span id="learningReportChip" class="chip chip-neutral">Report --</span>
+            </div>
+            <p id="learningReportHeadline" class="session-summary-headline">--</p>
+            <p id="learningReportNote" class="session-summary-copy">This report explains whether the app is learning, what changed today, and what must be fixed before new learning is fully trusted.</p>
+            <div class="session-summary-grid">
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Model Decision</p>
+                <p id="learningModelDecision" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Precision / Recall</p>
+                <p id="learningPrecisionRecall" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Data Sources</p>
+                <p id="learningDataSources" class="insight-text">--</p>
+              </article>
+              <article class="insight-card session-summary-item">
+                <p class="stat-label">Next Action</p>
+                <p id="learningNextAction" class="insight-text">--</p>
+              </article>
+            </div>
+            <div id="learningBlockerList" class="stack learning-pattern-list learning-blocker-list"></div>
+          </section>
+
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
               <h3>Live Bias Context</h3>

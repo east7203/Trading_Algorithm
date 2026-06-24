@@ -2588,6 +2588,261 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     return paperTradingService.status(now);
   };
 
+  const formatLearningPercent = (value: number | undefined): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(4)) : undefined;
+
+  const buildLearningHealthPayload = async () => {
+    await notificationActivityStore.start();
+    const selfLearning = (await ensureSelfLearningStarted())?.status() ?? null;
+    const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
+    const monitorLatestBarTimestamp =
+      'latestBarTimestampBySymbol' in monitor
+        ? Object.values(monitor.latestBarTimestampBySymbol ?? {})
+            .filter((value): value is string => Boolean(value))
+            .sort()
+            .at(-1)
+        : undefined;
+    const training = continuousTrainingService?.status() ?? null;
+    const trainingLatestBarTimestamp = training?.latestBarTimestamp;
+    const latestBarTimestamp = [monitorLatestBarTimestamp, trainingLatestBarTimestamp]
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1);
+    const recentArchiveBars = await readRecentArchiveBars(resolvedContinuousConfig.liveArchivePath);
+    const frozenFeed = detectFrozenArchiveFeed(
+      recentArchiveBars,
+      Object.keys(('latestBarTimestampBySymbol' in monitor ? monitor.latestBarTimestampBySymbol ?? {} : {}) || {}),
+      latestBarTimestamp
+    );
+    const liveFeed = classifyLiveFeedStatus(
+      Boolean('started' in monitor && monitor.started),
+      latestBarTimestamp,
+      frozenFeed
+    );
+    const records = await listManualEngineTradeLearningRecords();
+    const allLearningRecords = await listTradeLearningRecords();
+    const tradeLearning = await tradeLearningStore.summary();
+    const performance = summarizeLearningPerformanceFromTradeRecords(records);
+    const feedback = buildLearningFeedbackDatasetFromTradeRecords(records);
+    const reviews = await signalReviewStore.summary();
+    const webPush = webPushNotificationService?.status() ?? { enabled: false, ready: false, subscriberCount: 0 };
+    const nativePush =
+      nativePushNotificationService?.status() ?? { enabled: false, ready: false, deviceCount: 0, environment: 'sandbox' };
+    const telegram = telegramAlertService?.status() ?? { enabled: false, ready: false, chatConfigured: false };
+    const paperAccount = await syncPaperSessionState();
+    const paperAutonomy = paperAutonomyService?.status() ?? null;
+    const nowMs = Date.now();
+    const dayAgoMs = nowMs - 24 * 60 * 60_000;
+    const recentRecords = allLearningRecords.filter((record) => {
+      const updatedMs = Date.parse(record.updatedAt || record.detectedAt);
+      return Number.isFinite(updatedMs) && updatedMs >= dayAgoMs;
+    });
+    const recentResolved = recentRecords.filter((record) =>
+      Boolean(record.review.effectiveOutcome || record.review.validity || record.paperTrade?.closedAt)
+    );
+    const recentPaperClosed = recentRecords.filter((record) => Boolean(record.paperTrade?.closedAt));
+    const recentWins = recentRecords.filter((record) =>
+      record.review.effectiveOutcome === 'WOULD_WIN'
+      || record.review.outcome === 'WOULD_WIN'
+      || record.review.autoOutcome === 'WOULD_WIN'
+      || (typeof record.paperTrade?.realizedR === 'number' && record.paperTrade.realizedR > 0)
+    ).length;
+    const recentLosses = recentRecords.filter((record) =>
+      record.review.effectiveOutcome === 'WOULD_LOSE'
+      || record.review.outcome === 'WOULD_LOSE'
+      || record.review.autoOutcome === 'WOULD_LOSE'
+      || (typeof record.paperTrade?.realizedR === 'number' && record.paperTrade.realizedR < 0)
+    ).length;
+    const ibkrPendingReconnect = ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs;
+    const blockers: Array<{ severity: 'attention' | 'watch' | 'info'; title: string; detail: string; action: string }> = [];
+
+    if (liveFeed.status === 'OFFLINE' || liveFeed.status === 'FROZEN' || liveFeed.status === 'STALE') {
+      blockers.push({
+        severity: 'attention',
+        title: 'Live feed needs attention',
+        detail: latestBarTimestamp
+          ? `Latest bar is ${Math.round((nowMs - Date.parse(latestBarTimestamp)) / 60_000)} minutes old.`
+          : 'No current live bar timestamp is available.',
+        action: 'Restore IBKR or keep Yahoo fallback running before trusting new learning.'
+      });
+    } else if (liveFeed.status !== 'LIVE') {
+      blockers.push({
+        severity: 'info',
+        title: 'Market is not actively printing',
+        detail: `Feed state is ${liveFeed.status.toLowerCase()} because the session is ${liveFeed.sessionState.toLowerCase()}.`,
+        action: 'Learning can review history, but fresh alerts may stay quiet until the next active window.'
+      });
+    }
+
+    if (webPush.enabled && webPush.ready && webPush.subscriberCount === 0) {
+      blockers.push({
+        severity: 'attention',
+        title: 'Phone push is not subscribed',
+        detail: 'The server can send web push, but this rebuilt HTTPS origin has zero subscribers.',
+        action: 'Open the app from the phone and toggle Allow Push Alerts off, then on.'
+      });
+    }
+
+    if (ibkrPendingReconnect) {
+      blockers.push({
+        severity: 'attention',
+        title: 'IBKR is waiting for login',
+        detail: 'The bridge has requested broker recovery and cannot use the primary Gateway feed yet.',
+        action: 'Open the IBKR console and complete Gateway authentication.'
+      });
+    }
+
+    if (!training?.enabled || !training.started) {
+      blockers.push({
+        severity: 'watch',
+        title: 'Continuous training is not fully running',
+        detail: training?.enabled ? 'Training is enabled but has not started yet.' : 'Continuous training is disabled.',
+        action: 'Start the training loop before relying on automatic model improvement.'
+      });
+    } else if (training.lastError) {
+      blockers.push({
+        severity: 'attention',
+        title: 'Last training run failed',
+        detail: training.lastError,
+        action: 'Review the training logs before promoting new behavior.'
+      });
+    }
+
+    if (selfLearning && tradeLearning.resolvedRecords < selfLearning.minResolvedRecords) {
+      blockers.push({
+        severity: 'watch',
+        title: 'Learning sample is still small',
+        detail: `${tradeLearning.resolvedRecords} resolved trades are available; ${selfLearning.minResolvedRecords} are needed for confident self-learning.`,
+        action: 'Keep collecting outcomes and let paper trades auto-close into the learning database.'
+      });
+    }
+
+    const lastDecision = training?.promotion.lastDecision;
+    const lastRun = training?.lastRun;
+    const promoted = lastDecision?.promoted ?? lastRun?.promoted;
+    if (lastDecision && !lastDecision.promoted) {
+      blockers.push({
+        severity: 'info',
+        title: 'Latest challenger model was rejected',
+        detail: `${lastDecision.reason}; delta ${lastDecision.delta.toFixed(4)} did not beat the promotion threshold.`,
+        action: 'This is healthy if the challenger did not improve enough.'
+      });
+    }
+
+    const hasAttention = blockers.some((blocker) => blocker.severity === 'attention');
+    const hasWatch = blockers.some((blocker) => blocker.severity === 'watch');
+    const severity = hasAttention ? 'ATTENTION' : hasWatch ? 'WATCH' : 'HEALTHY';
+    const headline =
+      severity === 'HEALTHY'
+        ? 'Learning is running and guarded by promotion checks.'
+        : severity === 'WATCH'
+          ? 'Learning is running, but one piece deserves monitoring.'
+          : 'Learning has a blocker to clear before it is fully trustworthy.';
+    const nextBestAction =
+      blockers.find((blocker) => blocker.severity === 'attention')?.action
+      ?? blockers.find((blocker) => blocker.severity === 'watch')?.action
+      ?? 'Keep collecting outcomes and let the promotion gate decide whether new models deserve to go live.';
+
+    return {
+      generatedAt: new Date().toISOString(),
+      severity,
+      headline,
+      nextBestAction,
+      dailyReport: {
+        lookbackHours: 24,
+        updatedRecords: recentRecords.length,
+        resolvedRecords: recentResolved.length,
+        paperClosedTrades: recentPaperClosed.length,
+        wins: recentWins,
+        losses: recentLosses,
+        summary:
+          recentRecords.length > 0
+            ? `Last 24h: ${recentRecords.length} learning records updated, ${recentResolved.length} resolved, ${recentPaperClosed.length} paper trades closed.`
+            : 'No learning records changed in the last 24 hours.'
+      },
+      dataSources: {
+        liveFeed: {
+          status: liveFeed.status,
+          sessionState: liveFeed.sessionState,
+          latestBarTimestamp,
+          barAgeMs: liveFeed.barAgeMs,
+          bySymbol: 'latestBarTimestampBySymbol' in monitor ? monitor.latestBarTimestampBySymbol ?? {} : {}
+        },
+        signalMonitor: monitor,
+        training: {
+          enabled: training?.enabled ?? false,
+          started: training?.started ?? false,
+          latestBarTimestamp: trainingLatestBarTimestamp,
+          barCount: training?.barCount ?? 0,
+          newBarsSinceTrain: training?.newBarsSinceTrain ?? 0
+        },
+        notifications: {
+          webPushSubscribers: webPush.subscriberCount,
+          webPushReady: webPush.ready,
+          nativePushDevices: nativePush.deviceCount,
+          nativePushReady: nativePush.ready,
+          telegramReady: telegram.ready
+        },
+        ibkr: {
+          pendingReconnect: ibkrPendingReconnect,
+          lastLoginRequiredAt:
+            ibkrReconnectState.lastLoginRequiredAtMs > 0 ? new Date(ibkrReconnectState.lastLoginRequiredAtMs).toISOString() : undefined,
+          lastConnectedAt:
+            ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined
+        }
+      },
+      model: {
+        activeModelId: training?.promotion.activeModelId ?? rankingModelStore.get().modelId,
+        sampleCount: training?.model.sampleCount ?? rankingModelStore.get().sampleCount,
+        trainedAt: training?.lastTrainedAt ?? rankingModelStore.get().trainedAt,
+        trainRuns: training?.trainRuns ?? 0,
+        trainingInProgress: training?.trainingInProgress ?? false,
+        precision: {
+          champion: formatLearningPercent(lastDecision?.championPrecision ?? lastRun?.championPrecision),
+          challenger: formatLearningPercent(lastDecision?.challengerPrecision ?? lastRun?.challengerPrecision)
+        },
+        recall: {
+          champion: formatLearningPercent(lastDecision?.championRecall ?? lastRun?.championRecall),
+          challenger: formatLearningPercent(lastDecision?.challengerRecall ?? lastRun?.challengerRecall)
+        },
+        promotion: {
+          promoted,
+          reason: lastDecision?.reason ?? lastRun?.promotionReason,
+          delta: formatLearningPercent(lastDecision?.delta ?? lastRun?.promotionDelta),
+          evaluationSet: lastDecision?.evaluationSet ?? lastRun?.evaluationSet,
+          decidedAt: lastDecision?.decidedAt ?? lastRun?.trainedAt,
+          promotions: training?.promotion.promotions ?? 0,
+          blockedPromotions: training?.promotion.blockedPromotions ?? 0,
+          promotionMinDelta: training?.promotion.promotionMinDelta
+        },
+        progress: training?.progress ?? null,
+        cadence: training?.cadence ?? null
+      },
+      feedback: {
+        performance,
+        counts: feedback.counts,
+        database: tradeLearning,
+        reviews
+      },
+      paperEngine: {
+        account: paperAccount,
+        autonomy: paperAutonomy
+          ? {
+              enabled: paperAutonomy.enabled,
+              started: paperAutonomy.started,
+              openIdeas: paperAutonomy.openIdeas,
+              closedIdeas: paperAutonomy.closedIdeas,
+              explorationBudget: paperAutonomy.explorationBudget,
+              patternStates: paperAutonomy.patternStates,
+              recentDecisions: paperAutonomy.recentDecisions,
+              dailyChanges: paperAutonomy.dailyChanges
+            }
+          : null
+      },
+      blockers
+    };
+  };
+
   const buildCompactAiContext = async () => {
     const monitor = signalMonitorService ? signalMonitorService.status() : { enabled: false, started: false };
     const monitorLatestBarTimestamp =
@@ -3527,6 +3782,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.get('/learning/health', async (_request, reply) => {
+    return reply.status(200).send({
+      learningHealth: await buildLearningHealthPayload()
+    });
+  });
+
   app.post('/signals/reviews', async (request, reply) => {
     try {
       const body = parseOrThrow(signalReviewUpsertBodySchema.safeParse(request.body));
@@ -3707,6 +3968,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const learningCases = buildLearningSummaryPayload(reviews);
     const tradeLearning = await tradeLearningStore.summary();
     const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listManualEngineTradeLearningRecords());
+    const learningHealth = await buildLearningHealthPayload();
     const signalConfig = signalMonitorSettingsStore.get();
     const training = continuousTrainingService?.status() ?? { enabled: false, started: false };
     const research: MarketResearchStatus | { enabled: false; started: false } = marketResearchService
@@ -3823,6 +4085,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         training,
         research,
         learningPerformance,
+        learningHealth,
         tradeLearning,
         selfLearning,
         learningCases,
