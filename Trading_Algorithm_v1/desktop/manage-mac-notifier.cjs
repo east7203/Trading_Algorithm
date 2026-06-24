@@ -17,7 +17,7 @@ const PLIST_PATH = path.join(LAUNCH_AGENTS_DIR, `${LABEL}.plist`);
 const STDOUT_PATH = path.join(LOG_DIR, 'mac-notifier.out.log');
 const STDERR_PATH = path.join(LOG_DIR, 'mac-notifier.err.log');
 
-const API_BASE = (process.env.TRADING_MAC_NOTIFIER_API_BASE || 'https://167-172-252-171.sslip.io').replace(/\/$/, '');
+const API_BASE = (process.env.TRADING_MAC_NOTIFIER_API_BASE || 'https://134-209-125-140.sslip.io').replace(/\/$/, '');
 const OPEN_URL = process.env.TRADING_MAC_NOTIFIER_OPEN_URL || `${API_BASE}/mobile/`;
 const POLL_MS = Math.max(Number.parseInt(process.env.TRADING_MAC_NOTIFIER_POLL_MS || '30000', 10) || 30000, 5000);
 

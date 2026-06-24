@@ -193,7 +193,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(resendTriggerCalls).toEqual(['manual-phone-retry-push']);
     expect(webPushMessages).toHaveLength(1);
     expect(webPushMessages[0].url).toBe(
-      'https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection'
+      'https://134-209-125-140.sslip.io/mobile/?tab=status&focus=ibkr-connection'
     );
     expect(telegramMessages).toHaveLength(0);
 
@@ -205,7 +205,7 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(resendTriggerCalls).toEqual(['manual-phone-retry-push', 'manual-phone-retry-reminder-push']);
     expect(webPushMessages).toHaveLength(2);
     expect(webPushMessages[1].title).toBe('IBKR still not connected');
-    expect(webPushMessages[1].url).toBe('https://167-172-252-171.sslip.io/mobile/?tab=status&focus=ibkr-connection');
+    expect(webPushMessages[1].url).toBe('https://134-209-125-140.sslip.io/mobile/?tab=status&focus=ibkr-connection');
     expect(telegramMessages).toHaveLength(0);
   }, 12000);
 

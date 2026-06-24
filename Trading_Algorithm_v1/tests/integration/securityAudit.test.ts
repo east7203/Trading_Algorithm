@@ -43,8 +43,8 @@ describe('security hardening', () => {
       path: '/paper-account/config',
       remoteAddress: '203.0.113.10',
       headers: {
-        host: '167-172-252-171.sslip.io',
-        origin: 'https://167-172-252-171.sslip.io',
+        host: '134-209-125-140.sslip.io',
+        origin: 'https://134-209-125-140.sslip.io',
         'x-tradeassist-client': 'mobile-web'
       },
       payload: {
@@ -66,7 +66,7 @@ describe('security hardening', () => {
       path: '/notifications/test/paper-trade',
       remoteAddress: '203.0.113.10',
       headers: {
-        host: '167-172-252-171.sslip.io',
+        host: '134-209-125-140.sslip.io',
         origin: 'https://evil.example',
         'x-tradeassist-client': 'mobile-web'
       }

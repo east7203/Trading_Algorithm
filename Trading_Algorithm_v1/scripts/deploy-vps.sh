@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${PROJECT_ROOT}/.." && pwd)"
-REMOTE_HOST="${DEPLOY_HOST:-root@167.172.252.171}"
+REMOTE_HOST="${DEPLOY_HOST:-root@134.209.125.140}"
 REMOTE_PATH="${DEPLOY_PATH:-/opt/trading-algorithm}"
 SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
 SSH_PORT="${DEPLOY_PORT:-22}"

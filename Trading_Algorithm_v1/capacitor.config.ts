@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const normalizeUrl = (url: string): string => (url.endsWith('/') ? url : `${url}/`);
 const liveServerUrl = normalizeUrl(
-  process.env.CAP_SERVER_URL ?? 'https://167-172-252-171.sslip.io/mobile'
+  process.env.CAP_SERVER_URL ?? 'https://134-209-125-140.sslip.io/mobile'
 );
 
 const config: CapacitorConfig = {

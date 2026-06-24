@@ -3,11 +3,14 @@ import type { SetupCandidate } from '../../src/domain/types.js';
 import type { TradeLearningRecord } from '../../src/stores/tradeLearningStore.js';
 import { SelfLearningService } from '../../src/services/selfLearningService.js';
 
+const buildRecentTimestamp = (index: number, minuteOffset = 0): string =>
+  new Date(Date.now() - 60 * 60_000 + (index + minuteOffset) * 60_000).toISOString();
+
 const buildRecord = (
   index: number,
   overrides: Partial<TradeLearningRecord> = {}
 ): TradeLearningRecord => {
-  const detectedAt = new Date(Date.UTC(2026, 3, 1, 14, index, 0)).toISOString();
+  const detectedAt = buildRecentTimestamp(index);
   return {
     recordId: `record-${index}`,
     alertId: `alert-${index}`,
@@ -130,11 +133,11 @@ describe('self learning service', () => {
           paperTradeId: 'paper-6',
           status: 'CLOSED',
           source: 'paper-autonomy',
-          submittedAt: new Date(Date.UTC(2026, 3, 1, 14, 6, 0)).toISOString(),
-          expiresAt: new Date(Date.UTC(2026, 3, 1, 14, 6, 0)).toISOString(),
-          filledAt: new Date(Date.UTC(2026, 3, 1, 14, 6, 0)).toISOString(),
+          submittedAt: buildRecentTimestamp(6),
+          expiresAt: buildRecentTimestamp(6),
+          filledAt: buildRecentTimestamp(6),
           filledPrice: 20000,
-          closedAt: new Date(Date.UTC(2026, 3, 1, 14, 10, 0)).toISOString(),
+          closedAt: buildRecentTimestamp(10),
           exitPrice: 19992,
           exitReason: 'STOP_LOSS',
           realizedPnl: -100,
@@ -199,7 +202,7 @@ describe('self learning service', () => {
           symbol: 'NQ',
           setupType: 'AUTONOMOUS_FUTURES_DAYTRADER',
           side: 'LONG',
-          detectedAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
+          detectedAt: buildRecentTimestamp(index + 40),
           rankingModelId: 'model-a',
           source: 'PAPER_AUTONOMY',
           title: 'Autonomy test alert',
@@ -217,7 +220,7 @@ describe('self learning service', () => {
             blockedByNewsWindow: false,
             blockedByTradingWindow: false,
             blockedByPolicy: false,
-            checkedAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString()
+            checkedAt: buildRecentTimestamp(index + 40)
           }
         },
         review: {
@@ -231,11 +234,11 @@ describe('self learning service', () => {
           paperTradeId: `autonomy-paper-${index}`,
           status: 'CLOSED',
           source: 'paper-autonomy',
-          submittedAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
-          expiresAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
-          filledAt: new Date(Date.UTC(2026, 3, 2, 14, index, 0)).toISOString(),
+          submittedAt: buildRecentTimestamp(index + 40),
+          expiresAt: buildRecentTimestamp(index + 40),
+          filledAt: buildRecentTimestamp(index + 40),
           filledPrice: 20000,
-          closedAt: new Date(Date.UTC(2026, 3, 2, 14, index + 3, 0)).toISOString(),
+          closedAt: buildRecentTimestamp(index + 40, 3),
           exitPrice: 19992,
           exitReason: 'STOP_LOSS',
           realizedPnl: -100,

@@ -559,7 +559,7 @@ Notes:
 
 The native iOS wrapper is configured to load the live URL by default:
 
-- `https://167-172-252-171.sslip.io/mobile/`
+- `https://134-209-125-140.sslip.io/mobile/`
 
 That means UI changes deployed to the server are visible on phone refresh immediately.
 

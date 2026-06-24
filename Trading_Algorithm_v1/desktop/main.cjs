@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const REMOTE_URL =
-  process.env.TRADING_APP_URL || "https://167-172-252-171.sslip.io/mobile/";
+  process.env.TRADING_APP_URL || "https://134-209-125-140.sslip.io/mobile/";
 const LOCAL_INDEX = path.join(__dirname, "..", "public", "mobile", "index.html");
 
 function createWindow() {

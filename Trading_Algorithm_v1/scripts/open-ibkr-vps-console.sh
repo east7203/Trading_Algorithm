@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
-REMOTE_HOST="${DEPLOY_HOST:-root@167.172.252.171}"
+REMOTE_HOST="${DEPLOY_HOST:-root@134.209.125.140}"
 LOCAL_PORT="${IBKR_VPS_LOCAL_PORT:-6080}"
 REMOTE_PORT="${IBKR_VPS_REMOTE_PORT:-6080}"
 URL="http://127.0.0.1:${LOCAL_PORT}/vnc.html?autoconnect=1&resize=scale&view_clip=1&path=websockify"

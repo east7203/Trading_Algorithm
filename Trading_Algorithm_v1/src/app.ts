@@ -593,7 +593,7 @@ const parseOptionalPathEnv = (name: string, fallback?: string): string | undefin
 };
 
 const DEFAULT_IBKR_CONSOLE_URL =
-  'https://ibkr-console.167-172-252-171.sslip.io/vnc.html?autoconnect=1&resize=scale&view_clip=1&path=websockify';
+  'https://ibkr-console.134-209-125-140.sslip.io/vnc.html?autoconnect=1&resize=scale&view_clip=1&path=websockify';
 const DEFAULT_IBKR_LOGIN_URL = 'https://ndcdyn.interactivebrokers.com/sso/Login';
 
 const runCommand = async (command: string, args: string[]): Promise<void> => {
@@ -723,7 +723,7 @@ const resolveWebPushConfig = (overrides: Partial<WebPushNotificationConfig> = {}
       'WEB_PUSH_VAPID_KEYS_PATH',
       path.resolve(process.cwd(), 'data', 'push', 'vapid-keys.json')
     ),
-    vapidSubject: process.env.WEB_PUSH_VAPID_SUBJECT ?? 'https://167-172-252-171.sslip.io'
+    vapidSubject: process.env.WEB_PUSH_VAPID_SUBJECT ?? 'https://134-209-125-140.sslip.io'
   };
 
   return {
@@ -769,9 +769,9 @@ const resolveTelegramAlertConfig = (
     botToken: process.env.TELEGRAM_BOT_TOKEN,
     chatId: process.env.TELEGRAM_CHAT_ID,
     apiBaseUrl: process.env.TELEGRAM_API_BASE_URL ?? 'https://api.telegram.org',
-    appUrl: process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io',
+    appUrl: process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io',
     nativeOpenerUrl:
-      process.env.TELEGRAM_NATIVE_OPENER_URL ?? 'https://167-172-252-171.sslip.io/mobile/open-app.html?target=signals'
+      process.env.TELEGRAM_NATIVE_OPENER_URL ?? 'https://134-209-125-140.sslip.io/mobile/open-app.html?target=signals'
   };
 
   return {
@@ -841,7 +841,7 @@ const resolveSignalMonitorConfig = (
 const resolveOperationalReminderConfig = (
   overrides: Partial<OperationalReminderConfig> = {}
 ): OperationalReminderConfig => {
-  const appUrl = process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io';
+  const appUrl = process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io';
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
@@ -1204,7 +1204,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const configuredOrigins = [
     process.env.APP_BASE_URL,
     process.env.TELEGRAM_APP_URL,
-    'https://167-172-252-171.sslip.io'
+    'https://134-209-125-140.sslip.io'
   ]
     .map((value) => normalizeOrigin(value))
     .filter((value): value is string => Boolean(value));
@@ -1542,7 +1542,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
-  const ibkrStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=status&focus=ibkr-connection`;
+  const ibkrStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=status&focus=ibkr-connection`;
 
   const syncRiskTradingWindowToSignalSettings = (): void => {
     const signalConfig = signalMonitorSettingsStore.get();
@@ -1557,7 +1557,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       }
     });
   };
-  const trainingStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=status&focus=learning`;
+  const trainingStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=status&focus=learning`;
   const ibkrReconnectFallbackDelayMs =
     parseIntEnv('IBKR_RECONNECT_FALLBACK_DELAY_SECONDS', 45, 5, 600) * 1000;
   const ibkrReconnectReminderIntervalMs =
@@ -2187,7 +2187,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                       `Risk: ${event.trade.riskPct.toFixed(2)}%`,
                       ...(event.trade.source === 'paper-autonomy' && autonomyReason ? [`Why: ${autonomyReason}`] : [])
                     ],
-                    buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=trades` }]
+                    buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=trades` }]
                   }
                 );
                 return;
@@ -2271,7 +2271,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 {
                   title,
                   lines,
-                  buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://167-172-252-171.sslip.io'}/mobile/?tab=trades` }]
+                  buttons: [{ text: 'Open Paper Account', url: `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=trades` }]
                 }
               );
             }
