@@ -10558,17 +10558,21 @@ const bindStatusRecoveryControls = () => {
       });
       const result = response?.result ?? {};
       const loginAttempt = result.loginAttempt ?? {};
+      const reloginAttempt = result.reloginAttempt ?? null;
       const resendAttempt = result.resendAttempt ?? {};
       const loginReason = getRecoveryAttemptReason(loginAttempt);
+      const reloginReason = getRecoveryAttemptReason(reloginAttempt);
       const resendReason = getRecoveryAttemptReason(resendAttempt);
       setStatus(
         response?.ok
-          ? 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.'
+          ? reloginAttempt?.ok
+            ? 'Status: Gateway re-login prompt advanced. Watch for the IBKR phone prompt; if it still waits, open the console and finish login.'
+            : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.'
           : loginAttempt.skipped
-            ? `Status: server login retry skipped. ${loginReason || 'Please wait a few seconds and try again.'}`
+            ? `Status: server login retry skipped. ${loginReason || 'Please wait a few seconds and try again.'}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}`
             : resendAttempt.ok
               ? 'Status: server login retry did not resubmit credentials, but Gateway still ran the built-in broker fallback controls.'
-            : `Status: server recovery did not complete.${loginReason ? ` Login: ${loginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`,
+            : `Status: server recovery did not complete.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`,
         !response?.ok
       );
       await loadDiagnostics();

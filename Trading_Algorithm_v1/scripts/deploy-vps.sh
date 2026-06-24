@@ -53,6 +53,7 @@ ssh -i "${SSH_KEY}" -p "${SSH_PORT}" "${REMOTE_HOST}" "
     scripts/launch-ibgateway-vps.sh \
     scripts/launch-ibkr-bridge-vps.sh \
     scripts/ibkr-autologin-vps.sh \
+    scripts/ibkr-advance-relogin-vps.sh \
     scripts/ibkr-recovery-vps.sh \
     scripts/ibkr-resend-push-vps.sh \
     scripts/refresh-ibkr-history-vps.sh \

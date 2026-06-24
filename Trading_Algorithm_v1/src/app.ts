@@ -166,8 +166,9 @@ interface BuildAppOptions {
   paperAutonomyEnabled?: boolean;
   paperAutonomyConfig?: Partial<PaperAutonomyConfig>;
   paperAutonomyService?: PaperAutonomyService | null;
-  ibkrLoginTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
-  ibkrResendPushTrigger?: (source: string) => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>;
+  ibkrLoginTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
+  ibkrReloginTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
+  ibkrResendPushTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
   webPushEnabled?: boolean;
   webPushConfig?: Partial<WebPushNotificationConfig>;
   webPushNotificationService?: WebPushNotificationService | null;
@@ -284,6 +285,12 @@ interface IbkrLoginTriggerResult {
   artifacts?: string[];
 }
 
+interface IbkrRecoveryAttemptResult {
+  loginAttempt: IbkrLoginTriggerResult;
+  reloginAttempt?: IbkrLoginTriggerResult;
+  resendAttempt: IbkrLoginTriggerResult;
+}
+
 interface IbkrRecoveryArtifactFile {
   name: string;
   fileName: string;
@@ -388,12 +395,14 @@ const stripIbkrArtifactLines = (value: string | undefined): string | undefined =
   return stripped.length > 0 ? stripped : undefined;
 };
 
-const resolveIbkrArtifacts = (attempt: IbkrLoginTriggerResult): string[] =>
-  [...new Set([
-    ...(attempt.artifacts ?? []),
-    ...extractIbkrArtifactsFromText(attempt.stdout),
-    ...extractIbkrArtifactsFromText(attempt.stderr)
-  ])].slice(0, 6);
+const resolveIbkrArtifacts = (attempt?: IbkrLoginTriggerResult): string[] =>
+  attempt
+    ? [...new Set([
+        ...(attempt.artifacts ?? []),
+        ...extractIbkrArtifactsFromText(attempt.stdout),
+        ...extractIbkrArtifactsFromText(attempt.stderr)
+      ])].slice(0, 6)
+    : [];
 
 const formatIbkrArtifactSummary = (artifacts: string[]): string | undefined => {
   if (artifacts.length === 0) {
@@ -1608,6 +1617,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     process.cwd(),
     process.env.IBKR_RESEND_PUSH_SCRIPT_PATH ?? path.join('scripts', 'ibkr-resend-push-vps.sh')
   );
+  const ibkrReloginScriptPath = path.resolve(
+    process.cwd(),
+    process.env.IBKR_RELOGIN_SCRIPT_PATH ?? path.join('scripts', 'ibkr-advance-relogin-vps.sh')
+  );
   const ibkrAutoLoginState = {
     lastAttemptAtMs: 0
   };
@@ -1615,7 +1628,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     scriptPath: string,
     source: string,
     cooldownMs = 0,
-    options: { ignoreCooldown?: boolean } = {}
+    options: { ignoreCooldown?: boolean; env?: NodeJS.ProcessEnv } = {}
   ): Promise<IbkrLoginTriggerResult> => {
     const now = Date.now();
     if (!options.ignoreCooldown && cooldownMs > 0 && now - ibkrAutoLoginState.lastAttemptAtMs < cooldownMs) {
@@ -1636,7 +1649,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         [source],
         {
           timeout: ibkrAutoLoginTimeoutMs,
-          maxBuffer: 1024 * 1024
+          maxBuffer: 1024 * 1024,
+          env: options.env
         },
         (error, stdout, stderr) => {
           const artifacts = resolveIbkrArtifacts({
@@ -1693,6 +1707,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const runIbkrResendPush =
     options.ibkrResendPushTrigger ??
     (async (source: string): Promise<IbkrLoginTriggerResult> => await runIbkrScript(ibkrResendPushScriptPath, source));
+  const runIbkrRelogin =
+    options.ibkrReloginTrigger ??
+    (async (source: string): Promise<IbkrLoginTriggerResult> => await runIbkrScript(ibkrReloginScriptPath, source));
   const canNotifyIbkrRecovery = (source: string): boolean =>
     shouldNotifyIbkrRecovery(source, new Date().toISOString(), riskConfigStore.get().tradingWindow);
   const compactIbkrRecoveryDetail = (value?: string): string | undefined => {
@@ -1734,6 +1751,24 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       : 'The server could not resubmit the IB Gateway login automatically.';
     return artifactSummary ? `${baseMessage} ${artifactSummary}` : baseMessage;
   };
+  const describeIbkrReloginAttempt = (attempt?: IbkrLoginTriggerResult): string | undefined => {
+    if (!attempt) {
+      return undefined;
+    }
+
+    const artifactSummary = formatIbkrArtifactSummary(resolveIbkrArtifacts(attempt));
+    if (attempt.ok) {
+      return artifactSummary
+        ? `The server advanced the visible IB Gateway re-login prompt. ${artifactSummary}`
+        : 'The server advanced the visible IB Gateway re-login prompt.';
+    }
+
+    const detail = compactIbkrRecoveryDetail(attempt.stderr || attempt.stdout || attempt.reason);
+    const baseMessage = detail
+      ? `The server could not advance the IB Gateway re-login prompt automatically: ${detail}`
+      : 'The server could not advance the IB Gateway re-login prompt automatically.';
+    return artifactSummary ? `${baseMessage} ${artifactSummary}` : baseMessage;
+  };
   const describeIbkrResendAttempt = (attempt: IbkrLoginTriggerResult): string => {
     const artifactSummary = formatIbkrArtifactSummary(resolveIbkrArtifacts(attempt));
     if (attempt.ok) {
@@ -1753,20 +1788,36 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   };
   const buildIbkrRecoveryArtifacts = (
     loginAttempt: IbkrLoginTriggerResult,
-    resendAttempt: IbkrLoginTriggerResult
-  ): string[] => [...new Set([...resolveIbkrArtifacts(loginAttempt), ...resolveIbkrArtifacts(resendAttempt)])].slice(0, 6);
+    resendAttempt: IbkrLoginTriggerResult,
+    reloginAttempt?: IbkrLoginTriggerResult
+  ): string[] =>
+    [...new Set([
+      ...resolveIbkrArtifacts(loginAttempt),
+      ...resolveIbkrArtifacts(reloginAttempt),
+      ...resolveIbkrArtifacts(resendAttempt)
+    ])].slice(0, 6);
   const buildIbkrRecoveryAttemptDetail = (
     loginAttempt: IbkrLoginTriggerResult,
-    resendAttempt: IbkrLoginTriggerResult
-  ): string => `${describeIbkrLoginAttempt(loginAttempt)} ${describeIbkrResendAttempt(resendAttempt)}`;
+    resendAttempt: IbkrLoginTriggerResult,
+    reloginAttempt?: IbkrLoginTriggerResult
+  ): string =>
+    [
+      describeIbkrLoginAttempt(loginAttempt),
+      describeIbkrReloginAttempt(reloginAttempt),
+      describeIbkrResendAttempt(resendAttempt)
+    ].filter((line): line is string => Boolean(line)).join(' ');
   const runIbkrRecoveryAttempt = async (
     source: string,
     recoveryOptions: { ignoreCooldown?: boolean } = {}
-  ): Promise<{ loginAttempt: IbkrLoginTriggerResult; resendAttempt: IbkrLoginTriggerResult }> => {
+  ): Promise<IbkrRecoveryAttemptResult> => {
     const loginAttempt = await runIbkrAutoLogin(source, recoveryOptions);
+    const reloginAttempt = loginAttempt.skipped && loginAttempt.reason === 'disabled'
+      ? await runIbkrRelogin(`${source}-relogin`)
+      : undefined;
     const resendAttempt = await runIbkrResendPush(`${source}-push`);
     return {
       loginAttempt,
+      reloginAttempt,
       resendAttempt
     };
   };
@@ -1911,15 +1962,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     source: string,
     symbols: string[],
     loginAttempt: IbkrLoginTriggerResult,
-    resendAttempt: IbkrLoginTriggerResult
+    resendAttempt: IbkrLoginTriggerResult,
+    reloginAttempt?: IbkrLoginTriggerResult
   ): Promise<void> => {
     await appendIbkrReconnectHistory({
       kind: 'RECOVERY_ATTEMPT',
       atMs: Date.now(),
       source,
       symbols,
-      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt),
-      artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt)
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt, reloginAttempt),
+      artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt, reloginAttempt)
     });
   };
   const notifyIbkrRecoveryAttempt = async (
@@ -1927,7 +1979,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     source: string,
     symbols: string[],
     loginAttempt: IbkrLoginTriggerResult,
-    resendAttempt: IbkrLoginTriggerResult
+    resendAttempt: IbkrLoginTriggerResult,
+    reloginAttempt?: IbkrLoginTriggerResult
   ): Promise<void> => {
     if (!canNotifyIbkrRecovery(source)) {
       return;
@@ -1951,6 +2004,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           deliveryStatus.line,
           bodyText,
           describeIbkrLoginAttempt(loginAttempt),
+          ...(reloginAttempt ? [describeIbkrReloginAttempt(reloginAttempt) ?? 'The server checked the IB Gateway re-login prompt.'] : []),
           describeIbkrResendAttempt(resendAttempt),
           'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
           `Source: ${source}`,
@@ -2017,8 +2071,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const title = 'IBKR still not connected';
     const bodyText = `The server-side IBKR bridge still is not connected${symbolText}. The server is still waiting for IBKR approval.`;
     const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), new Date(requestedAtMs).toISOString(), 'IBKR login required');
-    const { loginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(`${source}-reminder`);
+    const { loginAttempt, reloginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(`${source}-reminder`);
     const triggerLine = describeIbkrLoginAttempt(loginAttempt);
+    const reloginLine = describeIbkrReloginAttempt(reloginAttempt);
     const resendLine = describeIbkrResendAttempt(resendAttempt);
     const notifyUsers = canNotifyIbkrRecovery(source);
 
@@ -2038,6 +2093,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             deliveryStatus.line,
             bodyText,
             triggerLine,
+            ...(reloginLine ? [reloginLine] : []),
             resendLine,
             `Source: ${source}`,
             'Approve the official IBKR push on your phone if IBKR is still waiting there.'
@@ -2058,8 +2114,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       atMs: ibkrReconnectState.lastFallbackAtMs,
       source,
       symbols,
-      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt),
-      artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt)
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt, reloginAttempt),
+      artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt, reloginAttempt)
     });
     scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, ibkrReconnectReminderIntervalMs);
   };
@@ -4696,9 +4752,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       symbols,
       detail: reason
     });
-    const { loginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(source);
-    await recordIbkrRecoveryAttempt(source, symbols, loginAttempt, resendAttempt);
+    const { loginAttempt, reloginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(source);
+    await recordIbkrRecoveryAttempt(source, symbols, loginAttempt, resendAttempt, reloginAttempt);
     const triggerLine = describeIbkrLoginAttempt(loginAttempt);
+    const reloginLine = describeIbkrReloginAttempt(reloginAttempt);
     const resendLine = describeIbkrResendAttempt(resendAttempt);
     const notifyUsers = canNotifyIbkrRecovery(source);
 
@@ -4719,6 +4776,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 deliveryStatus.line,
                 bodyText,
                 triggerLine,
+                ...(reloginLine ? [reloginLine] : []),
                 resendLine,
                 'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
                 `Source: ${source}`,
@@ -4770,17 +4828,24 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
       ignoreCooldown: true
     });
-    await recordIbkrRecoveryAttempt('manual-phone-retry', symbols, result.loginAttempt, result.resendAttempt);
+    await recordIbkrRecoveryAttempt(
+      'manual-phone-retry',
+      symbols,
+      result.loginAttempt,
+      result.resendAttempt,
+      result.reloginAttempt
+    );
     await notifyIbkrRecoveryAttempt(
       'IBKR recovery started',
       'manual-phone-retry',
       symbols,
       result.loginAttempt,
-      result.resendAttempt
+      result.resendAttempt,
+      result.reloginAttempt
     );
-    const ok = result.loginAttempt.ok || result.resendAttempt.ok;
+    const ok = result.loginAttempt.ok || Boolean(result.reloginAttempt?.ok) || result.resendAttempt.ok;
     return reply.status(ok ? 200 : 202).send({
-      ok: result.loginAttempt.ok || result.resendAttempt.ok,
+      ok,
       result,
       ibkrRecovery: {
         pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,

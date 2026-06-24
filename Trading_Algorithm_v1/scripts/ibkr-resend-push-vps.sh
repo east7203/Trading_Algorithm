@@ -27,6 +27,10 @@ capture_state() {
   fi
 }
 
+visible_window_ids() {
+  xdotool search --onlyvisible --name ".*" 2>/dev/null || true
+}
+
 WINDOW_ID=""
 for _ in $(seq 1 "${WINDOW_WAIT_SECONDS}"); do
   WINDOW_ID="$(xdotool search --onlyvisible --name "${WINDOW_NAME}" 2>/dev/null | head -n 1 || true)"
@@ -45,12 +49,24 @@ fi
 find_auth_dialog() {
   local pattern=""
   local dialog_id=""
+  local window_name=""
   IFS='|' read -r -a patterns <<<"${AUTH_DIALOG_PATTERNS}"
   for pattern in "${patterns[@]}"; do
     pattern="$(printf '%s' "${pattern}" | xargs)"
     if [ -z "${pattern}" ]; then
       continue
     fi
+    while IFS= read -r dialog_id; do
+      if [ -z "${dialog_id}" ]; then
+        continue
+      fi
+      window_name="$(xdotool getwindowname "${dialog_id}" 2>/dev/null || true)"
+      if [[ "${window_name}" == *"${pattern}"* ]]; then
+        printf '%s\n' "${dialog_id}"
+        return 0
+      fi
+    done < <(visible_window_ids)
+
     dialog_id="$(xdotool search --onlyvisible --name "${pattern}" 2>/dev/null | head -n 1 || true)"
     if [ -n "${dialog_id}" ]; then
       printf '%s\n' "${dialog_id}"

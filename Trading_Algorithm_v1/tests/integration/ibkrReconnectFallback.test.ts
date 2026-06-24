@@ -144,6 +144,67 @@ describe('IBKR reconnect fallback notifications', () => {
     );
   });
 
+  it('advances the Gateway relogin prompt when auto-login is disabled', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-manual-relogin-'));
+    const calls: string[] = [];
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      ibkrLoginTrigger: async (source) => {
+        calls.push(`login:${source}`);
+        return { ok: false, skipped: true, reason: 'disabled' };
+      },
+      ibkrReloginTrigger: async (source) => {
+        calls.push(`relogin:${source}`);
+        return {
+          ok: true,
+          stdout: 'Advanced IB Gateway re-login dialog\nARTIFACT:/tmp/ibkr-relogin.png'
+        };
+      },
+      ibkrResendPushTrigger: async (source) => {
+        calls.push(`resend:${source}`);
+        return { ok: false, reason: 'missing-auth-dialog' };
+      },
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async () => ({ attempted: 1, delivered: 1, removed: 0 })
+      } as never,
+      telegramAlertService: null
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/ibkr/recovery/retry-login'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().ok).toBe(true);
+    expect(response.json().result.reloginAttempt.ok).toBe(true);
+    expect(calls).toEqual([
+      'login:manual-phone-retry',
+      'relogin:manual-phone-retry-relogin',
+      'resend:manual-phone-retry-push'
+    ]);
+
+    const diagnosticsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/diagnostics'
+    });
+    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.latestArtifacts).toContain('/tmp/ibkr-relogin.png');
+    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'RECOVERY_ATTEMPT',
+          detail: expect.stringContaining('advanced the visible IB Gateway re-login prompt')
+        })
+      ])
+    );
+  });
+
   it('sends an approval follow-up alert if login-required does not recover in time', async () => {
     const webPushMessages: Array<Record<string, unknown>> = [];
     const telegramMessages: Array<Record<string, unknown>> = [];
