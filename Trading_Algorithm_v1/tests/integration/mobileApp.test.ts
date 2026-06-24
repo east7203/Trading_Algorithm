@@ -45,6 +45,9 @@ describe('mobile app endpoints', () => {
     expect(mobile.body).toContain('Continual Improvement Report');
     expect(mobile.body).toContain('Model Decision');
     expect(mobile.body).toContain('Precision / Recall');
+    expect(mobile.body).toContain('Refresh Report');
+    expect(mobile.body).toContain('Open IBKR Recovery');
+    expect(mobile.body).toContain('Open Console');
     expect(mobile.body).toContain('Live Bias Context');
     expect(mobile.body).toContain('Top 3 Learned Edges');
     expect(mobile.body).toContain('Top 3 Failing Patterns');

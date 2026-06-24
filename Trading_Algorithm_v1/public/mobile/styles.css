@@ -7678,6 +7678,30 @@ select {
   border: 1px solid var(--rh-border);
 }
 
+.learning-action-row,
+.learning-blocker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.learning-action-row {
+  margin-top: 4px;
+}
+
+.learning-action-row .chip-btn,
+.learning-blocker-actions .chip-btn {
+  flex: 1 1 142px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.learning-blocker-clear {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(20, 184, 166, 0.08));
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
 .learning-pattern-head {
   display: flex;
   align-items: flex-start;

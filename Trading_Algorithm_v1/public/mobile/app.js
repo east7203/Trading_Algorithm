@@ -179,6 +179,10 @@ const learningPrecisionRecallEl = document.getElementById('learningPrecisionReca
 const learningDataSourcesEl = document.getElementById('learningDataSources');
 const learningNextActionEl = document.getElementById('learningNextAction');
 const learningBlockerListEl = document.getElementById('learningBlockerList');
+const learningRefreshReportEl = document.getElementById('learningRefreshReport');
+const learningRepairPushEl = document.getElementById('learningRepairPush');
+const learningOpenIbkrRecoveryEl = document.getElementById('learningOpenIbkrRecovery');
+const learningOpenIbkrConsoleEl = document.getElementById('learningOpenIbkrConsole');
 const learningBiasChipEl = document.getElementById('learningBiasChip');
 const learningBiasHeadlineEl = document.getElementById('learningBiasHeadline');
 const learningBiasNoteEl = document.getElementById('learningBiasNote');
@@ -542,6 +546,7 @@ const setupToggleMap = {
 
 const fallbackApiBase = window.location.origin;
 const defaultIbkrWebsiteUrl = 'https://www.interactivebrokers.com/en/general/qr-code-ibkr-mobile-routing.php';
+const defaultIbkrConsoleUrl = 'https://ibkr-console.134-209-125-140.sslip.io/vnc.html?autoconnect=1&resize=scale&view_clip=1&path=websockify';
 const tradingViewWidgetScriptUrl = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
 
 const isStandaloneWebApp = () =>
@@ -8130,6 +8135,67 @@ const formatLearningMetricPct = (value) => {
   return Number.isFinite(numeric) ? `${fmtNum(numeric * 100, 0)}%` : '--';
 };
 
+const openLearningIbkrRecovery = () => {
+  setActiveTab('status');
+  setStatus('Status: opened IBKR recovery. Use Run Full Recovery first, then open the console if login is still waiting.');
+  setTimeout(() => {
+    ibkrRecoveryPanelEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 250);
+};
+
+const openLearningIbkrConsole = () => {
+  window.open(defaultIbkrConsoleUrl, '_blank', 'noopener,noreferrer');
+  setStatus('Status: opened IBKR console in a new tab. Complete Gateway login and approve the IBKR phone prompt.');
+};
+
+const refreshLearningHealthReport = async () => {
+  setStatus('Status: refreshing learning blockers...');
+  await Promise.all([loadDiagnostics().catch(() => null), loadLearningHealth().catch(() => null)]);
+  const report = getLearningHealthReport();
+  const blockers = report?.blockers ?? [];
+  setStatus(
+    blockers.length
+      ? `Status: ${blockers.length} learning blocker${blockers.length === 1 ? '' : 's'} still active.`
+      : 'Status: no active learning blockers.'
+  );
+};
+
+const learningBlockerActions = (blocker) => {
+  const haystack = `${blocker?.title ?? ''} ${blocker?.detail ?? ''} ${blocker?.action ?? ''}`.toLowerCase();
+  const actions = [{ type: 'refresh', label: 'Refresh Report' }];
+
+  if (haystack.includes('push')) {
+    actions.unshift({ type: 'push', label: 'Re-register Push' });
+  }
+
+  if (haystack.includes('ibkr') || haystack.includes('gateway') || haystack.includes('live feed')) {
+    actions.unshift({ type: 'ibkr-recovery', label: 'Open IBKR Recovery' });
+    actions.unshift({ type: 'ibkr-console', label: 'Open Console' });
+  }
+
+  return actions;
+};
+
+const runLearningBlockerAction = async (actionType) => {
+  if (actionType === 'push') {
+    await repairPushRegistration().catch(() => null);
+    await refreshLearningHealthReport().catch(() => null);
+    return;
+  }
+
+  if (actionType === 'ibkr-recovery') {
+    openLearningIbkrRecovery();
+    return;
+  }
+
+  if (actionType === 'ibkr-console') {
+    openLearningIbkrConsole();
+    return;
+  }
+
+  await refreshLearningHealthReport().catch(() => null);
+};
+
 const renderLearningBlockers = (blockers = []) => {
   if (!learningBlockerListEl) {
     return;
@@ -8137,7 +8203,16 @@ const renderLearningBlockers = (blockers = []) => {
 
   learningBlockerListEl.innerHTML = '';
   if (!blockers.length) {
-    renderEmpty(learningBlockerListEl, 'No active learning blockers. Keep collecting outcomes and let the promotion gate work.');
+    const card = document.createElement('article');
+    card.className = 'learning-pattern-card learning-blocker-card learning-blocker-clear';
+    card.innerHTML = `
+      <div class="learning-pattern-head">
+        <p class="learning-pattern-title">No active learning blockers</p>
+        <span class="chip chip-online">CLEAR</span>
+      </div>
+      <p class="learning-pattern-note">The app can keep collecting outcomes and let the promotion gate decide whether new models deserve to go live.</p>
+    `;
+    learningBlockerListEl.appendChild(card);
     return;
   }
 
@@ -8157,7 +8232,17 @@ const renderLearningBlockers = (blockers = []) => {
       </div>
       <p class="learning-pattern-note">${escapeHtml(blocker?.detail ?? 'No detail available.')}</p>
       <p class="learning-pattern-note"><strong>Action:</strong> ${escapeHtml(blocker?.action ?? 'Keep monitoring the learning loop.')}</p>
+      <div class="learning-blocker-actions">
+        ${learningBlockerActions(blocker).map((action) => `
+          <button class="chip-btn secondary-btn learning-blocker-action" type="button" data-learning-action="${escapeHtml(action.type)}">${escapeHtml(action.label)}</button>
+        `).join('')}
+      </div>
     `;
+    card.querySelectorAll('[data-learning-action]').forEach((button) => {
+      button.addEventListener('click', () => {
+        void runLearningBlockerAction(button.dataset.learningAction);
+      });
+    });
     learningBlockerListEl.appendChild(card);
   });
 };
@@ -10188,6 +10273,19 @@ const bindNotificationControls = () => {
   });
   securityRepairPushEl?.addEventListener('click', async () => {
     await repairPushRegistration().catch(() => null);
+  });
+  learningRepairPushEl?.addEventListener('click', async () => {
+    await repairPushRegistration().catch(() => null);
+    await refreshLearningHealthReport().catch(() => null);
+  });
+  learningRefreshReportEl?.addEventListener('click', async () => {
+    await refreshLearningHealthReport().catch(() => null);
+  });
+  learningOpenIbkrRecoveryEl?.addEventListener('click', () => {
+    openLearningIbkrRecovery();
+  });
+  learningOpenIbkrConsoleEl?.addEventListener('click', () => {
+    openLearningIbkrConsole();
   });
   securityRunBrokerRecoveryTestEl?.addEventListener('click', async () => {
     try {
