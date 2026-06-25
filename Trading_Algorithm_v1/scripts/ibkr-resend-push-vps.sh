@@ -14,13 +14,35 @@ STEP_DELAY_SECONDS="${IBKR_AUTH_LINK_STEP_DELAY_SECONDS:-2}"
 ENABLE_BACKUP_CONTROLS="${IBKR_ENABLE_AUTH_BACKUP_CONTROLS:-false}"
 RESEND_LINK_X="${IBKR_RESEND_LINK_X:-214}"
 RESEND_LINK_Y="${IBKR_RESEND_LINK_Y:-478}"
+RESEND_GATEWAY_X="${IBKR_RESEND_GATEWAY_X:-356}"
+RESEND_GATEWAY_Y="${IBKR_RESEND_GATEWAY_Y:-568}"
+RESEND_ROOT_X="${IBKR_RESEND_ROOT_X:-682}"
+RESEND_ROOT_Y="${IBKR_RESEND_ROOT_Y:-714}"
+AUTH_ROOT_FALLBACK_ENABLED="${IBKR_AUTH_ROOT_FALLBACK_ENABLED:-true}"
 CHALLENGE_LINK_X="${IBKR_CHALLENGE_LINK_X:-252}"
 CHALLENGE_LINK_Y="${IBKR_CHALLENGE_LINK_Y:-492}"
 QR_LINK_X="${IBKR_QR_LINK_X:-212}"
 QR_LINK_Y="${IBKR_QR_LINK_Y:-514}"
 CAPTURE_SCRIPT="${IBKR_CAPTURE_SCRIPT:-/opt/trading-algorithm/scripts/ibkr-capture-auth-state-vps.sh}"
+LOCK_DIR="${IBKR_GUI_LOCK_DIR:-/opt/ibkr-runtime/run}"
+LOCK_FILE="${IBKR_GUI_LOCK_FILE:-${LOCK_DIR}/ibkr-gui-recovery.lock}"
+LOCK_WAIT_SECONDS="${IBKR_GUI_LOCK_WAIT_SECONDS:-55}"
 
 export DISPLAY="${DISPLAY_ID}"
+
+acquire_gui_lock() {
+  if [ "${IBKR_GUI_LOCK_HELD:-false}" = "true" ]; then
+    return 0
+  fi
+
+  mkdir -p "${LOCK_DIR}"
+  exec 200>"${LOCK_FILE}"
+  if ! flock -w "${LOCK_WAIT_SECONDS}" 200; then
+    echo "IBKR Gateway recovery is already running; skipped ${SOURCE}" >&2
+    exit 75
+  fi
+  export IBKR_GUI_LOCK_HELD=true
+}
 
 capture_state() {
   local phase="$1"
@@ -29,13 +51,27 @@ capture_state() {
   fi
 }
 
+search_window() {
+  local pattern="$1"
+  local window_id=""
+  window_id="$(xdotool search --onlyvisible --name "${pattern}" 2>/dev/null | head -n 1 || true)"
+  if [ -n "${window_id}" ]; then
+    printf '%s\n' "${window_id}"
+    return 0
+  fi
+
+  xdotool search --name "${pattern}" 2>/dev/null | head -n 1 || true
+}
+
 visible_window_ids() {
   xdotool search --onlyvisible --name ".*" 2>/dev/null || true
 }
 
+acquire_gui_lock
+
 WINDOW_ID=""
 for _ in $(seq 1 "${WINDOW_WAIT_SECONDS}"); do
-  WINDOW_ID="$(xdotool search --onlyvisible --name "${WINDOW_NAME}" 2>/dev/null | head -n 1 || true)"
+  WINDOW_ID="$(search_window "${WINDOW_NAME}")"
   if [ -n "${WINDOW_ID}" ]; then
     break
   fi
@@ -69,7 +105,7 @@ find_auth_dialog() {
       fi
     done < <(visible_window_ids)
 
-    dialog_id="$(xdotool search --onlyvisible --name "${pattern}" 2>/dev/null | head -n 1 || true)"
+    dialog_id="$(search_window "${pattern}")"
     if [ -n "${dialog_id}" ]; then
       printf '%s\n' "${dialog_id}"
       return 0
@@ -107,12 +143,44 @@ click_auth_link() {
   return 0
 }
 
+click_gateway_resend_fallback() {
+  local click_x="${RESEND_ROOT_X}"
+  local click_y="${RESEND_ROOT_Y}"
+
+  if [ -n "${WINDOW_ID}" ]; then
+    xdotool windowactivate --sync "${WINDOW_ID}" || true
+    sleep 0.2
+    xdotool windowsize "${WINDOW_ID}" "${WINDOW_WIDTH}" "${WINDOW_HEIGHT}" >/dev/null 2>&1 || true
+    if eval "$(
+      xdotool getwindowgeometry --shell "${WINDOW_ID}" 2>/dev/null \
+        | sed -e 's/^X=/WINDOW_LEFT=/' -e 's/^Y=/WINDOW_TOP=/' -e 's/^WIDTH=/WINDOW_WIDTH_ACTUAL=/' -e 's/^HEIGHT=/WINDOW_HEIGHT_ACTUAL=/'
+    )"; then
+      if [[ "${WINDOW_LEFT:-}" =~ ^-?[0-9]+$ ]] && [[ "${WINDOW_TOP:-}" =~ ^-?[0-9]+$ ]]; then
+        click_x=$((WINDOW_LEFT + RESEND_GATEWAY_X))
+        click_y=$((WINDOW_TOP + RESEND_GATEWAY_Y))
+      fi
+    fi
+  fi
+
+  xdotool mousemove "${click_x}" "${click_y}" click 1 || return 1
+  sleep "${STEP_DELAY_SECONDS}"
+  echo "Activated Resend Notification from Gateway auth screen at ${click_x},${click_y}"
+  return 0
+}
+
 xdotool windowactivate --sync "${WINDOW_ID}" || true
 sleep 0.5
 xdotool windowsize "${WINDOW_ID}" "${WINDOW_WIDTH}" "${WINDOW_HEIGHT}" || true
 
 AUTH_DIALOG_ID="$(wait_for_auth_dialog || true)"
 if [ -z "${AUTH_DIALOG_ID}" ]; then
+  if [ "${AUTH_ROOT_FALLBACK_ENABLED}" = "true" ]; then
+    if click_gateway_resend_fallback; then
+      capture_state "resend-finished"
+      echo "Triggered IBKR Mobile notification controls for ${SOURCE} using Gateway auth-screen fallback on window ${WINDOW_ID}"
+      exit 0
+    fi
+  fi
   capture_state "resend-missing-auth-dialog"
   echo "Could not find an IBKR auth dialog (${AUTH_DIALOG_PATTERNS}) on ${DISPLAY_ID}" >&2
   exit 1

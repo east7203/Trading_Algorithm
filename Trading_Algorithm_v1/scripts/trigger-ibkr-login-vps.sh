@@ -6,9 +6,13 @@ START_DELAY_SECONDS="${IBKR_AUTOLOGIN_START_DELAY_SECONDS:-8}"
 PROJECT_DIR="${IBKR_PROJECT_DIR:-/opt/trading-algorithm}"
 AUTOLOGIN_SCRIPT="${IBKR_AUTOLOGIN_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-autologin-vps.sh}"
 RECOVERY_SCRIPT="${IBKR_RECOVERY_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-recovery-vps.sh}"
+RUN_BACKGROUND_RECOVERY="${IBKR_TRIGGER_BACKGROUND_RECOVERY:-false}"
 LOGIN_ENV_JSON="${IBKR_LOGIN_ENV_JSON:-/opt/ibkr-runtime/run/ibkr-login.json}"
 CAPTURE_SCRIPT="${IBKR_CAPTURE_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-capture-auth-state-vps.sh}"
 PM2_ECOSYSTEM_CONFIG="${IBKR_PM2_ECOSYSTEM_CONFIG:-${PROJECT_DIR}/scripts/ibkr-vps-ecosystem.config.cjs}"
+LOCK_DIR="${IBKR_GUI_LOCK_DIR:-/opt/ibkr-runtime/run}"
+LOCK_FILE="${IBKR_GUI_LOCK_FILE:-${LOCK_DIR}/ibkr-gui-recovery.lock}"
+LOCK_WAIT_SECONDS="${IBKR_GUI_LOCK_WAIT_SECONDS:-55}"
 
 if [ ! -f "${LOGIN_ENV_JSON}" ]; then
   echo "Missing IBKR login JSON: ${LOGIN_ENV_JSON}" >&2
@@ -16,6 +20,20 @@ if [ ! -f "${LOGIN_ENV_JSON}" ]; then
 fi
 
 cd "${PROJECT_DIR}"
+
+acquire_gui_lock() {
+  if [ "${IBKR_GUI_LOCK_HELD:-false}" = "true" ]; then
+    return 0
+  fi
+
+  mkdir -p "${LOCK_DIR}"
+  exec 200>"${LOCK_FILE}"
+  if ! flock -w "${LOCK_WAIT_SECONDS}" 200; then
+    echo "IBKR Gateway recovery is already running; skipped ${SOURCE}" >&2
+    exit 75
+  fi
+  export IBKR_GUI_LOCK_HELD=true
+}
 
 capture_state() {
   local phase="$1"
@@ -48,6 +66,8 @@ restart_ibgateway() {
   return 1
 }
 
+acquire_gui_lock
+
 if ! restart_ibgateway; then
   capture_state "pm2-restart-failed"
   echo "Could not restart or start pm2 app ibgateway" >&2
@@ -67,8 +87,8 @@ if ! "${AUTOLOGIN_SCRIPT}" "${SOURCE}"; then
   exit 1
 fi
 
-if [ -x "${RECOVERY_SCRIPT}" ]; then
-  nohup "${RECOVERY_SCRIPT}" "${SOURCE}" >/opt/ibkr-runtime/logs/ibkr-recovery.log 2>&1 &
+if [ "${RUN_BACKGROUND_RECOVERY}" = "true" ] && [ -x "${RECOVERY_SCRIPT}" ]; then
+  IBKR_GUI_LOCK_HELD=true nohup "${RECOVERY_SCRIPT}" "${SOURCE}" >/opt/ibkr-runtime/logs/ibkr-recovery.log 2>&1 &
 fi
 
 echo "Triggered IBKR auto-login for ${SOURCE}"

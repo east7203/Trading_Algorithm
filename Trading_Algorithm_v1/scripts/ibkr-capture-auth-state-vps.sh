@@ -16,7 +16,14 @@ safe_token() {
 
 search_window() {
   local pattern="$1"
-  xdotool search --onlyvisible --name "${pattern}" 2>/dev/null | head -n 1 || true
+  local window_id=""
+  window_id="$(xdotool search --onlyvisible --name "${pattern}" 2>/dev/null | head -n 1 || true)"
+  if [ -n "${window_id}" ]; then
+    printf '%s\n' "${window_id}"
+    return 0
+  fi
+
+  xdotool search --name "${pattern}" 2>/dev/null | head -n 1 || true
 }
 
 visible_window_ids() {

@@ -13,8 +13,25 @@ PROJECT_DIR="${IBKR_PROJECT_DIR:-/opt/trading-algorithm}"
 AUTOLOGIN_SCRIPT="${IBKR_AUTOLOGIN_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-autologin-vps.sh}"
 RESEND_PUSH_SCRIPT="${IBKR_RESEND_PUSH_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-resend-push-vps.sh}"
 CAPTURE_SCRIPT="${IBKR_CAPTURE_SCRIPT:-${PROJECT_DIR}/scripts/ibkr-capture-auth-state-vps.sh}"
+LOCK_DIR="${IBKR_GUI_LOCK_DIR:-/opt/ibkr-runtime/run}"
+LOCK_FILE="${IBKR_GUI_LOCK_FILE:-${LOCK_DIR}/ibkr-gui-recovery.lock}"
+LOCK_WAIT_SECONDS="${IBKR_GUI_LOCK_WAIT_SECONDS:-55}"
 
 export DISPLAY="${DISPLAY_ID}"
+
+acquire_gui_lock() {
+  if [ "${IBKR_GUI_LOCK_HELD:-false}" = "true" ]; then
+    return 0
+  fi
+
+  mkdir -p "${LOCK_DIR}"
+  exec 200>"${LOCK_FILE}"
+  if ! flock -w "${LOCK_WAIT_SECONDS}" 200; then
+    echo "IBKR Gateway recovery is already running; skipped ${SOURCE}" >&2
+    exit 75
+  fi
+  export IBKR_GUI_LOCK_HELD=true
+}
 
 capture_state() {
   local phase="$1"
@@ -22,6 +39,8 @@ capture_state() {
     "${CAPTURE_SCRIPT}" "${SOURCE}" "${phase}" || true
   fi
 }
+
+acquire_gui_lock
 
 WINDOW_ID=""
 for _ in $(seq 1 "${WINDOW_WAIT_SECONDS}"); do
@@ -56,7 +75,7 @@ for attempt_index in $(seq 1 "${ATTEMPTS}"); do
   fi
 
   if [ -x "${RESEND_PUSH_SCRIPT}" ]; then
-    "${RESEND_PUSH_SCRIPT}" "recovery-attempt-${attempt_index}" || true
+    IBKR_GUI_LOCK_HELD=true "${RESEND_PUSH_SCRIPT}" "recovery-attempt-${attempt_index}" || true
   fi
 
   sleep "${POLL_SECONDS}"
