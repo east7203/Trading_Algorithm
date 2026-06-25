@@ -141,6 +141,50 @@ describe('evaluateRisk', () => {
     expect(decision.reasonCodes).toContain('HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK');
   });
 
+  it('blocks high-impact USD news for one hour before and after the event', () => {
+    const store = new RiskConfigStore();
+    store.patch({
+      policyConfirmation: {
+        firmUsageApproved: true,
+        platformUsageApproved: true,
+        confirmedBy: 'tester',
+        confirmedAt: '2026-03-07T14:00:00.000Z'
+      }
+    });
+
+    const newsEvents = [
+      {
+        currency: 'USD',
+        impact: 'high' as const,
+        startsAt: '2026-03-07T15:30:00.000Z',
+        source: 'trusted-economic-calendar',
+        title: 'Building Permits'
+      }
+    ];
+
+    const before = evaluateRisk(
+      {
+        ...baseInput(),
+        now: '2026-03-07T14:31:00.000Z',
+        newsEvents
+      },
+      store.get()
+    );
+    const after = evaluateRisk(
+      {
+        ...baseInput(),
+        now: '2026-03-07T16:29:00.000Z',
+        newsEvents
+      },
+      store.get()
+    );
+
+    expect(before.allowed).toBe(false);
+    expect(before.reasonCodes).toContain('HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK');
+    expect(after.allowed).toBe(false);
+    expect(after.reasonCodes).toContain('HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK');
+  });
+
   it('blocks around broader high-impact macro events that can move ES and NQ', () => {
     const store = new RiskConfigStore();
     store.patch({

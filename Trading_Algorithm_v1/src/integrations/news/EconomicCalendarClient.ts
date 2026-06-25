@@ -75,6 +75,12 @@ interface CalendarCacheState {
   expiresAtMs: number;
 }
 
+export interface RedundantEconomicCalendarClientConfig {
+  primary: EconomicCalendarClient;
+  fallback: EconomicCalendarClient;
+  maxEvents?: number;
+}
+
 const DEFAULT_SOURCE_NAME = 'tradingeconomics';
 const DEFAULT_BASE_URL = 'https://api.tradingeconomics.com';
 const DEFAULT_FOREX_FACTORY_SOURCE_NAME = 'forexfactory';
@@ -261,6 +267,107 @@ export class InMemoryEconomicCalendarClient implements EconomicCalendarClient {
       mode: 'stub',
       cachedEventCount: this.events.length,
       nextEventAt
+    };
+  }
+}
+
+const normalizedEventIdentity = (event: NewsEvent): string => [
+  event.startsAt,
+  event.currency.trim().toUpperCase(),
+  (event.country ?? '').trim().toLowerCase(),
+  (event.title ?? event.category ?? '').trim().toLowerCase()
+].join('|');
+
+const mergeCalendarEvents = (left: NewsEvent[], right: NewsEvent[], maxEvents: number): NewsEvent[] => {
+  const seen = new Set<string>();
+  const merged: NewsEvent[] = [];
+
+  for (const event of [...left, ...right]) {
+    const eventMs = Date.parse(event.startsAt);
+    if (!Number.isFinite(eventMs)) {
+      continue;
+    }
+
+    const key = normalizedEventIdentity(event);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(event);
+  }
+
+  return merged.sort((leftEvent, rightEvent) => leftEvent.startsAt.localeCompare(rightEvent.startsAt)).slice(0, maxEvents);
+};
+
+export class RedundantEconomicCalendarClient implements EconomicCalendarClient {
+  sourceName: string;
+
+  private readonly primary: EconomicCalendarClient;
+  private readonly fallback: EconomicCalendarClient;
+  private readonly maxEvents: number;
+  private cache: CalendarCacheState | null = null;
+  private lastError?: string;
+
+  constructor(config: RedundantEconomicCalendarClientConfig) {
+    this.primary = config.primary;
+    this.fallback = config.fallback;
+    this.maxEvents = Math.max(1, Math.trunc(config.maxEvents ?? 200));
+    this.sourceName = `${this.primary.sourceName}+${this.fallback.sourceName}`;
+  }
+
+  async listUpcomingEvents(): Promise<NewsEvent[]> {
+    const fetchedAtMs = Date.now();
+    const [primaryResult, fallbackResult] = await Promise.allSettled([
+      this.primary.listUpcomingEvents(),
+      this.fallback.listUpcomingEvents()
+    ]);
+
+    const primaryEvents = primaryResult.status === 'fulfilled' ? primaryResult.value : [];
+    const fallbackEvents = fallbackResult.status === 'fulfilled' ? fallbackResult.value : [];
+    const primaryStatus = this.primary.status();
+    const fallbackStatus = this.fallback.status();
+
+    const errors = [
+      primaryResult.status === 'rejected' ? `${this.primary.sourceName}: ${primaryResult.reason instanceof Error ? primaryResult.reason.message : String(primaryResult.reason)}` : null,
+      fallbackResult.status === 'rejected' ? `${this.fallback.sourceName}: ${fallbackResult.reason instanceof Error ? fallbackResult.reason.message : String(fallbackResult.reason)}` : null,
+      primaryStatus.lastError ? `${this.primary.sourceName}: ${primaryStatus.lastError}` : null,
+      fallbackStatus.lastError ? `${this.fallback.sourceName}: ${fallbackStatus.lastError}` : null
+    ].filter((value): value is string => Boolean(value));
+
+    const events = mergeCalendarEvents(primaryEvents, fallbackEvents, this.maxEvents);
+    this.lastError = errors.length ? errors.join(' | ') : undefined;
+    this.cache = {
+      events,
+      fetchedAtMs,
+      expiresAtMs: Math.max(
+        Date.parse(primaryStatus.cacheExpiresAt ?? '') || 0,
+        Date.parse(fallbackStatus.cacheExpiresAt ?? '') || 0,
+        fetchedAtMs
+      )
+    };
+
+    return [...events];
+  }
+
+  status(): EconomicCalendarClientStatus {
+    const primaryStatus = this.primary.status();
+    const fallbackStatus = this.fallback.status();
+    const nextEventAt = this.cache?.events
+      .map((event) => event.startsAt)
+      .filter((value) => Date.parse(value) >= Date.now())
+      .sort()
+      .at(0);
+
+    return {
+      sourceName: this.sourceName,
+      mode: primaryStatus.mode === 'live' || fallbackStatus.mode === 'live' ? 'live' : 'stub',
+      cachedEventCount: this.cache?.events.length ?? primaryStatus.cachedEventCount + fallbackStatus.cachedEventCount,
+      filteredCountryCount: primaryStatus.filteredCountryCount,
+      nextEventAt,
+      lastFetchedAt: this.cache ? new Date(this.cache.fetchedAtMs).toISOString() : undefined,
+      cacheExpiresAt: this.cache ? new Date(this.cache.expiresAtMs).toISOString() : undefined,
+      lastError: this.lastError
     };
   }
 }

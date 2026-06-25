@@ -86,7 +86,7 @@ The mobile UI is not a generic dashboard. It is designed around the actual opera
 - **Validation:** Zod
 - **Training:** custom ranking-model pipeline over historical + live examples, plus a self-learning profile built from resolved trade records
 - **Market data:** IBKR TWS API / IB Gateway, with fallback bridge support
-- **Calendar/news context:** Forex Factory provider integration with pluggable calendar client interface
+- **Calendar/news context:** Trading Economics primary calendar with Forex Factory fallback/red-folder cross-check
 - **Notifications:** Telegram, web push, native push hooks
 - **Mobile UI:** hosted PWA + Capacitor iOS wrapper
 - **Desktop:** Electron shell / Mac notifier utilities
@@ -136,7 +136,7 @@ It helps detect, rank, filter, and review setups. It does not pretend that autom
 - alert timeframe: `5m`
 - higher-timeframe context: `15m`, `1H`, `4H`, `D1`, `W1`
 - live broker/data path: IBKR on VPS
-- live economic calendar path: Forex Factory integration
+- live economic calendar path: Trading Economics primary + Forex Factory fallback
 - continuous training: enabled on VPS
 - self-learning profile: enabled on VPS
 

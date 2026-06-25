@@ -20,6 +20,8 @@ export interface NewsContext {
 }
 
 const MS_PER_MINUTE = 60_000;
+const HIGH_IMPACT_USD_BLACKOUT_BEFORE_MINUTES = 60;
+const HIGH_IMPACT_USD_BLACKOUT_AFTER_MINUTES = 60;
 const CRITICAL_EVENT_PATTERN =
   /\b(cpi|inflation|ppi|pce|powell|fomc|fed|interest rate|rate decision|non[-\s]?farm|payrolls?|nfp|jobless|unemployment|employment|gdp|retail sales|ism|pmi|consumer confidence|central bank)\b/i;
 const DIRECT_CURRENCY_BY_SYMBOL: Record<SymbolCode, string> = {
@@ -134,13 +136,25 @@ const getBlockingReasonCode = (
   relevance: EvaluatedNewsEvent['relevance'],
   minutesUntilEvent: number
 ): string | undefined => {
+  if (severity === 'critical' && relevance === 'direct' && isWithinWindow(
+    minutesUntilEvent,
+    HIGH_IMPACT_USD_BLACKOUT_BEFORE_MINUTES,
+    HIGH_IMPACT_USD_BLACKOUT_AFTER_MINUTES
+  )) {
+    return 'CRITICAL_MACRO_EVENT_WINDOW_BLOCK';
+  }
   if (severity === 'critical' && isWithinWindow(minutesUntilEvent, 30, 60)) {
     return 'CRITICAL_MACRO_EVENT_WINDOW_BLOCK';
   }
-  if (severity === 'high' && isWithinWindow(minutesUntilEvent, 20, 45)) {
-    return relevance === 'direct'
-      ? 'HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK'
-      : 'HIGH_IMPACT_MACRO_WINDOW_BLOCK';
+  if (severity === 'high' && relevance === 'direct' && isWithinWindow(
+    minutesUntilEvent,
+    HIGH_IMPACT_USD_BLACKOUT_BEFORE_MINUTES,
+    HIGH_IMPACT_USD_BLACKOUT_AFTER_MINUTES
+  )) {
+    return 'HIGH_IMPACT_USD_NEWS_WINDOW_BLOCK';
+  }
+  if (severity === 'high' && relevance === 'cross-market' && isWithinWindow(minutesUntilEvent, 20, 45)) {
+    return 'HIGH_IMPACT_MACRO_WINDOW_BLOCK';
   }
   if (severity === 'medium' && relevance === 'direct' && isWithinWindow(minutesUntilEvent, 10, 20)) {
     return 'MEDIUM_IMPACT_USD_NEWS_WINDOW_BLOCK';

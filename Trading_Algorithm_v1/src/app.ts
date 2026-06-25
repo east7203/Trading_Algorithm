@@ -15,6 +15,7 @@ import { InMemoryTradeLockerClient, type TradeLockerClient } from './integration
 import {
   InMemoryEconomicCalendarClient,
   ForexFactoryCalendarClient,
+  RedundantEconomicCalendarClient,
   TradingEconomicsCalendarClient,
   type EconomicCalendarClient
 } from './integrations/news/EconomicCalendarClient.js';
@@ -1222,36 +1223,48 @@ const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalen
     return new InMemoryEconomicCalendarClient();
   }
 
-  const provider = (process.env.ECONOMIC_CALENDAR_PROVIDER ?? 'forexfactory').trim().toLowerCase();
+  const buildForexFactoryClient = (): ForexFactoryCalendarClient => new ForexFactoryCalendarClient({
+    exportUrl:
+      process.env.FOREX_FACTORY_EXPORT_URL ??
+      'https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=918c104dd11c656d8e7462980fbf329c',
+    lookbackHours: parseIntEnv('FOREX_FACTORY_LOOKBACK_HOURS', 6, 1, 48),
+    lookaheadHours: parseIntEnv('FOREX_FACTORY_LOOKAHEAD_HOURS', 120, 1, 240),
+    cacheTtlMs: parseIntEnv('FOREX_FACTORY_CACHE_TTL_SECONDS', 180, 30, 3600) * 1000,
+    requestTimeoutMs: parseIntEnv('FOREX_FACTORY_TIMEOUT_MS', 10_000, 1_000, 60_000),
+    maxEvents: parseIntEnv('FOREX_FACTORY_MAX_EVENTS', 200, 10, 500)
+  });
+
+  const buildTradingEconomicsClient = (): TradingEconomicsCalendarClient => new TradingEconomicsCalendarClient({
+    apiKey: process.env.TRADING_ECONOMICS_API_KEY ?? 'guest:guest',
+    baseUrl: process.env.TRADING_ECONOMICS_BASE_URL ?? 'https://api.tradingeconomics.com',
+    countries: parseCsvEnv('TRADING_ECONOMICS_COUNTRIES', ['United States']),
+    minImportance: parseIntEnv('TRADING_ECONOMICS_MIN_IMPORTANCE', 3, 1, 3) as 1 | 2 | 3,
+    lookbackHours: parseIntEnv('TRADING_ECONOMICS_LOOKBACK_HOURS', 6, 1, 48),
+    lookaheadHours: parseIntEnv('TRADING_ECONOMICS_LOOKAHEAD_HOURS', 120, 1, 240),
+    cacheTtlMs: parseIntEnv('TRADING_ECONOMICS_CACHE_TTL_SECONDS', 180, 30, 3600) * 1000,
+    requestTimeoutMs: parseIntEnv('TRADING_ECONOMICS_TIMEOUT_MS', 10_000, 1_000, 60_000),
+    maxEvents: parseIntEnv('TRADING_ECONOMICS_MAX_EVENTS', 120, 10, 500)
+  });
+
+  const provider = (process.env.ECONOMIC_CALENDAR_PROVIDER ?? 'auto').trim().toLowerCase();
   if (provider === 'memory' || provider === 'stub' || provider === 'inmemory') {
     return new InMemoryEconomicCalendarClient();
   }
 
-  if (provider === 'forexfactory' || provider === 'ff') {
-    return new ForexFactoryCalendarClient({
-      exportUrl:
-        process.env.FOREX_FACTORY_EXPORT_URL ??
-        'https://nfs.faireconomy.media/ff_calendar_thisweek.json?version=918c104dd11c656d8e7462980fbf329c',
-      lookbackHours: parseIntEnv('FOREX_FACTORY_LOOKBACK_HOURS', 6, 1, 48),
-      lookaheadHours: parseIntEnv('FOREX_FACTORY_LOOKAHEAD_HOURS', 120, 1, 240),
-      cacheTtlMs: parseIntEnv('FOREX_FACTORY_CACHE_TTL_SECONDS', 180, 30, 3600) * 1000,
-      requestTimeoutMs: parseIntEnv('FOREX_FACTORY_TIMEOUT_MS', 10_000, 1_000, 60_000),
-      maxEvents: parseIntEnv('FOREX_FACTORY_MAX_EVENTS', 200, 10, 500)
+  if (provider === 'auto' || provider === 'redundant') {
+    return new RedundantEconomicCalendarClient({
+      primary: buildTradingEconomicsClient(),
+      fallback: buildForexFactoryClient(),
+      maxEvents: parseIntEnv('ECONOMIC_CALENDAR_MAX_EVENTS', 200, 10, 500)
     });
   }
 
+  if (provider === 'forexfactory' || provider === 'ff') {
+    return buildForexFactoryClient();
+  }
+
   if (provider === 'tradingeconomics' || provider === 'te') {
-    return new TradingEconomicsCalendarClient({
-      apiKey: process.env.TRADING_ECONOMICS_API_KEY ?? 'guest:guest',
-      baseUrl: process.env.TRADING_ECONOMICS_BASE_URL ?? 'https://api.tradingeconomics.com',
-      countries: parseCsvEnv('TRADING_ECONOMICS_COUNTRIES', ['All']),
-      minImportance: parseIntEnv('TRADING_ECONOMICS_MIN_IMPORTANCE', 2, 1, 3) as 1 | 2 | 3,
-      lookbackHours: parseIntEnv('TRADING_ECONOMICS_LOOKBACK_HOURS', 6, 1, 48),
-      lookaheadHours: parseIntEnv('TRADING_ECONOMICS_LOOKAHEAD_HOURS', 72, 1, 168),
-      cacheTtlMs: parseIntEnv('TRADING_ECONOMICS_CACHE_TTL_SECONDS', 180, 30, 3600) * 1000,
-      requestTimeoutMs: parseIntEnv('TRADING_ECONOMICS_TIMEOUT_MS', 10_000, 1_000, 60_000),
-      maxEvents: parseIntEnv('TRADING_ECONOMICS_MAX_EVENTS', 120, 10, 500)
-    });
+    return buildTradingEconomicsClient();
   }
 
   return new InMemoryEconomicCalendarClient();

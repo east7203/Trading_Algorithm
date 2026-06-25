@@ -75,6 +75,12 @@ heap_key = 'NODE_OPTIONS='
 heap_value = 'NODE_OPTIONS=--max-old-space-size=1536'
 promote_key = 'CONTINUOUS_TRAINING_ALWAYS_PROMOTE_LATEST='
 promote_value = 'CONTINUOUS_TRAINING_ALWAYS_PROMOTE_LATEST=false'
+calendar_provider_key = 'ECONOMIC_CALENDAR_PROVIDER='
+calendar_provider_value = 'ECONOMIC_CALENDAR_PROVIDER=auto'
+te_countries_key = 'TRADING_ECONOMICS_COUNTRIES='
+te_countries_value = 'TRADING_ECONOMICS_COUNTRIES=United States'
+te_importance_key = 'TRADING_ECONOMICS_MIN_IMPORTANCE='
+te_importance_value = 'TRADING_ECONOMICS_MIN_IMPORTANCE=3'
 if legacy in content:
     content = content.replace(legacy, current)
 if heap_key not in content:
@@ -88,6 +94,19 @@ if promote_key in content:
         content += '\n'
 else:
     content = content.rstrip('\n') + '\n' + promote_value + '\n'
+if calendar_provider_key in content:
+    content = '\n'.join(
+        calendar_provider_value if line.startswith(calendar_provider_key) and line.split('=', 1)[1].strip().lower() in {'forexfactory', 'ff'} else line
+        for line in content.splitlines()
+    )
+    if not content.endswith('\n'):
+        content += '\n'
+else:
+    content = content.rstrip('\n') + '\n' + calendar_provider_value + '\n'
+if te_countries_key not in content:
+    content = content.rstrip('\n') + '\n' + te_countries_value + '\n'
+if te_importance_key not in content:
+    content = content.rstrip('\n') + '\n' + te_importance_value + '\n'
 env_path.write_text(content)
 PY
     eval \"\$(

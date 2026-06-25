@@ -570,6 +570,9 @@ export class PaperTradingService {
     ) {
       return null;
     }
+    if (alert.riskDecision.blockedByNewsWindow) {
+      return null;
+    }
 
     if (this.trades.has(alert.alertId)) {
       return this.trades.get(alert.alertId) ?? null;

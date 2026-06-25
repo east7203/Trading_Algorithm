@@ -295,7 +295,7 @@ describe('paper trading service', () => {
     expect(status.recentClosedTrades[0].exitReason).toBe('TIME_EXIT');
   });
 
-  it('takes blocked live alerts in unrestricted autonomy mode when the desk window is still open', async () => {
+  it('rejects news-blocked alerts even in unrestricted autonomy mode', async () => {
     const service = new PaperTradingService({
       enabled: true,
       initialBalance: 100_000,
@@ -329,10 +329,8 @@ describe('paper trading service', () => {
       'signal-monitor'
     );
 
-    expect(trade).not.toBeNull();
-    expect(trade?.quantity).toBeGreaterThan(0);
-    expect(trade?.riskPct).toBe(0.35);
-    expect(service.status().pendingEntries).toBe(1);
+    expect(trade).toBeNull();
+    expect(service.status('2026-03-25T13:30:00.000Z').pendingEntries).toBe(0);
   });
 
   it('rejects paper trades outside the manual trading window even in unrestricted autonomy mode', async () => {

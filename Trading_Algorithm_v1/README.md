@@ -17,7 +17,7 @@ Runtime and operator documentation for the active futures time-series learning p
   - max consecutive losses
   - spread/slippage guards
   - kill switch
-  - strict high-impact USD news block (`T-15m` to `T+30m`)
+  - strict high-impact USD news block (`T-60m` to `T+60m`)
 - Manual-only execution workflow:
   - `POST /execution/propose` (build manual execution intent)
   - `POST /execution/approve` (manual approval + audit log, no broker API order placement)
@@ -81,7 +81,7 @@ This means the runtime can adapt quickly to changing edge quality while still pr
 
 ## News source
 
-`EconomicCalendarClient` is now wired to a live Forex Factory-backed provider on the VPS, with the app and signal engine consuming that calendar context for macro blocking and scoring. The client interface remains provider-pluggable if you later swap to a paid macro feed.
+`EconomicCalendarClient` defaults to a redundant live calendar: Trading Economics is the primary source for official economic calendar data, and Forex Factory is the fallback/red-folder cross-check. The app and signal engine consume that calendar context for macro blocking, setup scoring, and the plain-English desk bias.
 
 ## Morning window config
 

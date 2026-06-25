@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ForexFactoryCalendarClient,
+  InMemoryEconomicCalendarClient,
+  RedundantEconomicCalendarClient,
   TradingEconomicsCalendarClient
 } from '../../src/integrations/news/EconomicCalendarClient.js';
 
@@ -156,6 +158,54 @@ describe('ForexFactoryCalendarClient', () => {
     expect(client.status()).toMatchObject({
       sourceName: 'forexfactory',
       mode: 'live',
+      cachedEventCount: 2
+    });
+  });
+});
+
+describe('RedundantEconomicCalendarClient', () => {
+  it('merges primary and fallback calendars without duplicate events', async () => {
+    const primary = new InMemoryEconomicCalendarClient([
+      {
+        currency: 'USD',
+        country: 'United States',
+        impact: 'high',
+        startsAt: '2026-03-20T13:30:00.000Z',
+        source: 'tradingeconomics',
+        title: 'Non Farm Payrolls',
+        importanceScore: 3
+      }
+    ]);
+    primary.sourceName = 'tradingeconomics';
+
+    const fallback = new InMemoryEconomicCalendarClient([
+      {
+        currency: 'USD',
+        country: 'United States',
+        impact: 'high',
+        startsAt: '2026-03-20T13:30:00.000Z',
+        source: 'forexfactory',
+        title: 'Non Farm Payrolls',
+        importanceScore: 3
+      },
+      {
+        currency: 'USD',
+        impact: 'high',
+        startsAt: '2026-03-20T15:00:00.000Z',
+        source: 'forexfactory',
+        title: 'Existing Home Sales',
+        importanceScore: 3
+      }
+    ]);
+    fallback.sourceName = 'forexfactory';
+
+    const client = new RedundantEconomicCalendarClient({ primary, fallback });
+    const events = await client.listUpcomingEvents();
+
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => event.title)).toEqual(['Non Farm Payrolls', 'Existing Home Sales']);
+    expect(client.status()).toMatchObject({
+      sourceName: 'tradingeconomics+forexfactory',
       cachedEventCount: 2
     });
   });
