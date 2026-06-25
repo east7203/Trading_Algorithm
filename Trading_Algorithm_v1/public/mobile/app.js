@@ -3310,6 +3310,34 @@ const setRecoveryState = (tone, text, hint) => {
   }
 };
 
+const getDiagnosticsDeskWindow = (diagnostics) =>
+  diagnostics?.deskWindow
+    ?? latestHomeDeck?.deck?.desk?.deskWindow
+    ?? latestRiskConfig?.config?.tradingWindow
+    ?? null;
+
+const isDeskWindowClosed = (windowLike) => {
+  if (!windowLike) {
+    return false;
+  }
+  if (String(windowLike.state ?? '').toUpperCase() === 'CLOSED') {
+    return true;
+  }
+  if (typeof windowLike.open === 'boolean') {
+    return !windowLike.open;
+  }
+  return !isWithinClockWindow(new Date().toISOString(), windowLike);
+};
+
+const describeDeskWindowReadiness = (windowLike) => {
+  const windowLabel =
+    formatViewerLocalWindow(windowLike)
+    ?? (windowLike
+      ? `${formatTimeValue(windowLike.startHour, windowLike.startMinute)}-${formatTimeValue(windowLike.endHour, windowLike.endMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), windowLike.timezone)}`
+      : 'the configured desk window');
+  return `The desk window is closed (${windowLabel}), so trade alerts are not expected right now. Reconnect IBKR before the next window.`;
+};
+
 const getFeedStateMeta = (diagnostics) => {
   if (!diagnostics) {
     return {
@@ -3322,11 +3350,21 @@ const getFeedStateMeta = (diagnostics) => {
 
   const recovery = diagnostics.ibkrRecovery ?? null;
   const ibkrSessionConnected = Boolean(recovery?.lastConnectedAt) && !recovery?.pendingReconnect;
+  const deskWindow = getDiagnosticsDeskWindow(diagnostics);
+  const deskClosed = isDeskWindowClosed(deskWindow);
   const lastBarText = diagnostics.latestBarTimestamp
     ? `Last bar ${fmtRelativeMinutes(diagnostics.latestBarTimestamp)}.`
     : 'No confirmed bar yet.';
 
   if (recovery?.pendingReconnect) {
+    if (deskClosed) {
+      return {
+        tone: 'warn',
+        segment: 'Standby',
+        summary: 'Desk window closed',
+        detail: describeDeskWindowReadiness(deskWindow)
+      };
+    }
     return {
       tone: 'bad',
       segment: 'Reauth',
@@ -3407,6 +3445,17 @@ const getFeedStateMeta = (diagnostics) => {
       segment: 'Live',
       summary: 'Feed updating',
       detail: lastBarText
+    };
+  }
+
+  if (deskClosed && ['OFFLINE', 'FROZEN', 'STALE'].includes(String(diagnostics.liveFeedStatus ?? '').toUpperCase())) {
+    return {
+      tone: 'warn',
+      segment: 'Standby',
+      summary: 'Desk window closed',
+      detail: diagnostics.latestBarTimestamp
+        ? `${lastBarText} ${describeDeskWindowReadiness(deskWindow)}`
+        : describeDeskWindowReadiness(deskWindow)
     };
   }
 
@@ -8140,9 +8189,20 @@ const learningFeedIsDegraded = (status) => ['FROZEN', 'STALE', 'OFFLINE'].includ
 const activeLearningBlockers = (blockers = []) =>
   blockers.filter((blocker) => String(blocker?.severity ?? 'info').toLowerCase() !== 'info');
 
+const getLearningDeskWindow = (report, diagnostics) =>
+  report?.dataSources?.deskWindow
+    ?? diagnostics?.deskWindow
+    ?? latestHomeDeck?.deck?.desk?.deskWindow
+    ?? null;
+
 const learningReportAttentionLabel = (report) => {
   const feedStatus = String(report?.dataSources?.liveFeed?.status ?? '').toUpperCase();
   const ibkrPending = Boolean(report?.dataSources?.ibkr?.pendingReconnect);
+  const deskClosed = isDeskWindowClosed(getLearningDeskWindow(report, latestDiagnostics?.diagnostics ?? null));
+
+  if (deskClosed && (learningFeedIsDegraded(feedStatus) || ibkrPending)) {
+    return 'Window closed';
+  }
 
   if (feedStatus === 'STALE') {
     return 'Live data stale';
@@ -8692,6 +8752,8 @@ const renderReviewInsights = () => {
     learningReport?.dataSources?.ibkr?.pendingReconnect
       || diagnostics?.ibkrRecovery?.pendingReconnect
   );
+  const learningDeskWindow = getLearningDeskWindow(learningReport, diagnostics);
+  const learningDeskClosed = isDeskWindowClosed(learningDeskWindow);
   const training = diagnostics?.training ?? null;
   const tradeLearning = diagnostics?.tradeLearning ?? null;
   const learningCases = diagnostics?.learningCases ?? reviewSummary;
@@ -8715,6 +8777,9 @@ const renderReviewInsights = () => {
     if (!diagnostics) {
       learningHealthChipEl.className = 'chip chip-neutral';
       learningHealthChipEl.textContent = 'Diagnostics loading';
+    } else if (learningDeskClosed && learningFeedIsDegraded(learningFeedStatus)) {
+      learningHealthChipEl.className = 'chip chip-neutral';
+      learningHealthChipEl.textContent = 'Window closed';
     } else if (feedState.status === 'LIVE' && training?.enabled && tradeLearning?.totalRecords > 0) {
       learningHealthChipEl.className = 'chip chip-online';
       learningHealthChipEl.textContent = 'Healthy';
@@ -8730,6 +8795,8 @@ const renderReviewInsights = () => {
   if (learningHealthHeadlineEl) {
     if (!diagnostics) {
       learningHealthHeadlineEl.textContent = 'Waiting for live diagnostics to load.';
+    } else if (learningDeskClosed && learningFeedIsDegraded(learningFeedStatus)) {
+      learningHealthHeadlineEl.textContent = describeDeskWindowReadiness(learningDeskWindow);
     } else if (learningFeedStatus !== 'LIVE') {
       learningHealthHeadlineEl.textContent = learningFeedIssueHeadline(learningFeedStatus, learningIbkrPending);
     } else if (!training?.enabled) {
@@ -8754,7 +8821,7 @@ const renderReviewInsights = () => {
 
   if (learningFeedHealthEl) {
     learningFeedHealthEl.textContent = diagnostics
-      ? `${feedState.status} • ${diagnostics.latestBarTimestamp ? fmtRelativeMinutes(diagnostics.latestBarTimestamp) : 'No live bar'}`
+      ? `${feedState.status} • ${learningDeskClosed ? 'desk closed' : diagnostics.latestBarTimestamp ? fmtRelativeMinutes(diagnostics.latestBarTimestamp) : 'No live bar'}`
       : '--';
   }
 

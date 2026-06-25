@@ -53,6 +53,7 @@ import {
 } from './services/operationalReminderService.js';
 import type { AppNotificationCategory, AppNotificationPriority } from './services/notificationPreferences.js';
 import { shouldNotifyIbkrRecovery } from './services/ibkrRecoveryNotificationPolicy.js';
+import { isWithinTradingWindow } from './services/tradingWindowService.js';
 import { JournalStore } from './stores/journalStore.js';
 import {
   NotificationActivityStore,
@@ -1593,6 +1594,20 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       }
     });
   };
+  const buildDeskWindowState = (nowIso = new Date().toISOString()) => {
+    const tradingWindow = riskConfigStore.get().tradingWindow;
+    const open = isWithinTradingWindow(nowIso, tradingWindow);
+    return {
+      enabled: tradingWindow.enabled,
+      open,
+      state: tradingWindow.enabled ? (open ? 'OPEN' : 'CLOSED') : 'UNRESTRICTED',
+      timezone: tradingWindow.timezone,
+      startHour: tradingWindow.startHour,
+      startMinute: tradingWindow.startMinute,
+      endHour: tradingWindow.endHour,
+      endMinute: tradingWindow.endMinute
+    };
+  };
   const trainingStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=status&focus=learning`;
   const ibkrReconnectFallbackDelayMs =
     parseIntEnv('IBKR_RECONNECT_FALLBACK_DELAY_SECONDS', 45, 5, 600) * 1000;
@@ -2714,7 +2729,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const telegram = telegramAlertService?.status() ?? { enabled: false, ready: false, chatConfigured: false };
     const paperAccount = await syncPaperSessionState();
     const paperAutonomy = paperAutonomyService?.status() ?? null;
-    const nowMs = Date.now();
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const nowMs = now.getTime();
+    const deskWindow = buildDeskWindowState(nowIso);
+    const deskWindowOpen = deskWindow.state !== 'CLOSED';
     const dayAgoMs = nowMs - 24 * 60 * 60_000;
     const recentRecords = allLearningRecords.filter((record) => {
       const updatedMs = Date.parse(record.updatedAt || record.detectedAt);
@@ -2744,15 +2763,26 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       : undefined;
 
     if (liveFeed.status === 'OFFLINE' || liveFeed.status === 'FROZEN' || liveFeed.status === 'STALE') {
+      const outsideDeskWindow = !deskWindowOpen;
       blockers.push({
-        severity: 'attention',
-        title: liveFeed.status === 'STALE' ? 'Fresh market data is stale' : 'Fresh market data is not reliable yet',
+        severity: outsideDeskWindow ? 'info' : 'attention',
+        title: outsideDeskWindow
+          ? 'Desk window is closed; no alerts are expected'
+          : liveFeed.status === 'STALE'
+            ? 'Fresh market data is stale'
+            : 'Fresh market data is not reliable yet',
         detail: latestBarTimestamp
-          ? `Newest futures bar is ${formatLearningFeedAge(staleFeedMinutes ?? 0)} old. Live decisions expect a bar under 5 minutes, and anything over 20 minutes is treated as stale during the trading window.`
+          ? outsideDeskWindow
+            ? `Newest futures bar is ${formatLearningFeedAge(staleFeedMinutes ?? 0)} old, but the configured desk window is closed. This is a next-window readiness item, not a reason to expect alerts right now.`
+            : `Newest futures bar is ${formatLearningFeedAge(staleFeedMinutes ?? 0)} old. Live decisions expect a bar under 5 minutes, and anything over 20 minutes is treated as stale during the trading window.`
           : 'No current futures bar timestamp is available, so the app cannot confirm fresh live data.',
         action: ibkrPendingReconnect
-          ? 'Complete the IBKR Gateway login, approve the phone prompt, then tap Refresh Report.'
-          : 'Check the market-data bridge or fallback feed, then tap Refresh Report before trusting fresh learning.'
+          ? outsideDeskWindow
+            ? 'Reconnect IBKR before the next desk window opens; no trade alerts should fire while the window is closed.'
+            : 'Complete the IBKR Gateway login, approve the phone prompt, then tap Refresh Report.'
+          : outsideDeskWindow
+            ? 'Keep monitoring. Recheck feed readiness before the next desk window.'
+            : 'Check the market-data bridge or fallback feed, then tap Refresh Report before trusting fresh learning.'
       });
     } else if (liveFeed.status !== 'LIVE') {
       blockers.push({
@@ -2774,10 +2804,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     if (ibkrPendingReconnect) {
       blockers.push({
-        severity: 'attention',
-        title: 'IBKR login is blocking the primary feed',
-        detail: 'The Gateway session is not authenticated, so the app may stop receiving fresh futures bars and trade alerts can stay quiet.',
-        action: 'Open the IBKR console, complete Gateway authentication, approve the phone prompt, then refresh this report.'
+        severity: deskWindowOpen ? 'attention' : 'info',
+        title: deskWindowOpen
+          ? 'IBKR login is blocking the primary feed'
+          : 'IBKR login is needed before the next desk window',
+        detail: deskWindowOpen
+          ? 'The Gateway session is not authenticated, so the app may stop receiving fresh futures bars and trade alerts can stay quiet.'
+          : 'The configured desk window is closed, so missing trade alerts are expected right now. Reconnect Gateway before the next active session.',
+        action: deskWindowOpen
+          ? 'Open the IBKR console, complete Gateway authentication, approve the phone prompt, then refresh this report.'
+          : 'Open the IBKR console when convenient, complete Gateway authentication, and confirm the feed before the next desk window.'
       });
     }
 
@@ -2823,7 +2859,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const severity = hasAttention ? 'ATTENTION' : hasWatch ? 'WATCH' : 'HEALTHY';
     const headline =
       severity === 'HEALTHY'
-        ? 'Learning is running and guarded by promotion checks.'
+        ? deskWindow.state === 'CLOSED'
+          ? 'Desk window is closed; no live trade alerts are expected right now.'
+          : 'Learning is running and guarded by promotion checks.'
         : severity === 'WATCH'
           ? 'Learning is running, but one piece deserves monitoring.'
           : ibkrPendingReconnect && (liveFeed.status === 'STALE' || liveFeed.status === 'OFFLINE' || liveFeed.status === 'FROZEN')
@@ -2852,6 +2890,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
             : 'No learning records changed in the last 24 hours.'
       },
       dataSources: {
+        deskWindow,
         liveFeed: {
           status: liveFeed.status,
           sessionState: liveFeed.sessionState,
@@ -2963,6 +3002,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       latestBarTimestamp,
       frozenFeed
     );
+    const deskWindow = buildDeskWindowState();
     const learningPerformance = summarizeLearningPerformanceFromTradeRecords(await listManualEngineTradeLearningRecords());
     const research = marketResearchService ? marketResearchService.status() : null;
     const paper = await syncPaperSessionState();
@@ -2979,6 +3019,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       desk: {
         feedStatus: liveFeed.status,
         marketSessionState: liveFeed.sessionState,
+        deskWindow,
         latestBarTimestamp,
         rankingModelId: rankingModelStore.get().modelId,
         retrainCadenceMinutes: Math.round(resolvedContinuousConfig.retrainIntervalMs / 60_000)
@@ -4115,12 +4156,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       latestBarTimestamp,
       frozenFeed
     );
+    const deskWindow = buildDeskWindowState();
 
     return reply.status(200).send({
       diagnostics: {
         liveFeedStatus: liveFeed.status,
         liveFeedBarAgeMs: liveFeed.barAgeMs,
         marketSessionState: liveFeed.sessionState,
+        deskWindow,
         latestBarTimestamp,
         signalMonitorLatestBarTimestamp: monitorLatestBarTimestamp,
         trainingLatestBarTimestamp,
