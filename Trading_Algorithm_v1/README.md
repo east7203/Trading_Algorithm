@@ -81,7 +81,7 @@ This means the runtime can adapt quickly to changing edge quality while still pr
 
 ## News source
 
-`EconomicCalendarClient` defaults to a redundant live calendar: Trading Economics is the primary source for official economic calendar data, and Forex Factory is the fallback/red-folder cross-check. The app and signal engine consume that calendar context for macro blocking, setup scoring, and the plain-English desk bias.
+`EconomicCalendarClient` defaults to `auto`: when `TRADING_ECONOMICS_API_KEY` is installed, Trading Economics is the primary source for official economic calendar data and Forex Factory is the fallback/red-folder cross-check. Without a Trading Economics key, the app uses Forex Factory directly instead of hammering the discontinued public guest account. The app and signal engine consume that calendar context for macro blocking, setup scoring, and the plain-English desk bias.
 
 ## Morning window config
 

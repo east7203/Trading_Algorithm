@@ -1234,8 +1234,11 @@ const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalen
     maxEvents: parseIntEnv('FOREX_FACTORY_MAX_EVENTS', 200, 10, 500)
   });
 
+  const tradingEconomicsApiKey = process.env.TRADING_ECONOMICS_API_KEY?.trim();
+  const hasTradingEconomicsApiKey = Boolean(tradingEconomicsApiKey && tradingEconomicsApiKey !== 'guest:guest');
+
   const buildTradingEconomicsClient = (): TradingEconomicsCalendarClient => new TradingEconomicsCalendarClient({
-    apiKey: process.env.TRADING_ECONOMICS_API_KEY ?? 'guest:guest',
+    apiKey: tradingEconomicsApiKey ?? 'guest:guest',
     baseUrl: process.env.TRADING_ECONOMICS_BASE_URL ?? 'https://api.tradingeconomics.com',
     countries: parseCsvEnv('TRADING_ECONOMICS_COUNTRIES', ['United States']),
     minImportance: parseIntEnv('TRADING_ECONOMICS_MIN_IMPORTANCE', 3, 1, 3) as 1 | 2 | 3,
@@ -1252,6 +1255,9 @@ const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalen
   }
 
   if (provider === 'auto' || provider === 'redundant') {
+    if (!hasTradingEconomicsApiKey) {
+      return buildForexFactoryClient();
+    }
     return new RedundantEconomicCalendarClient({
       primary: buildTradingEconomicsClient(),
       fallback: buildForexFactoryClient(),
