@@ -644,7 +644,7 @@ const parseOptionalPathEnv = (name: string, fallback?: string): string | undefin
 
 const DEFAULT_IBKR_CONSOLE_URL =
   'https://ibkr-console.134-209-125-140.sslip.io/vnc.html?autoconnect=1&resize=scale&view_clip=1&path=websockify';
-const DEFAULT_IBKR_LOGIN_URL = 'https://ndcdyn.interactivebrokers.com/sso/Login';
+const DEFAULT_IBKR_MOBILE_ROUTING_URL = 'https://www.interactivebrokers.com/en/general/qr-code-ibkr-mobile-routing.php';
 
 const runCommand = async (command: string, args: string[]): Promise<void> => {
   await new Promise<void>((resolve, reject) => {
@@ -903,7 +903,7 @@ const resolveOperationalReminderConfig = (
   const appUrl = process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io';
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
-    DEFAULT_IBKR_LOGIN_URL;
+    DEFAULT_IBKR_MOBILE_ROUTING_URL;
   const ibkrConsoleUrl =
     process.env.IBKR_CONSOLE_URL ??
     process.env.IBKR_LOGIN_REMINDER_TARGET_URL ??
@@ -1600,7 +1600,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   };
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
-    DEFAULT_IBKR_LOGIN_URL;
+    DEFAULT_IBKR_MOBILE_ROUTING_URL;
   const ibkrConsoleUrl =
     process.env.IBKR_CONSOLE_URL ??
     process.env.IBKR_LOGIN_REMINDER_TARGET_URL ??

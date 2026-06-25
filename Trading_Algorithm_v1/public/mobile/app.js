@@ -3675,6 +3675,17 @@ const getIbkrConsoleUrl = () =>
   latestDiagnostics?.diagnostics?.ibkrRecovery?.consoleUrl
   ?? defaultIbkrConsoleUrl;
 
+const getIbkrMobileUrl = () =>
+  latestDiagnostics?.diagnostics?.ibkrRecovery?.lastResortWebsiteUrl
+  ?? latestDiagnostics?.diagnostics?.ibkrRecovery?.websiteFallbackUrl
+  ?? defaultIbkrWebsiteUrl;
+
+const openIbkrMobileApp = () => {
+  const recoveryUrl = getIbkrMobileUrl();
+  setStatus('Status: opening IBKR Mobile. Approve the pending IBKR prompt, then return to TradeAssist and refresh.');
+  window.location.assign(recoveryUrl);
+};
+
 const setIbkrConsoleVisible = (visible, forceReload = false) => {
   if (!ibkrConsoleDockEl || !ibkrConsoleFrameEl) {
     window.open(getIbkrConsoleUrl(), '_blank', 'noopener,noreferrer');
@@ -3690,8 +3701,8 @@ const setIbkrConsoleVisible = (visible, forceReload = false) => {
     if (ibkrConsoleHintEl) {
       const recovery = latestDiagnostics?.diagnostics?.ibkrRecovery ?? null;
       ibkrConsoleHintEl.textContent = recovery?.autoLoginReady
-        ? 'Gateway console is open. Approve the official IBKR Mobile prompt if Gateway asks for it, then tap Refresh.'
-        : 'Auto-login is not fully configured, so use this console to type the Gateway login on your phone and approve IBKR Mobile.';
+        ? 'Backup console is open. Use it only if IBKR Mobile has no approval prompt and Gateway still needs input.'
+        : 'Auto-login is not fully configured, so this backup lets you enter Gateway login from your phone if IBKR Mobile cannot approve by itself.';
     }
     ibkrConsoleDockEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -3952,7 +3963,7 @@ const renderStatusRail = () => {
       : 'The bridge is waiting for reauthentication.';
     const latestDetail = getLatestRecoveryDetail(recovery);
     const autoLoginHelp = recovery.autoLoginReady === false
-      ? ' Auto-login is not fully configured on this rebuilt VPS, so the official IBKR phone prompt will not appear until Gateway receives your login. Open Gateway Console here, type the IBKR login on your phone, then approve IBKR Mobile.'
+      ? ' Auto-login is not fully configured on this rebuilt VPS, so Run Full Recovery may not create a new IBKR push by itself. Use Open IBKR App for approval if a prompt is waiting; use Phone Gateway Backup only if Gateway still needs login input.'
       : '';
     const latestDetailText = latestDetail
       ? isGatewayConnectionIssue(latestDetail)
@@ -3962,7 +3973,7 @@ const renderStatusRail = () => {
     setRecoveryState(
       'bad',
       'Reauth Needed',
-      `${lastAttemptText}${autoLoginHelp}${latestDetailText} Tap Run Full Recovery first. If the official IBKR phone alert still does not arrive, open Gateway Console inside this app and finish the login there.`
+      `${lastAttemptText}${autoLoginHelp}${latestDetailText} Tap Run Full Recovery first. If the official IBKR phone alert is waiting, tap Open IBKR App and approve it.`
     );
     renderRecoveryEvidence(recovery);
     renderRecoveryTimeline(recovery);
@@ -8283,7 +8294,7 @@ const learningFeedIssueHeadline = (status, ibkrPending = false) => {
 
 const openLearningIbkrRecovery = () => {
   setActiveTab('status');
-  setStatus('Status: opened IBKR recovery. Use Run Full Recovery first, then open the console if login is still waiting.');
+  setStatus('Status: opened IBKR recovery. Use Run Full Recovery first, then Open IBKR App if approval is waiting.');
   setTimeout(() => {
     ibkrRecoveryPanelEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 250);
@@ -8291,8 +8302,7 @@ const openLearningIbkrRecovery = () => {
 
 const openLearningIbkrConsole = () => {
   setActiveTab('status');
-  setIbkrConsoleVisible(true, false);
-  setStatus('Status: opened IBKR Gateway console inside the app. Complete Gateway login and approve the IBKR phone prompt.');
+  openIbkrMobileApp();
 };
 
 const refreshLearningHealthReport = async () => {
@@ -8317,7 +8327,7 @@ const learningBlockerActions = (blocker) => {
 
   if (haystack.includes('ibkr') || haystack.includes('gateway') || haystack.includes('live feed')) {
     actions.unshift({ type: 'ibkr-recovery', label: 'Open IBKR Recovery' });
-    actions.unshift({ type: 'ibkr-console', label: 'Open Console' });
+    actions.unshift({ type: 'ibkr-console', label: 'Open IBKR App' });
   }
 
   return actions;
@@ -10683,7 +10693,7 @@ const bindStatusRecoveryControls = () => {
       const apiReason = getApiReadinessReason(apiReadiness);
       setStatus(
         response?.recoveryPending
-          ? 'Status: full recovery started. The server is checking IBKR in the background; this page will refresh the recovery timeline automatically.'
+          ? 'Status: full recovery started. If IBKR Mobile has a prompt waiting, tap Open IBKR App and approve it, then return here.'
           : response?.ok
           ? apiReadiness?.bridgeRestartAttempt?.ok
             ? 'Status: IBKR API is reachable and the bridge was restarted. Refreshing diagnostics now.'
@@ -10693,7 +10703,7 @@ const bindStatusRecoveryControls = () => {
             : response?.manualActionRequired
               ? `Status: full recovery still needs manual action.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`
               : reloginAttempt?.ok
-                ? 'Status: Gateway re-login prompt advanced. Watch for the IBKR phone prompt; if it still waits, open the console and finish login.'
+                ? 'Status: Gateway re-login prompt advanced. Tap Open IBKR App if the IBKR approval is waiting there.'
                 : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.',
         !(response?.ok || response?.recoveryPending)
       );
@@ -10739,16 +10749,12 @@ const bindStatusRecoveryControls = () => {
   });
 
   ibkrWebsiteFallbackEl?.addEventListener('click', () => {
-    const recoveryUrl =
-      latestDiagnostics?.diagnostics?.ibkrRecovery?.lastResortWebsiteUrl
-      ?? latestDiagnostics?.diagnostics?.ibkrRecovery?.websiteFallbackUrl
-      ?? defaultIbkrWebsiteUrl;
-    window.open(recoveryUrl, '_blank', 'noopener,noreferrer');
+    openIbkrMobileApp();
   });
 
   ibkrOpenConsoleEl?.addEventListener('click', () => {
     setIbkrConsoleVisible(true, false);
-    setStatus('Status: opened IBKR Gateway console inside the app. Type the Gateway login here if needed, then approve IBKR Mobile.');
+    setStatus('Status: opened the phone Gateway backup. Use this only if IBKR Mobile has no approval prompt and Gateway still needs input.');
   });
 
   ibkrConsoleReloadEl?.addEventListener('click', () => {

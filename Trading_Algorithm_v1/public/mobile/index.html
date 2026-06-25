@@ -1249,15 +1249,15 @@
             <p id="diagIbkrRecoveryHint" class="recovery-copy">Waiting for live status.</p>
             <div class="recovery-actions">
               <button id="ibkrRetryLogin" class="chip-btn secondary-btn" type="button">Run Full Recovery</button>
-              <button id="ibkrOpenConsole" class="chip-btn secondary-btn" type="button">Open Gateway Console</button>
+              <button id="ibkrWebsiteFallback" class="chip-btn secondary-btn" type="button">Open IBKR App</button>
               <button id="ibkrResendPush" class="chip-btn secondary-btn" type="button">Run Broker Fallback</button>
-              <button id="ibkrWebsiteFallback" class="chip-btn secondary-btn" type="button">Last-Resort Website</button>
+              <button id="ibkrOpenConsole" class="chip-btn secondary-btn" type="button">Phone Gateway Backup</button>
             </div>
             <div id="ibkrConsoleDock" class="ibkr-console-dock" hidden>
               <div class="ibkr-console-head">
                 <div>
                   <p class="stat-label">Phone Gateway Console</p>
-                  <p id="ibkrConsoleHint" class="hint">Complete the IBKR Gateway login here, then approve the official IBKR Mobile prompt.</p>
+                  <p id="ibkrConsoleHint" class="hint">Backup only: use this if opening IBKR Mobile does not expose the prompt and Gateway still needs input.</p>
                 </div>
                 <div class="ibkr-console-actions">
                   <button id="ibkrConsoleReload" class="chip-btn secondary-btn" type="button">Reload</button>
@@ -1856,6 +1856,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=65"></script>
+    <script type="module" src="app.js?v=66"></script>
   </body>
 </html>
