@@ -7,7 +7,7 @@ WINDOW_NAME="${IBKR_WINDOW_NAME:-IBKR Gateway}"
 AUTH_DIALOG_NAME="${IBKR_AUTH_DIALOG_NAME:-Second Factor Authentication}"
 AUTH_DIALOG_PATTERNS="${IBKR_AUTH_DIALOG_PATTERNS:-${AUTH_DIALOG_NAME}|Secure Login System|IB Key|Login Notification|Challenge/Response|Confirm Login}"
 WINDOW_WAIT_SECONDS="${IBKR_WINDOW_WAIT_SECONDS:-30}"
-AUTH_DIALOG_WAIT_SECONDS="${IBKR_AUTH_DIALOG_WAIT_SECONDS:-45}"
+AUTH_DIALOG_WAIT_SECONDS="${IBKR_AUTH_DIALOG_WAIT_SECONDS:-12}"
 WINDOW_WIDTH="${IBKR_WINDOW_WIDTH:-790}"
 WINDOW_HEIGHT="${IBKR_WINDOW_HEIGHT:-610}"
 STEP_DELAY_SECONDS="${IBKR_AUTH_LINK_STEP_DELAY_SECONDS:-2}"
@@ -63,10 +63,6 @@ search_window() {
   xdotool search --name "${pattern}" 2>/dev/null | head -n 1 || true
 }
 
-visible_window_ids() {
-  xdotool search --onlyvisible --name ".*" 2>/dev/null || true
-}
-
 acquire_gui_lock
 
 WINDOW_ID=""
@@ -94,19 +90,9 @@ find_auth_dialog() {
     if [ -z "${pattern}" ]; then
       continue
     fi
-    while IFS= read -r dialog_id; do
-      if [ -z "${dialog_id}" ]; then
-        continue
-      fi
-      window_name="$(xdotool getwindowname "${dialog_id}" 2>/dev/null || true)"
-      if [[ "${window_name}" == *"${pattern}"* ]]; then
-        printf '%s\n' "${dialog_id}"
-        return 0
-      fi
-    done < <(visible_window_ids)
-
     dialog_id="$(search_window "${pattern}")"
     if [ -n "${dialog_id}" ]; then
+      window_name="$(xdotool getwindowname "${dialog_id}" 2>/dev/null || true)"
       printf '%s\n' "${dialog_id}"
       return 0
     fi
