@@ -141,8 +141,14 @@ const signalReadyBlockedEl = document.getElementById('signalReadyBlocked');
 const signalLeadSymbolEl = document.getElementById('signalLeadSymbol');
 const signalQueueSummaryEl = document.getElementById('signalQueueSummary');
 const boardRefreshBtn = document.getElementById('boardRefresh');
+const boardProofBtn = document.getElementById('boardProof');
 const boardRefreshMetaEl = document.getElementById('boardRefreshMeta');
 const boardNewSinceCheckEl = document.getElementById('boardNewSinceCheck');
+const boardProofPanelEl = document.getElementById('boardProofPanel');
+const boardProofChipEl = document.getElementById('boardProofChip');
+const boardProofSummaryEl = document.getElementById('boardProofSummary');
+const boardProofStatsEl = document.getElementById('boardProofStats');
+const boardProofSymbolsEl = document.getElementById('boardProofSymbols');
 const boardSpotlightTitleEl = document.getElementById('boardSpotlightTitle');
 const boardSpotlightMetaEl = document.getElementById('boardSpotlightMeta');
 const boardSpotlightReasonEl = document.getElementById('boardSpotlightReason');
@@ -416,6 +422,7 @@ let latestHomeDeck = null;
 let latestRiskConfig = null;
 let latestHealth = null;
 let latestSelfLearningStatus = null;
+let latestBoardProof = null;
 let lastSyncAt = null;
 let lastBoardCheckAt = null;
 let lastBoardNewAlertCount = null;
@@ -1116,6 +1123,109 @@ const boardNoSignalMessage = () => {
   return `No live signals yet. ${describeSignalScan(scan, {
     empty: 'Tap Check Again to scan NQ/ES now.'
   })}`;
+};
+
+const proofCount = (value) => Number(value) || 0;
+
+const describeProofSummary = (proof) => {
+  if (!proof) {
+    return 'Run proof to replay recent NQ/ES candles without creating alerts.';
+  }
+
+  const totals = proof.totals ?? {};
+  const matched = proofCount(totals.matchedAlerts);
+  const candidates = proofCount(totals.candidateBars);
+  const below = proofCount(totals.belowThresholdBars);
+  const noSetup = proofCount(totals.noSetupBars);
+  const waiting = proofCount(totals.waitingBars);
+  const scanned = proofCount(totals.scannedBars);
+
+  if (matched > 0) {
+    return `${matched} replay point${matched === 1 ? '' : 's'} qualified for a trade alert. The engine can identify setups from the recent feed.`;
+  }
+  if (candidates > 0) {
+    return `${candidates} replay point${candidates === 1 ? '' : 's'} produced setup candidates, but ${below} stayed below the alert score threshold.`;
+  }
+  if (noSetup > 0) {
+    return `${noSetup} replay point${noSetup === 1 ? '' : 's'} were fully evaluated and no enabled setup matched. Quiet means no setup, not a broken engine.`;
+  }
+  if (waiting > 0) {
+    return `${waiting} replay point${waiting === 1 ? ' is' : 's are'} still waiting on candle timing, session window, or enough lookback.`;
+  }
+  return scanned > 0
+    ? `${scanned} replay point${scanned === 1 ? '' : 's'} scanned with no qualifying setup.`
+    : 'No replay points were available yet. The feed needs recent closed candles first.';
+};
+
+const appendProofStat = (container, label, value, tone = 'neutral') => {
+  const node = document.createElement('article');
+  node.className = `board-proof-stat is-${tone}`;
+  node.innerHTML = `
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(value)}</strong>
+  `;
+  container.appendChild(node);
+};
+
+const proofSetupLabel = (setupType) => setupLabels[setupType] ?? setupType ?? 'None';
+
+const renderBoardProof = (proof) => {
+  latestBoardProof = proof ?? null;
+  if (!boardProofPanelEl || !boardProofSummaryEl || !boardProofStatsEl || !boardProofSymbolsEl || !boardProofChipEl) {
+    return;
+  }
+
+  boardProofPanelEl.hidden = false;
+  const totals = proof?.totals ?? {};
+  const matched = proofCount(totals.matchedAlerts);
+  const candidates = proofCount(totals.candidateBars);
+  const below = proofCount(totals.belowThresholdBars);
+  const noSetup = proofCount(totals.noSetupBars);
+  const scanned = proofCount(totals.scannedBars);
+  const generatedAt = proof?.generatedAt;
+
+  boardProofChipEl.textContent = generatedAt ? `Proof ${fmtRelativeMinutes(generatedAt)}` : 'Proof ready';
+  boardProofSummaryEl.textContent = describeProofSummary(proof);
+
+  boardProofStatsEl.innerHTML = '';
+  appendProofStat(boardProofStatsEl, 'Replay points', scanned, scanned > 0 ? 'good' : 'neutral');
+  appendProofStat(boardProofStatsEl, 'Setup candidates', candidates, candidates > 0 ? 'warn' : 'neutral');
+  appendProofStat(boardProofStatsEl, 'Below threshold', below, below > 0 ? 'warn' : 'neutral');
+  appendProofStat(boardProofStatsEl, 'No setup', noSetup, noSetup > 0 && matched === 0 ? 'good' : 'neutral');
+
+  boardProofSymbolsEl.innerHTML = '';
+  const symbols = Array.isArray(proof?.symbols) ? proof.symbols : [];
+  if (!symbols.length) {
+    renderEmpty(boardProofSymbolsEl, 'No symbol proof available yet.');
+    return;
+  }
+
+  symbols.forEach((symbolProof) => {
+    const top = symbolProof.topCandidate;
+    const latestDecision = Array.isArray(symbolProof.recentDecisions)
+      ? symbolProof.recentDecisions.at(-1)
+      : null;
+    const card = document.createElement('article');
+    card.className = 'board-proof-symbol';
+    card.innerHTML = `
+      <div class="board-proof-symbol-head">
+        <strong>${escapeHtml(symbolProof.symbol)}</strong>
+        <span class="chip chip-neutral">${escapeHtml(symbolProof.latestBarAt ? fmtTime(symbolProof.latestBarAt) : 'No bars')}</span>
+      </div>
+      <p>${escapeHtml(latestDecision?.reason ?? 'No recent proof decision yet.')}</p>
+      <div class="board-proof-mini-grid">
+        <span>Scanned <b>${proofCount(symbolProof.scannedBars)}</b></span>
+        <span>Candidates <b>${proofCount(symbolProof.candidateBars)}</b></span>
+        <span>Matches <b>${proofCount(symbolProof.matchedAlerts)}</b></span>
+      </div>
+      <p class="board-proof-top">${escapeHtml(
+        top
+          ? `Best: ${proofSetupLabel(top.setupType)} score ${Number(top.score).toFixed(1)} / need ${Number(top.threshold ?? 0).toFixed(0)}`
+          : 'Best: no scored setup candidate in this replay.'
+      )}</p>
+    `;
+    boardProofSymbolsEl.appendChild(card);
+  });
 };
 
 const resolveBoardSpotlightAlert = (filteredAlerts, allAlerts = latestAlerts) =>
@@ -9244,6 +9354,46 @@ const refreshBoardAlerts = async () => {
   }
 };
 
+const runBoardProof = async () => {
+  if (boardProofBtn) {
+    boardProofBtn.disabled = true;
+    boardProofBtn.textContent = 'Running...';
+  }
+  if (boardProofPanelEl && boardProofSummaryEl && boardProofChipEl) {
+    boardProofPanelEl.hidden = false;
+    boardProofChipEl.textContent = 'Running';
+    boardProofSummaryEl.textContent = 'Replaying recent NQ/ES candles through the manual alert engine...';
+  }
+
+  try {
+    const response = await apiFetch('/signals/alerts/proof', {
+      method: 'POST',
+      body: JSON.stringify({
+        lookbackMinutes: 120,
+        maxBarsPerSymbol: 36
+      })
+    });
+    if (!response?.ok || !response.proof) {
+      throw new Error(response?.message || 'proof unavailable');
+    }
+    renderBoardProof(response.proof);
+    setStatus(`Status: proof replay complete. ${describeProofSummary(response.proof)}`);
+  } catch (error) {
+    if (boardProofSummaryEl) {
+      boardProofSummaryEl.textContent = `Proof replay failed: ${error.message}`;
+    }
+    if (boardProofChipEl) {
+      boardProofChipEl.textContent = 'Failed';
+    }
+    setStatus(`Status: proof replay failed (${error.message}).`, true);
+  } finally {
+    if (boardProofBtn) {
+      boardProofBtn.disabled = false;
+      boardProofBtn.textContent = 'Run Proof';
+    }
+  }
+};
+
 const loadAlerts = async () => {
   try {
     const { alerts } = await apiFetch('/signals/alerts?limit=100');
@@ -10463,6 +10613,9 @@ const bootstrap = async () => {
   });
   boardRefreshBtn?.addEventListener('click', () => {
     void refreshBoardAlerts();
+  });
+  boardProofBtn?.addEventListener('click', () => {
+    void runBoardProof();
   });
   updateSegmentedControls();
 

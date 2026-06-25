@@ -264,6 +264,79 @@ describe('signal monitor integration', () => {
     expect(afterRefresh.json().alerts.length).toBe(beforeAlerts.length);
   });
 
+  it('builds a manual alert proof report without publishing new alerts', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-proof-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const beforeAlertsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+    const beforeAlertCount = beforeAlertsResponse.json().alerts.length;
+
+    const proofResponse = await ctx.app.inject({
+      method: 'POST',
+      path: '/signals/alerts/proof',
+      payload: {
+        lookbackMinutes: 90,
+        maxBarsPerSymbol: 12
+      }
+    });
+
+    expect(proofResponse.statusCode).toBe(200);
+    const proofPayload = proofResponse.json();
+    expect(proofPayload.ok).toBe(true);
+    expect(proofPayload.proof.totals.scannedBars).toBeGreaterThan(0);
+    expect(proofPayload.proof.symbols).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: 'NQ',
+          scannedBars: expect.any(Number),
+          recentDecisions: expect.any(Array)
+        }),
+        expect.objectContaining({
+          symbol: 'ES',
+          scannedBars: 0
+        })
+      ])
+    );
+
+    const afterAlertsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+
+    expect(afterAlertsResponse.statusCode).toBe(200);
+    expect(afterAlertsResponse.json().alerts.length).toBe(beforeAlertCount);
+  });
+
   it('uses Telegram only when trade alerts fail to deliver through app push', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-telegram-fallback-'));
     tempDirs.push(tempDir);

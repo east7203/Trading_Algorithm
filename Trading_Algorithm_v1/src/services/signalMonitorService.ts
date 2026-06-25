@@ -166,6 +166,54 @@ export interface SignalScanSnapshot {
 
 export interface SignalMonitorRefreshResult extends SignalScanSnapshot {}
 
+export interface SignalProofTopCandidate {
+  symbol: SymbolCode;
+  at: string;
+  setupType?: SetupType;
+  score?: number;
+  threshold?: number;
+  reasonCode?: SignalScanReasonCode;
+  reason: string;
+}
+
+export interface SignalProofSymbolSummary {
+  symbol: SymbolCode;
+  latestBarAt?: string;
+  firstScannedAt?: string;
+  lastScannedAt?: string;
+  scannedBars: number;
+  evaluatedBars: number;
+  matchedAlerts: number;
+  skippedAlerts: number;
+  candidateBars: number;
+  belowThresholdBars: number;
+  noSetupBars: number;
+  duplicateBars: number;
+  waitingBars: number;
+  blockedBars: number;
+  topCandidate?: SignalProofTopCandidate;
+  recentDecisions: SignalScanSymbolStatus[];
+}
+
+export interface SignalProofReport {
+  generatedAt: string;
+  lookbackMinutes: number;
+  maxBarsPerSymbol: number;
+  totals: {
+    scannedBars: number;
+    evaluatedBars: number;
+    matchedAlerts: number;
+    skippedAlerts: number;
+    candidateBars: number;
+    belowThresholdBars: number;
+    noSetupBars: number;
+    duplicateBars: number;
+    waitingBars: number;
+    blockedBars: number;
+  };
+  symbols: SignalProofSymbolSummary[];
+}
+
 const dtfCache = new Map<string, Intl.DateTimeFormat>();
 const getFormatter = (timezone: string): Intl.DateTimeFormat => {
   const cached = dtfCache.get(timezone);
@@ -879,6 +927,174 @@ export class SignalMonitorService {
     }
 
     return { scannedBars, matchedAlerts, publishedAlerts, skippedAlerts };
+  }
+
+  async buildManualAlertProofReport(options: {
+    lookbackMinutes?: number;
+    maxBarsPerSymbol?: number;
+  } = {}): Promise<SignalProofReport> {
+    const settings = this.getSettings();
+    const generatedAt = new Date().toISOString();
+    const requestedLookbackMinutes = Number.isFinite(options.lookbackMinutes)
+      ? Math.floor(options.lookbackMinutes as number)
+      : 120;
+    const requestedMaxBarsPerSymbol = Number.isFinite(options.maxBarsPerSymbol)
+      ? Math.floor(options.maxBarsPerSymbol as number)
+      : 36;
+    const lookbackMinutes = clamp(requestedLookbackMinutes, 15, 480);
+    const maxBarsPerSymbol = clamp(requestedMaxBarsPerSymbol, 5, 96);
+    const totals: SignalProofReport['totals'] = {
+      scannedBars: 0,
+      evaluatedBars: 0,
+      matchedAlerts: 0,
+      skippedAlerts: 0,
+      candidateBars: 0,
+      belowThresholdBars: 0,
+      noSetupBars: 0,
+      duplicateBars: 0,
+      waitingBars: 0,
+      blockedBars: 0
+    };
+
+    const symbols: SignalProofSymbolSummary[] = [];
+
+    for (const symbol of settings.enabledSymbols) {
+      const symbolBars = this.barsBySymbol.get(symbol) ?? [];
+      const latestBar = symbolBars.at(-1);
+      const latestBarAt = latestBar?.timestamp;
+      const latestBarMs = latestBarAt ? Date.parse(latestBarAt) : Number.NaN;
+      const cutoffMs = Number.isFinite(latestBarMs)
+        ? latestBarMs - lookbackMinutes * 60_000
+        : Date.now() - lookbackMinutes * 60_000;
+      const barsToScan = symbolBars
+        .filter((bar) => {
+          const barMs = Date.parse(bar.timestamp);
+          return Number.isFinite(barMs) && barMs >= cutoffMs && isIntervalClosed(bar.timestamp, 5);
+        })
+        .slice(-maxBarsPerSymbol);
+      const summary: SignalProofSymbolSummary = {
+        symbol,
+        latestBarAt,
+        firstScannedAt: barsToScan.at(0)?.timestamp,
+        lastScannedAt: barsToScan.at(-1)?.timestamp,
+        scannedBars: barsToScan.length,
+        evaluatedBars: 0,
+        matchedAlerts: 0,
+        skippedAlerts: 0,
+        candidateBars: 0,
+        belowThresholdBars: 0,
+        noSetupBars: 0,
+        duplicateBars: 0,
+        waitingBars: 0,
+        blockedBars: 0,
+        recentDecisions: []
+      };
+
+      if (barsToScan.length === 0) {
+        summary.recentDecisions.push({
+          symbol,
+          status: latestBar ? 'WAITING' : 'NO_DATA',
+          scannedAt: generatedAt,
+          latestBarAt,
+          reasonCode: latestBar ? 'WAITING_FOR_5M_CLOSE' : 'NO_BARS',
+          reason: latestBar
+            ? `${symbol} has live bars, but no closed five-minute replay points were available in the selected window.`
+            : `${symbol} has no live one-minute bars loaded yet.`,
+          matchedAlerts: 0,
+          publishedAlerts: 0,
+          skippedAlerts: 0
+        });
+        symbols.push(summary);
+        continue;
+      }
+
+      const seenAlertKeys = new Set(this.alertKeys);
+      for (const bar of barsToScan) {
+        const result = await this.evaluateSymbolAtBarFromState(this.barsBySymbol, symbol, bar.timestamp, {
+          source: 'manual-proof-replay',
+          publishAlerts: false,
+          notifyChannels: false,
+          recordJournal: false,
+          seenAlertKeys
+        });
+        const status = scanStatusFromResult(result);
+        const decision: SignalScanSymbolStatus = {
+          symbol,
+          status,
+          scannedAt: generatedAt,
+          latestBarAt: bar.timestamp,
+          reasonCode: result.reasonCode,
+          reason: result.reason ?? `${symbol} was replay-scanned.`,
+          matchedAlerts: result.matchedAlerts,
+          publishedAlerts: result.publishedAlerts,
+          skippedAlerts: result.skippedAlerts,
+          candidateCount: result.candidateCount,
+          topSetupType: result.topSetupType,
+          topScore: result.topScore,
+          minScoreThreshold: result.minScoreThreshold
+        };
+        summary.recentDecisions.push(decision);
+
+        summary.matchedAlerts += result.matchedAlerts;
+        summary.skippedAlerts += result.skippedAlerts;
+        if (result.matchedAlerts > 0 || result.candidateCount !== undefined) {
+          summary.evaluatedBars += 1;
+        }
+        if ((result.candidateCount ?? 0) > 0 || result.matchedAlerts > 0) {
+          summary.candidateBars += 1;
+        }
+        if (result.reasonCode === 'BELOW_SCORE_THRESHOLD') {
+          summary.belowThresholdBars += 1;
+        }
+        if (result.reasonCode === 'NO_SETUP_MATCH') {
+          summary.noSetupBars += 1;
+        }
+        if (result.reasonCode === 'DUPLICATE_ALERT') {
+          summary.duplicateBars += 1;
+        }
+        if (status === 'WAITING') {
+          summary.waitingBars += 1;
+        }
+        if (status === 'NO_DATA' || status === 'OFF') {
+          summary.blockedBars += 1;
+        }
+        if (result.topScore !== undefined) {
+          const existingScore = summary.topCandidate?.score ?? -Infinity;
+          if (result.topScore >= existingScore) {
+            summary.topCandidate = {
+              symbol,
+              at: bar.timestamp,
+              setupType: result.topSetupType,
+              score: result.topScore,
+              threshold: result.minScoreThreshold,
+              reasonCode: result.reasonCode,
+              reason: result.reason ?? `${symbol} produced a candidate during proof replay.`
+            };
+          }
+        }
+      }
+
+      summary.recentDecisions = summary.recentDecisions.slice(-6);
+      totals.scannedBars += summary.scannedBars;
+      totals.evaluatedBars += summary.evaluatedBars;
+      totals.matchedAlerts += summary.matchedAlerts;
+      totals.skippedAlerts += summary.skippedAlerts;
+      totals.candidateBars += summary.candidateBars;
+      totals.belowThresholdBars += summary.belowThresholdBars;
+      totals.noSetupBars += summary.noSetupBars;
+      totals.duplicateBars += summary.duplicateBars;
+      totals.waitingBars += summary.waitingBars;
+      totals.blockedBars += summary.blockedBars;
+      symbols.push(summary);
+    }
+
+    return {
+      generatedAt,
+      lookbackMinutes,
+      maxBarsPerSymbol,
+      totals,
+      symbols
+    };
   }
 
   async triggerTestAlert(symbol: SymbolCode = 'NQ'): Promise<SignalAlert> {

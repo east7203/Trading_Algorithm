@@ -4081,6 +4081,46 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.post('/signals/alerts/proof', async (request, reply) => {
+    if (!signalMonitorService) {
+      return reply.status(200).send({
+        ok: false,
+        proof: null,
+        message: 'Signal monitor is disabled'
+      });
+    }
+
+    const body = (request.body as {
+      lookbackMinutes?: number;
+      maxBarsPerSymbol?: number;
+    } | undefined) ?? {};
+    const lookbackMinutes =
+      typeof body.lookbackMinutes === 'number' && Number.isFinite(body.lookbackMinutes)
+        ? body.lookbackMinutes
+        : undefined;
+    const maxBarsPerSymbol =
+      typeof body.maxBarsPerSymbol === 'number' && Number.isFinite(body.maxBarsPerSymbol)
+        ? body.maxBarsPerSymbol
+        : undefined;
+
+    try {
+      const proof = await signalMonitorService.buildManualAlertProofReport({
+        lookbackMinutes,
+        maxBarsPerSymbol
+      });
+      return reply.status(200).send({
+        ok: true,
+        proof,
+        monitor: signalMonitorService.status()
+      });
+    } catch (error) {
+      return reply.status(400).send({
+        ok: false,
+        message: (error as Error).message
+      });
+    }
+  });
+
   app.get('/signals/chart/live', async (request, reply) => {
     const query = (request.query as {
       alertId?: string;

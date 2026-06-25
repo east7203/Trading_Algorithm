@@ -459,11 +459,24 @@
                 <p class="hint hint-banner">Background push works from the hosted app once notifications are allowed.</p>
                 <div class="board-toolbar-actions">
                   <button id="boardRefresh" class="chip-btn secondary-btn" type="button">Check Again</button>
+                  <button id="boardProof" class="chip-btn secondary-btn" type="button">Run Proof</button>
                   <p id="boardRefreshMeta" class="board-refresh-meta">Last board check --</p>
                   <span id="boardNewSinceCheck" class="chip chip-neutral board-new-chip">New --</span>
                   <span id="signalQueueSummary" class="chip chip-neutral">Queue --</span>
                 </div>
               </div>
+            </section>
+            <section id="boardProofPanel" class="board-proof-panel" hidden>
+              <div class="board-proof-head">
+                <div>
+                  <p class="section-kicker">Manual Alert Engine Proof</p>
+                  <h3>Recent Setup Replay</h3>
+                </div>
+                <span id="boardProofChip" class="chip chip-neutral">Not run</span>
+              </div>
+              <p id="boardProofSummary" class="board-proof-summary">Run proof to replay recent NQ/ES candles without creating alerts.</p>
+              <div id="boardProofStats" class="board-proof-stats"></div>
+              <div id="boardProofSymbols" class="board-proof-symbols"></div>
             </section>
           </section>
           <div class="section-subhead board-list-head">
