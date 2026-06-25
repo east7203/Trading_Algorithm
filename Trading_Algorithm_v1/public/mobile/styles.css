@@ -7819,6 +7819,52 @@ select {
   overflow-wrap: anywhere;
 }
 
+.setup-ranking-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.setup-ranking-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(245, 158, 11, 0.48);
+}
+
+.setup-ranking-card-proven::before,
+.setup-ranking-card-promising::before {
+  background: rgba(34, 197, 94, 0.62);
+}
+
+.setup-ranking-card-probation::before,
+.setup-ranking-card-disabled::before {
+  background: rgba(248, 113, 113, 0.62);
+}
+
+.setup-ranking-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.setup-rank-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
 .learning-pattern-note {
   margin: 0;
   font-size: 0.78rem;

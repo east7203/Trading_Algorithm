@@ -562,7 +562,8 @@ const setupLabels = {
   LIQUIDITY_SWEEP_REVERSAL_SESSION_EXTREMES: 'Sweep Reversal Extremes',
   DISPLACEMENT_ORDER_BLOCK_RETEST_CONTINUATION: 'Displacement + OB Retest',
   NY_BREAK_RETEST_MOMENTUM: 'NY Break & Retest',
-  WERLEIN_FOREVER_MODEL: 'Werlein Forever Model'
+  WERLEIN_FOREVER_MODEL: 'Werlein Forever Model',
+  AUTONOMOUS_FUTURES_DAYTRADER: 'Autonomous Futures Daytrader'
 };
 
 const reviewValidityLabels = {
@@ -8341,6 +8342,8 @@ const getSelfLearningStatus = () => latestSelfLearningStatus ?? latestDiagnostic
 
 const getSelfLearningProfile = () => getSelfLearningStatus()?.profile ?? null;
 
+const getSelfLearningSignalProfile = () => getSelfLearningStatus()?.signalProfile ?? null;
+
 const getLearningHealthReport = () =>
   latestLearningHealth?.learningHealth ?? latestDiagnostics?.diagnostics?.learningHealth ?? null;
 
@@ -8616,6 +8619,217 @@ const learningBucketMeta = (bucket) =>
 
 const learningBucketNote = (bucket) =>
   `${fmtNum(bucket.avgR, 2)}R avg • confidence ${fmtNum(bucket.confidence * 100, 0)}% • risk x${fmtNum(bucket.riskMultiplier, 2)}`;
+
+const manualPatternStateLabels = {
+  PROVEN: 'Proven',
+  PROMISING: 'Promising',
+  LEARNING: 'Learning',
+  PROBATION: 'Probation',
+  DISABLED: 'Disabled'
+};
+
+const manualPatternStateLabel = (state) => manualPatternStateLabels[state] ?? 'Learning';
+
+const manualPatternStateClass = (state) => {
+  switch (state) {
+    case 'PROVEN':
+    case 'PROMISING':
+      return 'pill chip-online';
+    case 'PROBATION':
+    case 'DISABLED':
+      return 'pill chip-offline';
+    default:
+      return 'pill chip-neutral';
+  }
+};
+
+const inferManualPatternStateFromBucket = (bucket, minBucketSamples = 3) => {
+  const resolved = Number(bucket?.resolved) || 0;
+  const winRate = Number(bucket?.winRate) || 0;
+  const avgR = Number(bucket?.avgR) || 0;
+  const scoreAdjustment = Number(bucket?.scoreAdjustment) || 0;
+
+  if (resolved < minBucketSamples) {
+    return 'LEARNING';
+  }
+  if (resolved >= minBucketSamples * 2 && winRate <= 0.28 && avgR < 0) {
+    return 'DISABLED';
+  }
+  if (winRate <= 0.4 || scoreAdjustment <= -1) {
+    return 'PROBATION';
+  }
+  if (winRate >= 0.62 && avgR > 0 && scoreAdjustment >= 1) {
+    return 'PROVEN';
+  }
+  if (scoreAdjustment > 0) {
+    return 'PROMISING';
+  }
+  return 'LEARNING';
+};
+
+const manualPatternStateRank = (state) => {
+  switch (state) {
+    case 'PROVEN':
+      return 5;
+    case 'PROMISING':
+      return 4;
+    case 'LEARNING':
+      return 3;
+    case 'PROBATION':
+      return 2;
+    case 'DISABLED':
+      return 1;
+    default:
+      return 3;
+  }
+};
+
+const setupRankingScore = (entry) =>
+  manualPatternStateRank(entry.state) * 100
+  + (Number(entry.winRate) || 0) * 60
+  + (Number(entry.avgR) || 0) * 18
+  + (Number(entry.scoreAdjustment) || 0) * 8
+  + Math.min(Number(entry.resolved) || 0, 30);
+
+const manualSetupHealthFromBucket = (bucket, source, minBucketSamples = 3) => {
+  const state = inferManualPatternStateFromBucket(bucket, minBucketSamples);
+  return {
+    key: bucket.key,
+    label: bucket.label ?? bucket.key,
+    scope: 'SETUP',
+    setupType: bucket.key,
+    state,
+    resolved: Number(bucket.resolved) || 0,
+    wins: Number(bucket.wins) || 0,
+    losses: Number(bucket.losses) || 0,
+    breakeven: Number(bucket.breakeven) || 0,
+    winRate: Number(bucket.winRate) || 0,
+    avgR: Number(bucket.avgR) || 0,
+    scoreAdjustment: Number(bucket.scoreAdjustment) || 0,
+    confidence: Number(bucket.confidence) || 0,
+    riskMultiplier: Number(bucket.riskMultiplier) || 1,
+    reason:
+      state === 'PROVEN'
+        ? 'This setup has the strongest outcome history in the current learning sample.'
+        : state === 'PROMISING'
+          ? 'This setup is improving, but it still needs more outcome history before it is fully proven.'
+          : state === 'PROBATION'
+            ? 'This setup is underperforming, so the engine should require stronger confirmation.'
+            : state === 'DISABLED'
+              ? 'This setup is weak enough that the engine should bench it until performance improves.'
+              : 'This setup is still collecting enough outcomes to earn a stronger ranking.',
+    source
+  };
+};
+
+const buildSetupRankingEntries = (status, profile) => {
+  const manualHealth = (status?.manualPatternHealth ?? [])
+    .filter((entry) => entry?.scope === 'SETUP')
+    .map((entry) => ({
+      ...entry,
+      source: 'Manual alert engine'
+    }));
+
+  const sourceEntries = manualHealth.length > 0
+    ? manualHealth
+    : (getSelfLearningSignalProfile()?.bySetup?.length
+        ? getSelfLearningSignalProfile().bySetup.map((bucket) =>
+            manualSetupHealthFromBucket(bucket, 'Manual alert engine', status?.minBucketSamples ?? 3)
+          )
+        : (profile?.bySetup ?? []).map((bucket) =>
+            manualSetupHealthFromBucket(bucket, 'All learned setup history', status?.minBucketSamples ?? 3)
+          ));
+
+  return sourceEntries.sort((left, right) =>
+    setupRankingScore(right) - setupRankingScore(left)
+    || (Number(right.resolved) || 0) - (Number(left.resolved) || 0)
+    || setupLabel(left.setupType).localeCompare(setupLabel(right.setupType))
+  );
+};
+
+const buildSetupFadeEntries = (entries) => {
+  const faded = entries.filter((entry) =>
+    entry.state === 'PROBATION'
+    || entry.state === 'DISABLED'
+    || Number(entry.scoreAdjustment) < 0
+    || (Number(entry.resolved) > 0 && Number(entry.winRate) < 0.5)
+  );
+
+  return faded.sort((left, right) =>
+    setupRankingScore(left) - setupRankingScore(right)
+    || (Number(right.resolved) || 0) - (Number(left.resolved) || 0)
+    || setupLabel(left.setupType).localeCompare(setupLabel(right.setupType))
+  );
+};
+
+const setupRankingMeta = (entry) =>
+  `${fmtNum((Number(entry.winRate) || 0) * 100, 0)}% win • ${fmtNum(Number(entry.avgR) || 0, 2)}R avg • ${Number(entry.resolved) || 0} resolved`;
+
+const setupRankingShortSummary = (entry) =>
+  `${setupLabel(entry.setupType)} • ${manualPatternStateLabel(entry.state)} • ${setupRankingMeta(entry)}`;
+
+const renderSetupRankingList = (container, entries, emptyMessage, mode = 'leaderboard') => {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+  const ranked = Array.isArray(entries) ? entries : [];
+  if (!ranked.length) {
+    renderEmpty(container, emptyMessage);
+    return;
+  }
+
+  ranked.slice(0, mode === 'fade' ? 4 : 6).forEach((entry, index) => {
+    const card = document.createElement('article');
+    card.className = `learning-pattern-card setup-ranking-card setup-ranking-card-${String(entry.state ?? 'LEARNING').toLowerCase()}`;
+    const scoreClass =
+      Number(entry.scoreAdjustment) > 0
+        ? 'learning-pattern-metric-value-positive'
+        : Number(entry.scoreAdjustment) < 0
+          ? 'learning-pattern-metric-value-negative'
+          : '';
+    const winRateClass =
+      Number(entry.winRate) > 0.5
+        ? 'learning-pattern-metric-positive'
+        : Number(entry.winRate) < 0.5
+          ? 'learning-pattern-metric-negative'
+          : 'learning-pattern-metric-neutral';
+    const sourceNote = entry.source === 'All learned setup history'
+      ? 'Using all learned setup history until manual alert outcomes build up.'
+      : 'Manual alert-engine outcomes.';
+    card.innerHTML = `
+      <div class="learning-pattern-head setup-ranking-head">
+        <div class="setup-ranking-title-row">
+          <span class="setup-rank-badge">#${escapeHtml(String(index + 1))}</span>
+          <p class="learning-pattern-title">${escapeHtml(setupLabel(entry.setupType))}</p>
+        </div>
+        <span class="${manualPatternStateClass(entry.state)}">${escapeHtml(manualPatternStateLabel(entry.state))}</span>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(entry.reason ?? 'The engine is still building a setup-specific read.')}</p>
+      <div class="learning-pattern-metrics">
+        <div class="learning-pattern-metric ${winRateClass}">
+          <span class="learning-pattern-metric-label">Win Rate</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum((Number(entry.winRate) || 0) * 100, 0)}%`)}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Avg R</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(`${fmtNum(Number(entry.avgR) || 0, 2)}R`)}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Sample</span>
+          <span class="learning-pattern-metric-value">${escapeHtml(String(Number(entry.resolved) || 0))}</span>
+        </div>
+        <div class="learning-pattern-metric">
+          <span class="learning-pattern-metric-label">Score</span>
+          <span class="learning-pattern-metric-value ${scoreClass}">${escapeHtml(`${Number(entry.scoreAdjustment) > 0 ? '+' : ''}${fmtNum(Number(entry.scoreAdjustment) || 0, 1)}`)}</span>
+        </div>
+      </div>
+      <p class="learning-pattern-note">${escapeHtml(`${sourceNote} Confidence ${fmtNum((Number(entry.confidence) || 0) * 100, 0)}% • Risk x${fmtNum(Number(entry.riskMultiplier) || 1, 2)}`)}</p>
+    `;
+    container.appendChild(card);
+  });
+};
 
 const formatPercentPoints = (value) => {
   const basisPoints = Math.round((Number(value) || 0) * 100);
@@ -8914,6 +9128,10 @@ const renderReviewInsights = () => {
   const pendingCount = reviewSummary.pending ?? latestReviews.filter((review) => review.reviewStatus === 'PENDING').length;
   const completedCount = reviewSummary.completed ?? latestReviews.filter((review) => review.reviewStatus === 'COMPLETED').length;
   const pool = buildLearningBucketPool(profile);
+  const setupRankingEntries = buildSetupRankingEntries(status, profile);
+  const setupFadeEntries = buildSetupFadeEntries(setupRankingEntries);
+  const bestSetup = setupRankingEntries[0] ?? null;
+  const weakestSetup = setupFadeEntries[0] ?? null;
   const bestEdge = pickLearningEdge(pool, 'positive');
   const biggestDrag = pickLearningEdge(pool, 'negative');
   const researchEdge = pickLearningEdge(
@@ -9042,19 +9260,11 @@ const renderReviewInsights = () => {
     }
     renderLearningBiasContext();
     renderLearningAutonomyPlaybook();
-    renderLearningBucketList(learningFavoringListEl, [], 'No learned edge is strong enough yet.');
-    renderLearningBucketList(learningAvoidingListEl, [], 'No learned drag is strong enough yet.');
+    renderSetupRankingList(learningFavoringListEl, [], 'No setup outcome history is available yet.');
+    renderSetupRankingList(learningAvoidingListEl, [], 'No setup is being faded yet.', 'fade');
     return;
   }
 
-  const favoring = pool
-    .filter(({ bucket }) => Number(bucket.scoreAdjustment) > 0)
-    .sort((left, right) => Number(right.bucket.scoreAdjustment) - Number(left.bucket.scoreAdjustment))
-    .slice(0, 3);
-  const avoiding = pool
-    .filter(({ bucket }) => Number(bucket.scoreAdjustment) < 0)
-    .sort((left, right) => Number(left.bucket.scoreAdjustment) - Number(right.bucket.scoreAdjustment))
-    .slice(0, 3);
   const topWinReason = profile.topWinReasons?.[0] ?? null;
   const topLossReason = profile.topLossReasons?.[0] ?? null;
   const learningTrend = getLearningTrend(profile, status);
@@ -9076,14 +9286,16 @@ const renderReviewInsights = () => {
       learningHeadlineEl.textContent = learningTrend.headline;
     } else {
       learningHeadlineEl.textContent = bestEdge
-        ? `Lean into ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`
+        ? `Lean into ${bestSetup ? setupLabel(bestSetup.setupType) : describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`
         : 'The learning engine is still collecting a clear edge.';
     }
   }
   if (learningContextEl) {
-    learningContextEl.textContent = bestEdge && biggestDrag
-      ? `The model is currently favoring ${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} and pulling back from ${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)}. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, with ${pendingCount} case${pendingCount === 1 ? '' : 's'} still awaiting outcome.`
-      : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, and ${completedCount} completed case${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
+    learningContextEl.textContent = bestSetup && weakestSetup
+      ? `Setup ranking says ${setupLabel(bestSetup.setupType)} is strongest right now, while ${setupLabel(weakestSetup.setupType)} should be faded. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, with ${pendingCount} case${pendingCount === 1 ? '' : 's'} still awaiting outcome.`
+      : bestSetup
+        ? `Setup ranking says ${setupLabel(bestSetup.setupType)} is strongest right now. ${setupRankingMeta(bestSetup)}. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall.`
+        : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, and ${completedCount} completed case${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
   }
   if (learningResolvedRecordsEl) {
     learningResolvedRecordsEl.textContent = `${profile.resolvedRecords} resolved • ${profile.recentResolvedRecords} recent • ${profile.totalRecords} total`;
@@ -9100,13 +9312,17 @@ const renderReviewInsights = () => {
     learningTopLossReasonEl.textContent = topLossReason ? `${topLossReason.key} • ${topLossReason.count}` : 'No consistent loss reason yet.';
   }
   if (learningBestEdgeEl) {
-    learningBestEdgeEl.textContent = bestEdge
-      ? `${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} • ${learningBucketMeta(bestEdge.bucket)}`
+    learningBestEdgeEl.textContent = bestSetup
+      ? setupRankingShortSummary(bestSetup)
+      : bestEdge
+        ? `${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} • ${learningBucketMeta(bestEdge.bucket)}`
       : 'No positive edge has enough evidence yet.';
   }
   if (learningBiggestDragEl) {
-    learningBiggestDragEl.textContent = biggestDrag
-      ? `${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)} • ${learningBucketMeta(biggestDrag.bucket)}`
+    learningBiggestDragEl.textContent = weakestSetup
+      ? setupRankingShortSummary(weakestSetup)
+      : biggestDrag
+        ? `${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)} • ${learningBucketMeta(biggestDrag.bucket)}`
       : 'No negative drag stands out yet.';
   }
   if (learningResearchEdgeEl) {
@@ -9122,8 +9338,8 @@ const renderReviewInsights = () => {
 
   renderLearningBiasContext();
   renderLearningAutonomyPlaybook();
-  renderLearningBucketList(learningFavoringListEl, favoring, 'No learned edge is strong enough yet.');
-  renderLearningBucketList(learningAvoidingListEl, avoiding, 'Nothing is being penalized hard yet.');
+  renderSetupRankingList(learningFavoringListEl, setupRankingEntries, 'No setup outcome history is available yet.');
+  renderSetupRankingList(learningAvoidingListEl, setupFadeEntries, 'No setup is being faded yet.', 'fade');
 };
 
 const renderDiagnostics = () => {
