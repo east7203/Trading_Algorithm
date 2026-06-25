@@ -33,7 +33,13 @@ const withRecordedNotifications = (): { ctx: AppContext; messages: AppNotificati
     webPushNotificationService,
     telegramAlertService: null,
     ibkrLoginTrigger: async () => ({ ok: false, skipped: true, reason: 'test-login' }),
-    ibkrResendPushTrigger: async () => ({ ok: false, skipped: true, reason: 'test-resend' })
+    ibkrResendPushTrigger: async () => ({ ok: false, skipped: true, reason: 'test-resend' }),
+    ibkrApiReadinessCheck: async () => ({
+      ok: false,
+      status: 'PORT_CLOSED',
+      checkedAt: '2026-03-15T00:01:00.000Z',
+      detail: 'No IBKR API socket is listening on 127.0.0.1:4001.'
+    })
   });
   contexts.push(ctx);
   return { ctx, messages };

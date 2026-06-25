@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -170,6 +171,8 @@ interface BuildAppOptions {
   ibkrLoginTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
   ibkrReloginTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
   ibkrResendPushTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
+  ibkrApiReadinessCheck?: () => Promise<IbkrApiReadinessResult>;
+  ibkrBridgeRestartTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
   webPushEnabled?: boolean;
   webPushConfig?: Partial<WebPushNotificationConfig>;
   webPushNotificationService?: WebPushNotificationService | null;
@@ -290,6 +293,16 @@ interface IbkrRecoveryAttemptResult {
   loginAttempt: IbkrLoginTriggerResult;
   reloginAttempt?: IbkrLoginTriggerResult;
   resendAttempt: IbkrLoginTriggerResult;
+  apiReadiness?: IbkrApiReadinessResult;
+}
+
+interface IbkrApiReadinessResult {
+  ok: boolean;
+  status: 'READY' | 'PORT_CLOSED' | 'UNKNOWN';
+  checkedAt: string;
+  detail: string;
+  port?: number;
+  bridgeRestartAttempt?: IbkrLoginTriggerResult;
 }
 
 interface IbkrRecoveryArtifactFile {
@@ -1694,6 +1707,114 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       );
     });
   };
+  const sleep = (durationMs: number): Promise<void> =>
+    new Promise((resolve) => {
+      setTimeout(resolve, durationMs);
+    });
+  const parsePortCandidate = (value: string | undefined): number | undefined => {
+    if (!value) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(value.trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : undefined;
+  };
+  const readIbkrBridgePortCandidates = async (): Promise<number[]> => {
+    const configuredPorts = [
+      parsePortCandidate(process.env.IBKR_PORT),
+      parsePortCandidate(process.env.IBKR_API_PORT),
+      parsePortCandidate(process.env.IBKR_GATEWAY_PORT)
+    ];
+    const envFilePath = process.env.IBKR_BRIDGE_ENV_FILE
+      ? path.resolve(process.cwd(), process.env.IBKR_BRIDGE_ENV_FILE)
+      : path.resolve(process.cwd(), '.env.ibkr.bridge');
+    try {
+      const raw = await fs.readFile(envFilePath, 'utf8');
+      const line = raw.split(/\r?\n/).find((entry) => entry.trim().startsWith('IBKR_PORT='));
+      configuredPorts.push(parsePortCandidate(line?.split('=', 2)[1]));
+    } catch {
+      // The bridge env file is optional in local/test runs.
+    }
+
+    return [...new Set([...configuredPorts.filter((port): port is number => Boolean(port)), 4002, 4001])];
+  };
+  const probeLocalTcpPort = async (port: number, timeoutMs: number): Promise<boolean> =>
+    await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection({ host: '127.0.0.1', port });
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(timeoutMs, () => finish(false));
+      socket.once('connect', () => finish(true));
+      socket.once('error', () => finish(false));
+    });
+  const checkIbkrApiReadiness =
+    options.ibkrApiReadinessCheck ??
+    (async (): Promise<IbkrApiReadinessResult> => {
+      const ports = await readIbkrBridgePortCandidates();
+      const waitMs = parseIntEnv('IBKR_RECOVERY_VERIFY_MS', 20_000, 1_000, 120_000);
+      const pollMs = parseIntEnv('IBKR_RECOVERY_VERIFY_POLL_MS', 1_000, 250, 10_000);
+      const socketTimeoutMs = parseIntEnv('IBKR_RECOVERY_SOCKET_TIMEOUT_MS', 750, 100, 5_000);
+      const deadline = Date.now() + waitMs;
+
+      do {
+        for (const port of ports) {
+          if (await probeLocalTcpPort(port, socketTimeoutMs)) {
+            return {
+              ok: true,
+              status: 'READY',
+              checkedAt: new Date().toISOString(),
+              port,
+              detail: `IBKR API socket is listening on 127.0.0.1:${port}.`
+            };
+          }
+        }
+        if (Date.now() < deadline) {
+          await sleep(pollMs);
+        }
+      } while (Date.now() < deadline);
+
+      return {
+        ok: false,
+        status: 'PORT_CLOSED',
+        checkedAt: new Date().toISOString(),
+        detail: `No IBKR API socket is listening on ${ports.map((port) => `127.0.0.1:${port}`).join(', ')}. Gateway is still waiting for login/authentication or has not enabled socket API access yet.`
+      };
+    });
+  const restartIbkrBridge =
+    options.ibkrBridgeRestartTrigger ??
+    (async (source: string): Promise<IbkrLoginTriggerResult> =>
+      await new Promise<IbkrLoginTriggerResult>((resolve) => {
+        execFile(
+          'pm2',
+          ['restart', 'ibkr-bridge', '--update-env'],
+          {
+            timeout: parseIntEnv('IBKR_BRIDGE_RESTART_TIMEOUT_MS', 20_000, 1_000, 60_000),
+            maxBuffer: 1024 * 1024
+          },
+          (error, stdout, stderr) => {
+            if (error) {
+              resolve({
+                ok: false,
+                reason: error.message,
+                stdout,
+                stderr
+              });
+              return;
+            }
+            resolve({
+              ok: true,
+              stdout: `Restarted ibkr-bridge for ${source}.\n${stdout}`.trim(),
+              stderr
+            });
+          }
+        );
+      }));
   const runIbkrAutoLogin =
     options.ibkrLoginTrigger ??
     (async (
@@ -1801,6 +1922,23 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       : 'The server could not run the broker fallback controls from the current auth screen.';
     return artifactSummary ? `${baseMessage} ${artifactSummary}` : baseMessage;
   };
+  const describeIbkrApiReadiness = (readiness?: IbkrApiReadinessResult): string | undefined => {
+    if (!readiness) {
+      return undefined;
+    }
+
+    const restart = readiness.bridgeRestartAttempt;
+    if (readiness.ok) {
+      return restart?.ok
+        ? `${readiness.detail} The server restarted ibkr-bridge so the app can attach to the fresh API session.`
+        : readiness.detail;
+    }
+
+    const restartDetail = restart && !restart.ok
+      ? ` Bridge restart also failed: ${compactIbkrRecoveryDetail(restart.stderr || restart.stdout || restart.reason) ?? 'unknown error'}.`
+      : '';
+    return `${readiness.detail}${restartDetail}`;
+  };
   const buildIbkrRecoveryArtifacts = (
     loginAttempt: IbkrLoginTriggerResult,
     resendAttempt: IbkrLoginTriggerResult,
@@ -1814,26 +1952,54 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const buildIbkrRecoveryAttemptDetail = (
     loginAttempt: IbkrLoginTriggerResult,
     resendAttempt: IbkrLoginTriggerResult,
-    reloginAttempt?: IbkrLoginTriggerResult
+    reloginAttempt?: IbkrLoginTriggerResult,
+    apiReadiness?: IbkrApiReadinessResult
   ): string =>
     [
       describeIbkrLoginAttempt(loginAttempt),
       describeIbkrReloginAttempt(reloginAttempt),
-      describeIbkrResendAttempt(resendAttempt)
+      describeIbkrResendAttempt(resendAttempt),
+      describeIbkrApiReadiness(apiReadiness)
     ].filter((line): line is string => Boolean(line)).join(' ');
+  const verifyIbkrApiReadinessAfterRecovery = async (source: string): Promise<IbkrApiReadinessResult> => {
+    const readiness = await checkIbkrApiReadiness();
+    if (!readiness.ok) {
+      return readiness;
+    }
+
+    const bridgeRestartAttempt = await restartIbkrBridge(`${source}-bridge-restart`);
+    if (!bridgeRestartAttempt.ok) {
+      return {
+        ...readiness,
+        ok: false,
+        status: 'UNKNOWN',
+        bridgeRestartAttempt,
+        detail: `${readiness.detail} The API port is available, but the app could not restart ibkr-bridge to attach to it.`
+      };
+    }
+
+    return {
+      ...readiness,
+      bridgeRestartAttempt
+    };
+  };
   const runIbkrRecoveryAttempt = async (
     source: string,
-    recoveryOptions: { ignoreCooldown?: boolean } = {}
+    recoveryOptions: { ignoreCooldown?: boolean; verifyApi?: boolean } = {}
   ): Promise<IbkrRecoveryAttemptResult> => {
     const loginAttempt = await runIbkrAutoLogin(source, recoveryOptions);
     const reloginAttempt = loginAttempt.skipped && loginAttempt.reason === 'disabled'
       ? await runIbkrRelogin(`${source}-relogin`)
       : undefined;
     const resendAttempt = await runIbkrResendPush(`${source}-push`);
+    const apiReadiness = recoveryOptions.verifyApi
+      ? await verifyIbkrApiReadinessAfterRecovery(source)
+      : undefined;
     return {
       loginAttempt,
       reloginAttempt,
-      resendAttempt
+      resendAttempt,
+      apiReadiness
     };
   };
   const resolvedOperationalReminderConfig = resolveOperationalReminderConfig(options.operationalReminderConfig);
@@ -1978,14 +2144,15 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     symbols: string[],
     loginAttempt: IbkrLoginTriggerResult,
     resendAttempt: IbkrLoginTriggerResult,
-    reloginAttempt?: IbkrLoginTriggerResult
+    reloginAttempt?: IbkrLoginTriggerResult,
+    apiReadiness?: IbkrApiReadinessResult
   ): Promise<void> => {
     await appendIbkrReconnectHistory({
       kind: 'RECOVERY_ATTEMPT',
       atMs: Date.now(),
       source,
       symbols,
-      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt, reloginAttempt),
+      detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt, reloginAttempt, apiReadiness),
       artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt, reloginAttempt)
     });
   };
@@ -1995,7 +2162,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     symbols: string[],
     loginAttempt: IbkrLoginTriggerResult,
     resendAttempt: IbkrLoginTriggerResult,
-    reloginAttempt?: IbkrLoginTriggerResult
+    reloginAttempt?: IbkrLoginTriggerResult,
+    apiReadiness?: IbkrApiReadinessResult
   ): Promise<void> => {
     if (!canNotifyIbkrRecovery(source)) {
       return;
@@ -2021,6 +2189,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           describeIbkrLoginAttempt(loginAttempt),
           ...(reloginAttempt ? [describeIbkrReloginAttempt(reloginAttempt) ?? 'The server checked the IB Gateway re-login prompt.'] : []),
           describeIbkrResendAttempt(resendAttempt),
+          ...(apiReadiness ? [describeIbkrApiReadiness(apiReadiness) ?? 'The server checked IBKR API readiness.'] : []),
           'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
           `Source: ${source}`,
           'You will get another message when the bridge reconnects.'
@@ -4869,14 +5038,16 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       'The server is starting the full IB Gateway recovery routine.'
     );
     const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
-      ignoreCooldown: true
+      ignoreCooldown: true,
+      verifyApi: true
     });
     await recordIbkrRecoveryAttempt(
       'manual-phone-retry',
       symbols,
       result.loginAttempt,
       result.resendAttempt,
-      result.reloginAttempt
+      result.reloginAttempt,
+      result.apiReadiness
     );
     await notifyIbkrRecoveryAttempt(
       'IBKR recovery started',
@@ -4884,11 +5055,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       symbols,
       result.loginAttempt,
       result.resendAttempt,
-      result.reloginAttempt
+      result.reloginAttempt,
+      result.apiReadiness
     );
-    const ok = result.loginAttempt.ok || Boolean(result.reloginAttempt?.ok) || result.resendAttempt.ok;
+    const ok = Boolean(result.apiReadiness?.ok);
     return reply.status(ok ? 200 : 202).send({
       ok,
+      manualActionRequired: !ok,
       result,
       ibkrRecovery: {
         pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,

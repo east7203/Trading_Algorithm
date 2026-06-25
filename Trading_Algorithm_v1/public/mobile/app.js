@@ -3647,6 +3647,19 @@ const getRecoveryAttemptReason = (attempt) => {
   return compactRecoveryReason(attempt.stderr || attempt.stdout || attempt.reason);
 };
 
+const getApiReadinessReason = (readiness) => {
+  if (!readiness) {
+    return '';
+  }
+  const bridgeReason = readiness.bridgeRestartAttempt && !readiness.bridgeRestartAttempt.ok
+    ? getRecoveryAttemptReason(readiness.bridgeRestartAttempt)
+    : '';
+  return compactRecoveryReason([
+    readiness.detail,
+    bridgeReason ? `Bridge restart: ${bridgeReason}` : ''
+  ].filter(Boolean).join(' '));
+};
+
 const getLatestRecoveryDetail = (recovery) => {
   const latestEntry = Array.isArray(recovery?.history) ? recovery.history[0] : null;
   return compactRecoveryReason(latestEntry?.detail);
@@ -10627,19 +10640,23 @@ const bindStatusRecoveryControls = () => {
       const loginAttempt = result.loginAttempt ?? {};
       const reloginAttempt = result.reloginAttempt ?? null;
       const resendAttempt = result.resendAttempt ?? {};
+      const apiReadiness = result.apiReadiness ?? null;
       const loginReason = getRecoveryAttemptReason(loginAttempt);
       const reloginReason = getRecoveryAttemptReason(reloginAttempt);
       const resendReason = getRecoveryAttemptReason(resendAttempt);
+      const apiReason = getApiReadinessReason(apiReadiness);
       setStatus(
         response?.ok
-          ? reloginAttempt?.ok
-            ? 'Status: Gateway re-login prompt advanced. Watch for the IBKR phone prompt; if it still waits, open the console and finish login.'
-            : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.'
-          : loginAttempt.skipped
-            ? `Status: server login retry skipped. ${loginReason || 'Please wait a few seconds and try again.'}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}`
-            : resendAttempt.ok
-              ? 'Status: server login retry did not resubmit credentials, but Gateway still ran the built-in broker fallback controls.'
-            : `Status: server recovery did not complete.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`,
+          ? apiReadiness?.bridgeRestartAttempt?.ok
+            ? 'Status: IBKR API is reachable and the bridge was restarted. Refreshing diagnostics now.'
+            : 'Status: IBKR API is reachable. Refreshing diagnostics now.'
+          : apiReadiness && !apiReadiness.ok
+            ? `Status: full recovery still needs manual action. ${apiReason || 'The IBKR API port is not available yet.'}`
+            : response?.manualActionRequired
+              ? `Status: full recovery still needs manual action.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`
+              : reloginAttempt?.ok
+                ? 'Status: Gateway re-login prompt advanced. Watch for the IBKR phone prompt; if it still waits, open the console and finish login.'
+                : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.',
         !response?.ok
       );
       await loadDiagnostics();

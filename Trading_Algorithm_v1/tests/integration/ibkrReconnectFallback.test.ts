@@ -80,6 +80,12 @@ describe('IBKR reconnect fallback notifications', () => {
         ok: true,
         stdout: 'Triggered fallback controls\nARTIFACT:/tmp/ibkr-auth-dialog.png'
       }),
+      ibkrApiReadinessCheck: async () => ({
+        ok: false,
+        status: 'PORT_CLOSED',
+        checkedAt: '2026-03-15T00:01:00.000Z',
+        detail: 'No IBKR API socket is listening on 127.0.0.1:4001.'
+      }),
       webPushNotificationService: {
         start: async () => {},
         status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
@@ -117,7 +123,10 @@ describe('IBKR reconnect fallback notifications', () => {
       path: '/ibkr/recovery/retry-login'
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(202);
+    expect(response.json().ok).toBe(false);
+    expect(response.json().manualActionRequired).toBe(true);
+    expect(response.json().result.apiReadiness.ok).toBe(false);
     expect(webPushMessages).toHaveLength(2);
     expect(webPushMessages[0].title).toBe('IBKR recovery request received');
     expect(webPushMessages[1].title).toBe('IBKR recovery started');
@@ -138,6 +147,7 @@ describe('IBKR reconnect fallback notifications', () => {
         expect.objectContaining({
           kind: 'RECOVERY_ATTEMPT',
           source: 'manual-phone-retry',
+          detail: expect.stringContaining('No IBKR API socket is listening'),
           artifacts: ['/tmp/ibkr-login-failure.png', '/tmp/ibkr-auth-dialog.png']
         })
       ])
@@ -167,6 +177,73 @@ describe('IBKR reconnect fallback notifications', () => {
         calls.push(`resend:${source}`);
         return { ok: false, reason: 'missing-auth-dialog' };
       },
+      ibkrApiReadinessCheck: async () => ({
+        ok: false,
+        status: 'PORT_CLOSED',
+        checkedAt: '2026-03-15T00:01:00.000Z',
+        detail: 'No IBKR API socket is listening on 127.0.0.1:4001.'
+      }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async () => ({ attempted: 1, delivered: 1, removed: 0 })
+      } as never,
+      telegramAlertService: null
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/ibkr/recovery/retry-login'
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json().ok).toBe(false);
+    expect(response.json().manualActionRequired).toBe(true);
+    expect(response.json().result.reloginAttempt.ok).toBe(true);
+    expect(response.json().result.apiReadiness.ok).toBe(false);
+    expect(calls).toEqual([
+      'login:manual-phone-retry',
+      'relogin:manual-phone-retry-relogin',
+      'resend:manual-phone-retry-push'
+    ]);
+
+    const diagnosticsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/diagnostics'
+    });
+    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.latestArtifacts).toContain('/tmp/ibkr-relogin.png');
+    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'RECOVERY_ATTEMPT',
+          detail: expect.stringContaining('No IBKR API socket is listening')
+        })
+      ])
+    );
+  });
+
+  it('marks full recovery successful only after IBKR API readiness is verified', async () => {
+    const restartCalls: string[] = [];
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-api-ready-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      ibkrLoginTrigger: async () => ({ ok: true }),
+      ibkrResendPushTrigger: async () => ({ ok: true }),
+      ibkrApiReadinessCheck: async () => ({
+        ok: true,
+        status: 'READY',
+        checkedAt: '2026-03-15T00:01:00.000Z',
+        port: 4001,
+        detail: 'IBKR API socket is listening on 127.0.0.1:4001.'
+      }),
+      ibkrBridgeRestartTrigger: async (source) => {
+        restartCalls.push(source);
+        return { ok: true, stdout: 'Restarted ibkr-bridge' };
+      },
       webPushNotificationService: {
         start: async () => {},
         status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
@@ -183,26 +260,10 @@ describe('IBKR reconnect fallback notifications', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().ok).toBe(true);
-    expect(response.json().result.reloginAttempt.ok).toBe(true);
-    expect(calls).toEqual([
-      'login:manual-phone-retry',
-      'relogin:manual-phone-retry-relogin',
-      'resend:manual-phone-retry-push'
-    ]);
-
-    const diagnosticsResponse = await ctx.app.inject({
-      method: 'GET',
-      path: '/diagnostics'
-    });
-    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.latestArtifacts).toContain('/tmp/ibkr-relogin.png');
-    expect(diagnosticsResponse.json().diagnostics.ibkrRecovery.history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'RECOVERY_ATTEMPT',
-          detail: expect.stringContaining('advanced the visible IB Gateway re-login prompt')
-        })
-      ])
-    );
+    expect(response.json().manualActionRequired).toBe(false);
+    expect(response.json().result.apiReadiness.ok).toBe(true);
+    expect(response.json().result.apiReadiness.bridgeRestartAttempt.ok).toBe(true);
+    expect(restartCalls).toEqual(['manual-phone-retry-bridge-restart']);
   });
 
   it('sends an approval follow-up alert if login-required does not recover in time', async () => {
@@ -393,6 +454,12 @@ describe('IBKR reconnect fallback notifications', () => {
       ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
       ibkrLoginTrigger: async () => ({ ok: true }),
       ibkrResendPushTrigger: async () => ({ ok: false, reason: 'no prompt' }),
+      ibkrApiReadinessCheck: async () => ({
+        ok: false,
+        status: 'PORT_CLOSED',
+        checkedAt: '2026-03-15T01:01:00.000Z',
+        detail: 'No IBKR API socket is listening on 127.0.0.1:4001.'
+      }),
       webPushNotificationService: {
         start: async () => {},
         status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
