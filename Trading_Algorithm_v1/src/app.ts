@@ -1669,6 +1669,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const ibkrAutoLoginState = {
     lastAttemptAtMs: 0
   };
+  const ibkrLoginTriggerInjected = Boolean(options.ibkrLoginTrigger);
   const readIbkrCredentialStatus = async (): Promise<{
     autoLoginEnabled: boolean;
     credentialFilePresent: boolean;
@@ -1692,12 +1693,24 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     }
 
     return {
-      autoLoginEnabled: ibkrAutoLoginEnabled,
-      credentialFilePresent,
-      usernameConfigured,
-      passwordConfigured,
-      ready: ibkrAutoLoginEnabled && credentialFilePresent && usernameConfigured && passwordConfigured
+      autoLoginEnabled: ibkrLoginTriggerInjected || ibkrAutoLoginEnabled,
+      credentialFilePresent: ibkrLoginTriggerInjected || credentialFilePresent,
+      usernameConfigured: ibkrLoginTriggerInjected || usernameConfigured,
+      passwordConfigured: ibkrLoginTriggerInjected || passwordConfigured,
+      ready: ibkrLoginTriggerInjected || (ibkrAutoLoginEnabled && credentialFilePresent && usernameConfigured && passwordConfigured)
     };
+  };
+  const describeIbkrCredentialSetupBlocker = (status: Awaited<ReturnType<typeof readIbkrCredentialStatus>>): string => {
+    if (!status.autoLoginEnabled) {
+      return 'IBKR auto-login is disabled on the VPS.';
+    }
+    if (!status.credentialFilePresent) {
+      return 'The VPS is missing the IBKR login credential file.';
+    }
+    if (!status.usernameConfigured || !status.passwordConfigured) {
+      return 'The IBKR login credential file is incomplete.';
+    }
+    return 'IBKR auto-login is not ready.';
   };
   const runIbkrScript = async (
     scriptPath: string,
@@ -2243,7 +2256,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ],
         buttons: [
           { text: 'Open Status', url: ibkrStatusUrl },
-          { text: 'Last-Resort Website', url: ibkrMobileUrl }
+          { text: 'Open IBKR Mobile', url: ibkrMobileUrl }
         ]
       },
       { telegramFallback: true }
@@ -2329,7 +2342,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const body = (request.body as { waitForResult?: boolean } | undefined) ?? {};
     return query.wait === '1' || query.wait === 'true' || query.waitForResult === '1' || body.waitForResult === true;
   };
-  const buildIbkrRecoverySnapshot = () => ({
+  const buildIbkrRecoverySnapshot = (credentialStatus?: Awaited<ReturnType<typeof readIbkrCredentialStatus>>) => ({
+    autoLoginEnabled: credentialStatus?.autoLoginEnabled ?? ibkrAutoLoginEnabled,
+    autoLoginReady: credentialStatus?.ready,
+    credentialFilePresent: credentialStatus?.credentialFilePresent,
+    usernameConfigured: credentialStatus?.usernameConfigured,
+    passwordConfigured: credentialStatus?.passwordConfigured,
     pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,
     lastLoginRequiredAt:
       ibkrReconnectState.lastLoginRequiredAtMs > 0
@@ -2384,7 +2402,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           ],
           buttons: [
             { text: 'Open Status', url: ibkrStatusUrl },
-            { text: 'Last-Resort Website', url: ibkrMobileUrl }
+            { text: 'Open IBKR Mobile', url: ibkrMobileUrl }
           ]
         }
       );
@@ -5105,7 +5123,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
               ],
               buttons: [
                 { text: 'Open Status', url: ibkrStatusUrl },
-                { text: 'Last-Resort Website', url: ibkrMobileUrl }
+                { text: 'Open IBKR Mobile', url: ibkrMobileUrl }
               ]
             },
             { telegramFallback: true }
@@ -5130,6 +5148,26 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.post('/ibkr/recovery/retry-login', async (request, reply) => {
     const symbols = [...ibkrReconnectState.lastSymbols];
+    const credentialStatus = await readIbkrCredentialStatus();
+    if (!credentialStatus.ready) {
+      const detail = `${describeIbkrCredentialSetupBlocker(credentialStatus)} Run Full Recovery can only trigger the official IBKR Mobile approval after server auto-login is configured.`;
+      await appendIbkrReconnectHistory({
+        kind: 'RECOVERY_REQUESTED',
+        atMs: Date.now(),
+        source: 'manual-phone-retry',
+        symbols,
+        detail
+      });
+      return reply.status(200).send({
+        ok: false,
+        setupRequired: true,
+        manualActionRequired: true,
+        message: detail,
+        credentialStatus,
+        ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
+      });
+    }
+
     await appendIbkrReconnectHistory({
       kind: 'RECOVERY_REQUESTED',
       atMs: Date.now(),
@@ -5155,7 +5193,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         recoveryPending: true,
         manualActionRequired: false,
         message: 'Full IBKR recovery is running in the background. The recovery timeline will show whether API access becomes ready or still needs manual action.',
-        ibkrRecovery: buildIbkrRecoverySnapshot()
+        ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
       });
     }
 
@@ -5166,7 +5204,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       ok,
       manualActionRequired: !ok,
       result,
-      ibkrRecovery: buildIbkrRecoverySnapshot()
+      ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
     });
   });
 

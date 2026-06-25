@@ -133,7 +133,7 @@ describe('OperationalReminderService', () => {
         title: 'IBKR login reminder test',
         buttons: [
           { text: 'Open Status', url: 'https://example.test/mobile/?tab=status&focus=ibkr-login' },
-          { text: 'Last-Resort Website', url: 'https://ndcdyn.interactivebrokers.com/sso/Login' }
+          { text: 'Open IBKR Mobile', url: 'https://ndcdyn.interactivebrokers.com/sso/Login' }
         ]
       }
     ]);

@@ -14,6 +14,7 @@ const wait = async (durationMs: number): Promise<void> =>
 
 afterEach(async () => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   while (contexts.length > 0) {
     const ctx = contexts.pop();
     if (ctx) {
@@ -156,6 +157,41 @@ describe('IBKR reconnect fallback notifications', () => {
         })
       ])
     );
+  });
+
+  it('requires auto-login setup before claiming it can trigger IBKR Mobile approval', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-setup-required-'));
+    tempDirs.push(tempDir);
+    vi.stubEnv('IBKR_AUTOLOGIN_ENABLED', 'false');
+    vi.stubEnv('IBKR_LOGIN_ENV_JSON', path.join(tempDir, 'missing-login.json'));
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      webPushNotificationService: null,
+      telegramAlertService: null
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/ibkr/recovery/retry-login'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      ok: false,
+      setupRequired: true,
+      manualActionRequired: true,
+      credentialStatus: {
+        autoLoginEnabled: false,
+        credentialFilePresent: false,
+        usernameConfigured: false,
+        passwordConfigured: false,
+        ready: false
+      }
+    });
+    expect(response.json().message).toContain('IBKR auto-login is disabled');
   });
 
   it('starts phone full recovery asynchronously so the app does not wait on IBKR desktop automation', async () => {

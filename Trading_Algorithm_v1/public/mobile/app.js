@@ -353,14 +353,6 @@ const diagQuietModeHintEl = document.getElementById('diagQuietModeHint');
 const diagIbkrRecoveryStateEl = document.getElementById('diagIbkrRecoveryState');
 const diagIbkrRecoveryHintEl = document.getElementById('diagIbkrRecoveryHint');
 const ibkrRetryLoginEl = document.getElementById('ibkrRetryLogin');
-const ibkrOpenConsoleEl = document.getElementById('ibkrOpenConsole');
-const ibkrResendPushEl = document.getElementById('ibkrResendPush');
-const ibkrWebsiteFallbackEl = document.getElementById('ibkrWebsiteFallback');
-const ibkrConsoleDockEl = document.getElementById('ibkrConsoleDock');
-const ibkrConsoleFrameEl = document.getElementById('ibkrConsoleFrame');
-const ibkrConsoleHintEl = document.getElementById('ibkrConsoleHint');
-const ibkrConsoleReloadEl = document.getElementById('ibkrConsoleReload');
-const ibkrConsoleCloseEl = document.getElementById('ibkrConsoleClose');
 const ibkrRecoveryTimelineEl = document.getElementById('ibkrRecoveryTimeline');
 const ibkrRecoveryEvidenceEl = document.getElementById('ibkrRecoveryEvidence');
 const systemOverviewEl = document.getElementById('systemOverview');
@@ -551,8 +543,6 @@ const setupToggleMap = {
 };
 
 const fallbackApiBase = window.location.origin;
-const defaultIbkrWebsiteUrl = 'https://www.interactivebrokers.com/en/general/qr-code-ibkr-mobile-routing.php';
-const defaultIbkrConsoleUrl = 'https://ibkr-console.134-209-125-140.sslip.io/vnc.html?autoconnect=1&resize=scale&view_clip=1&path=websockify';
 const tradingViewWidgetScriptUrl = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
 
 const isStandaloneWebApp = () =>
@@ -3671,43 +3661,6 @@ const getLatestRecoveryDetail = (recovery) => {
   return compactRecoveryReason(latestEntry?.detail);
 };
 
-const getIbkrConsoleUrl = () =>
-  latestDiagnostics?.diagnostics?.ibkrRecovery?.consoleUrl
-  ?? defaultIbkrConsoleUrl;
-
-const getIbkrMobileUrl = () =>
-  latestDiagnostics?.diagnostics?.ibkrRecovery?.lastResortWebsiteUrl
-  ?? latestDiagnostics?.diagnostics?.ibkrRecovery?.websiteFallbackUrl
-  ?? defaultIbkrWebsiteUrl;
-
-const openIbkrMobileApp = () => {
-  const recoveryUrl = getIbkrMobileUrl();
-  setStatus('Status: opening IBKR Mobile. Approve the pending IBKR prompt, then return to TradeAssist and refresh.');
-  window.location.assign(recoveryUrl);
-};
-
-const setIbkrConsoleVisible = (visible, forceReload = false) => {
-  if (!ibkrConsoleDockEl || !ibkrConsoleFrameEl) {
-    window.open(getIbkrConsoleUrl(), '_blank', 'noopener,noreferrer');
-    return;
-  }
-
-  ibkrConsoleDockEl.hidden = !visible;
-  if (visible) {
-    const consoleUrl = getIbkrConsoleUrl();
-    if (forceReload || ibkrConsoleFrameEl.src !== consoleUrl) {
-      ibkrConsoleFrameEl.src = consoleUrl;
-    }
-    if (ibkrConsoleHintEl) {
-      const recovery = latestDiagnostics?.diagnostics?.ibkrRecovery ?? null;
-      ibkrConsoleHintEl.textContent = recovery?.autoLoginReady
-        ? 'Backup console is open. Use it only if IBKR Mobile has no approval prompt and Gateway still needs input.'
-        : 'Auto-login is not fully configured, so this backup lets you enter Gateway login from your phone if IBKR Mobile cannot approve by itself.';
-    }
-    ibkrConsoleDockEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-};
-
 const normalizeRecoveryArtifactFile = (artifact) => {
   if (!artifact) {
     return null;
@@ -3963,7 +3916,7 @@ const renderStatusRail = () => {
       : 'The bridge is waiting for reauthentication.';
     const latestDetail = getLatestRecoveryDetail(recovery);
     const autoLoginHelp = recovery.autoLoginReady === false
-      ? ' Auto-login is not fully configured on this rebuilt VPS, so Run Full Recovery may not create a new IBKR push by itself. Use Open IBKR App for approval if a prompt is waiting; use Phone Gateway Backup only if Gateway still needs login input.'
+      ? ' Auto-login is not fully configured on this rebuilt VPS, so Run Full Recovery cannot create the official IBKR Mobile push yet.'
       : '';
     const latestDetailText = latestDetail
       ? isGatewayConnectionIssue(latestDetail)
@@ -3973,7 +3926,7 @@ const renderStatusRail = () => {
     setRecoveryState(
       'bad',
       'Reauth Needed',
-      `${lastAttemptText}${autoLoginHelp}${latestDetailText} Tap Run Full Recovery first. If the official IBKR phone alert is waiting, tap Open IBKR App and approve it.`
+      `${lastAttemptText}${autoLoginHelp}${latestDetailText} Tap Run Full Recovery to submit the Gateway login and trigger the official IBKR Mobile approval.`
     );
     renderRecoveryEvidence(recovery);
     renderRecoveryTimeline(recovery);
@@ -8294,15 +8247,10 @@ const learningFeedIssueHeadline = (status, ibkrPending = false) => {
 
 const openLearningIbkrRecovery = () => {
   setActiveTab('status');
-  setStatus('Status: opened IBKR recovery. Use Run Full Recovery first, then Open IBKR App if approval is waiting.');
+  setStatus('Status: opened IBKR recovery. Use Run Full Recovery to trigger the official IBKR Mobile approval.');
   setTimeout(() => {
     ibkrRecoveryPanelEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 250);
-};
-
-const openLearningIbkrConsole = () => {
-  setActiveTab('status');
-  openIbkrMobileApp();
 };
 
 const refreshLearningHealthReport = async () => {
@@ -8327,7 +8275,6 @@ const learningBlockerActions = (blocker) => {
 
   if (haystack.includes('ibkr') || haystack.includes('gateway') || haystack.includes('live feed')) {
     actions.unshift({ type: 'ibkr-recovery', label: 'Open IBKR Recovery' });
-    actions.unshift({ type: 'ibkr-console', label: 'Open IBKR App' });
   }
 
   return actions;
@@ -8342,11 +8289,6 @@ const runLearningBlockerAction = async (actionType) => {
 
   if (actionType === 'ibkr-recovery') {
     openLearningIbkrRecovery();
-    return;
-  }
-
-  if (actionType === 'ibkr-console') {
-    openLearningIbkrConsole();
     return;
   }
 
@@ -10692,8 +10634,10 @@ const bindStatusRecoveryControls = () => {
       const resendReason = getRecoveryAttemptReason(resendAttempt);
       const apiReason = getApiReadinessReason(apiReadiness);
       setStatus(
-        response?.recoveryPending
-          ? 'Status: full recovery started. If IBKR Mobile has a prompt waiting, tap Open IBKR App and approve it, then return here.'
+        response?.setupRequired
+          ? `Status: IBKR Mobile approval cannot be triggered yet. ${response.message || 'Server auto-login is not configured.'}`
+          : response?.recoveryPending
+          ? 'Status: full recovery started. Watch for the official IBKR Mobile notification and approve it on this phone, then return here.'
           : response?.ok
           ? apiReadiness?.bridgeRestartAttempt?.ok
             ? 'Status: IBKR API is reachable and the bridge was restarted. Refreshing diagnostics now.'
@@ -10703,7 +10647,7 @@ const bindStatusRecoveryControls = () => {
             : response?.manualActionRequired
               ? `Status: full recovery still needs manual action.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`
               : reloginAttempt?.ok
-                ? 'Status: Gateway re-login prompt advanced. Tap Open IBKR App if the IBKR approval is waiting there.'
+                ? 'Status: Gateway re-login prompt advanced. Watch for the official IBKR Mobile approval notification.'
                 : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.',
         !(response?.ok || response?.recoveryPending)
       );
@@ -10723,49 +10667,6 @@ const bindStatusRecoveryControls = () => {
     }
   });
 
-  ibkrResendPushEl?.addEventListener('click', async () => {
-    ibkrResendPushEl.disabled = true;
-    ibkrResendPushEl.textContent = 'Running...';
-    setStatus('Status: asking the server to run the broker fallback...');
-    try {
-      const response = await apiFetch('/ibkr/recovery/resend-push', {
-        method: 'POST'
-      });
-      const result = response?.result ?? {};
-      const resendReason = getRecoveryAttemptReason(result);
-      setStatus(
-        result.ok
-          ? 'Status: broker fallback ran on the server. Telegram and the recovery timeline will show the next step.'
-          : `Status: broker fallback could not be triggered.${resendReason ? ` ${resendReason}.` : ''}`,
-        !result.ok
-      );
-      await loadDiagnostics();
-    } catch (error) {
-      setStatus(`Status: resend push failed (${error.message})`, true);
-    } finally {
-      ibkrResendPushEl.disabled = false;
-      ibkrResendPushEl.textContent = 'Run Broker Fallback';
-    }
-  });
-
-  ibkrWebsiteFallbackEl?.addEventListener('click', () => {
-    openIbkrMobileApp();
-  });
-
-  ibkrOpenConsoleEl?.addEventListener('click', () => {
-    setIbkrConsoleVisible(true, false);
-    setStatus('Status: opened the phone Gateway backup. Use this only if IBKR Mobile has no approval prompt and Gateway still needs input.');
-  });
-
-  ibkrConsoleReloadEl?.addEventListener('click', () => {
-    setIbkrConsoleVisible(true, true);
-    setStatus('Status: reloaded the IBKR Gateway console.');
-  });
-
-  ibkrConsoleCloseEl?.addEventListener('click', () => {
-    setIbkrConsoleVisible(false, false);
-    setStatus('Status: closed the in-app IBKR Gateway console.');
-  });
 };
 
 const bootstrap = async () => {

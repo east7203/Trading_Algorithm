@@ -251,13 +251,12 @@ export class OperationalReminderService {
             lines: [
               body,
               'The server has already submitted the IB Gateway login.',
-              'The server also uses IB Gateway fallback controls if the official push does not land cleanly.',
               'Approve the official IBKR push on your phone if IBKR asks for IB Key.',
               kind === 'test' ? 'This is a manual verification send.' : `Scheduled for Sunday ${this.status().sundayTime}.`
             ],
             buttons: [
               { text: 'Open Status', url: statusUrl },
-              { text: 'Last-Resort Website', url: this.config.ibkrMobileUrl }
+              { text: 'Open IBKR Mobile', url: this.config.ibkrMobileUrl }
             ]
           });
           telegramSent = delivery?.sent === true;

@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=60" />
+    <link rel="stylesheet" href="styles.css?v=61" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -712,7 +712,6 @@
               <button id="learningRefreshReport" class="chip-btn secondary-btn" type="button">Refresh Report</button>
               <button id="learningRepairPush" class="chip-btn secondary-btn" type="button">Re-register Push</button>
               <button id="learningOpenIbkrRecovery" class="chip-btn secondary-btn" type="button">Open IBKR Recovery</button>
-              <button id="learningOpenIbkrConsole" class="chip-btn secondary-btn" type="button">Open Console</button>
             </div>
             <div id="learningBlockerList" class="stack learning-pattern-list learning-blocker-list"></div>
           </section>
@@ -1249,29 +1248,6 @@
             <p id="diagIbkrRecoveryHint" class="recovery-copy">Waiting for live status.</p>
             <div class="recovery-actions">
               <button id="ibkrRetryLogin" class="chip-btn secondary-btn" type="button">Run Full Recovery</button>
-              <button id="ibkrWebsiteFallback" class="chip-btn secondary-btn" type="button">Open IBKR App</button>
-              <button id="ibkrResendPush" class="chip-btn secondary-btn" type="button">Run Broker Fallback</button>
-              <button id="ibkrOpenConsole" class="chip-btn secondary-btn" type="button">Phone Gateway Backup</button>
-            </div>
-            <div id="ibkrConsoleDock" class="ibkr-console-dock" hidden>
-              <div class="ibkr-console-head">
-                <div>
-                  <p class="stat-label">Phone Gateway Console</p>
-                  <p id="ibkrConsoleHint" class="hint">Backup only: use this if opening IBKR Mobile does not expose the prompt and Gateway still needs input.</p>
-                </div>
-                <div class="ibkr-console-actions">
-                  <button id="ibkrConsoleReload" class="chip-btn secondary-btn" type="button">Reload</button>
-                  <button id="ibkrConsoleClose" class="chip-btn secondary-btn" type="button">Close</button>
-                </div>
-              </div>
-              <iframe
-                id="ibkrConsoleFrame"
-                class="ibkr-console-frame"
-                title="IBKR Gateway console"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-                allow="clipboard-read; clipboard-write"
-              ></iframe>
             </div>
             <div class="recovery-evidence">
               <div class="recovery-evidence-head">
@@ -1856,6 +1832,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=66"></script>
+    <script type="module" src="app.js?v=67"></script>
   </body>
 </html>
