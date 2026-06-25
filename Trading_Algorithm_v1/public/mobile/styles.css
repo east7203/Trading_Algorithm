@@ -2702,6 +2702,42 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.ibkr-console-dock {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(152, 189, 225, 0.12);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(53, 208, 176, 0.12), transparent 34%),
+    rgba(5, 12, 20, 0.9);
+}
+
+.ibkr-console-head {
+  display: grid;
+  gap: 10px;
+}
+
+.ibkr-console-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ibkr-console-actions .chip-btn {
+  min-height: 40px;
+  width: 100%;
+}
+
+.ibkr-console-frame {
+  display: block;
+  width: 100%;
+  height: min(68vh, 560px);
+  margin-top: 12px;
+  border: 1px solid rgba(152, 189, 225, 0.14);
+  border-radius: 16px;
+  background: #05080d;
+}
+
 .recovery-evidence {
   margin-top: 16px;
   padding-top: 16px;

@@ -353,8 +353,14 @@ const diagQuietModeHintEl = document.getElementById('diagQuietModeHint');
 const diagIbkrRecoveryStateEl = document.getElementById('diagIbkrRecoveryState');
 const diagIbkrRecoveryHintEl = document.getElementById('diagIbkrRecoveryHint');
 const ibkrRetryLoginEl = document.getElementById('ibkrRetryLogin');
+const ibkrOpenConsoleEl = document.getElementById('ibkrOpenConsole');
 const ibkrResendPushEl = document.getElementById('ibkrResendPush');
 const ibkrWebsiteFallbackEl = document.getElementById('ibkrWebsiteFallback');
+const ibkrConsoleDockEl = document.getElementById('ibkrConsoleDock');
+const ibkrConsoleFrameEl = document.getElementById('ibkrConsoleFrame');
+const ibkrConsoleHintEl = document.getElementById('ibkrConsoleHint');
+const ibkrConsoleReloadEl = document.getElementById('ibkrConsoleReload');
+const ibkrConsoleCloseEl = document.getElementById('ibkrConsoleClose');
 const ibkrRecoveryTimelineEl = document.getElementById('ibkrRecoveryTimeline');
 const ibkrRecoveryEvidenceEl = document.getElementById('ibkrRecoveryEvidence');
 const systemOverviewEl = document.getElementById('systemOverview');
@@ -3665,6 +3671,32 @@ const getLatestRecoveryDetail = (recovery) => {
   return compactRecoveryReason(latestEntry?.detail);
 };
 
+const getIbkrConsoleUrl = () =>
+  latestDiagnostics?.diagnostics?.ibkrRecovery?.consoleUrl
+  ?? defaultIbkrConsoleUrl;
+
+const setIbkrConsoleVisible = (visible, forceReload = false) => {
+  if (!ibkrConsoleDockEl || !ibkrConsoleFrameEl) {
+    window.open(getIbkrConsoleUrl(), '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  ibkrConsoleDockEl.hidden = !visible;
+  if (visible) {
+    const consoleUrl = getIbkrConsoleUrl();
+    if (forceReload || ibkrConsoleFrameEl.src !== consoleUrl) {
+      ibkrConsoleFrameEl.src = consoleUrl;
+    }
+    if (ibkrConsoleHintEl) {
+      const recovery = latestDiagnostics?.diagnostics?.ibkrRecovery ?? null;
+      ibkrConsoleHintEl.textContent = recovery?.autoLoginReady
+        ? 'Gateway console is open. Approve the official IBKR Mobile prompt if Gateway asks for it, then tap Refresh.'
+        : 'Auto-login is not fully configured, so use this console to type the Gateway login on your phone and approve IBKR Mobile.';
+    }
+    ibkrConsoleDockEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+};
+
 const normalizeRecoveryArtifactFile = (artifact) => {
   if (!artifact) {
     return null;
@@ -3919,6 +3951,9 @@ const renderStatusRail = () => {
       ? `Login required ${fmtRelativeMinutes(recovery.lastLoginRequiredAt)}.`
       : 'The bridge is waiting for reauthentication.';
     const latestDetail = getLatestRecoveryDetail(recovery);
+    const autoLoginHelp = recovery.autoLoginReady === false
+      ? ' Auto-login is not fully configured on this rebuilt VPS, so the official IBKR phone prompt will not appear until Gateway receives your login. Open Gateway Console here, type the IBKR login on your phone, then approve IBKR Mobile.'
+      : '';
     const latestDetailText = latestDetail
       ? isGatewayConnectionIssue(latestDetail)
         ? ` Latest server note: ${latestDetail} This looks like an IB Gateway/API connection issue, so the phone recovery buttons may not work until Gateway is back on the login or second-factor screen.`
@@ -3927,7 +3962,7 @@ const renderStatusRail = () => {
     setRecoveryState(
       'bad',
       'Reauth Needed',
-      `${lastAttemptText}${latestDetailText} Tap Run Full Recovery first. If the official IBKR phone alert still does not arrive after a few seconds, tap Run Broker Fallback. Only use Last-Resort Website if the broker prompt never shows up.`
+      `${lastAttemptText}${autoLoginHelp}${latestDetailText} Tap Run Full Recovery first. If the official IBKR phone alert still does not arrive, open Gateway Console inside this app and finish the login there.`
     );
     renderRecoveryEvidence(recovery);
     renderRecoveryTimeline(recovery);
@@ -8255,8 +8290,9 @@ const openLearningIbkrRecovery = () => {
 };
 
 const openLearningIbkrConsole = () => {
-  window.open(defaultIbkrConsoleUrl, '_blank', 'noopener,noreferrer');
-  setStatus('Status: opened IBKR console in a new tab. Complete Gateway login and approve the IBKR phone prompt.');
+  setActiveTab('status');
+  setIbkrConsoleVisible(true, false);
+  setStatus('Status: opened IBKR Gateway console inside the app. Complete Gateway login and approve the IBKR phone prompt.');
 };
 
 const refreshLearningHealthReport = async () => {
@@ -10708,6 +10744,21 @@ const bindStatusRecoveryControls = () => {
       ?? latestDiagnostics?.diagnostics?.ibkrRecovery?.websiteFallbackUrl
       ?? defaultIbkrWebsiteUrl;
     window.open(recoveryUrl, '_blank', 'noopener,noreferrer');
+  });
+
+  ibkrOpenConsoleEl?.addEventListener('click', () => {
+    setIbkrConsoleVisible(true, false);
+    setStatus('Status: opened IBKR Gateway console inside the app. Type the Gateway login here if needed, then approve IBKR Mobile.');
+  });
+
+  ibkrConsoleReloadEl?.addEventListener('click', () => {
+    setIbkrConsoleVisible(true, true);
+    setStatus('Status: reloaded the IBKR Gateway console.');
+  });
+
+  ibkrConsoleCloseEl?.addEventListener('click', () => {
+    setIbkrConsoleVisible(false, false);
+    setStatus('Status: closed the in-app IBKR Gateway console.');
   });
 };
 

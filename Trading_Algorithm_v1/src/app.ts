@@ -658,6 +658,15 @@ const runCommand = async (command: string, args: string[]): Promise<void> => {
   });
 };
 
+const fileExists = async (targetPath: string): Promise<boolean> => {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const isLoopbackIp = (ip: string | undefined): boolean => {
   if (!ip) {
     return false;
@@ -1592,6 +1601,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const ibkrMobileUrl =
     process.env.IBKR_MOBILE_ROUTING_URL ??
     DEFAULT_IBKR_LOGIN_URL;
+  const ibkrConsoleUrl =
+    process.env.IBKR_CONSOLE_URL ??
+    process.env.IBKR_LOGIN_REMINDER_TARGET_URL ??
+    DEFAULT_IBKR_CONSOLE_URL;
   const ibkrStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=status&focus=ibkr-connection`;
 
   const syncRiskTradingWindowToSignalSettings = (): void => {
@@ -1641,6 +1654,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     process.cwd(),
     process.env.IBKR_AUTOLOGIN_SCRIPT_PATH ?? path.join('scripts', 'trigger-ibkr-login-vps.sh')
   );
+  const ibkrLoginEnvJsonPath = path.resolve(
+    process.cwd(),
+    process.env.IBKR_LOGIN_ENV_JSON ?? '/opt/ibkr-runtime/run/ibkr-login.json'
+  );
   const ibkrResendPushScriptPath = path.resolve(
     process.cwd(),
     process.env.IBKR_RESEND_PUSH_SCRIPT_PATH ?? path.join('scripts', 'ibkr-resend-push-vps.sh')
@@ -1651,6 +1668,36 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   );
   const ibkrAutoLoginState = {
     lastAttemptAtMs: 0
+  };
+  const readIbkrCredentialStatus = async (): Promise<{
+    autoLoginEnabled: boolean;
+    credentialFilePresent: boolean;
+    usernameConfigured: boolean;
+    passwordConfigured: boolean;
+    ready: boolean;
+  }> => {
+    const credentialFilePresent = await fileExists(ibkrLoginEnvJsonPath);
+    let usernameConfigured = false;
+    let passwordConfigured = false;
+
+    if (credentialFilePresent) {
+      try {
+        const payload = JSON.parse(await fs.readFile(ibkrLoginEnvJsonPath, 'utf8')) as Record<string, unknown>;
+        usernameConfigured = typeof payload.username === 'string' && payload.username.trim().length > 0;
+        passwordConfigured = typeof payload.password === 'string' && payload.password.length > 0;
+      } catch {
+        usernameConfigured = false;
+        passwordConfigured = false;
+      }
+    }
+
+    return {
+      autoLoginEnabled: ibkrAutoLoginEnabled,
+      credentialFilePresent,
+      usernameConfigured,
+      passwordConfigured,
+      ready: ibkrAutoLoginEnabled && credentialFilePresent && usernameConfigured && passwordConfigured
+    };
   };
   const runIbkrScript = async (
     scriptPath: string,
@@ -4341,8 +4388,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(-1);
+    const ibkrCredentialStatus = await readIbkrCredentialStatus();
     const ibkrRecovery = {
       autoLoginEnabled: ibkrAutoLoginEnabled,
+      autoLoginReady: ibkrCredentialStatus.ready,
+      credentialFilePresent: ibkrCredentialStatus.credentialFilePresent,
+      usernameConfigured: ibkrCredentialStatus.usernameConfigured,
+      passwordConfigured: ibkrCredentialStatus.passwordConfigured,
       pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,
       lastLoginRequiredAt:
         ibkrReconnectState.lastLoginRequiredAtMs > 0 ? new Date(ibkrReconnectState.lastLoginRequiredAtMs).toISOString() : undefined,
@@ -4350,6 +4402,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined,
       lastReminderAt:
         ibkrReconnectState.lastFallbackAtMs > 0 ? new Date(ibkrReconnectState.lastFallbackAtMs).toISOString() : undefined,
+      consoleUrl: ibkrConsoleUrl,
       lastResortWebsiteUrl: ibkrMobileUrl,
       websiteFallbackUrl: ibkrMobileUrl,
       latestArtifacts: [

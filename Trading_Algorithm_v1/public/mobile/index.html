@@ -1249,8 +1249,29 @@
             <p id="diagIbkrRecoveryHint" class="recovery-copy">Waiting for live status.</p>
             <div class="recovery-actions">
               <button id="ibkrRetryLogin" class="chip-btn secondary-btn" type="button">Run Full Recovery</button>
+              <button id="ibkrOpenConsole" class="chip-btn secondary-btn" type="button">Open Gateway Console</button>
               <button id="ibkrResendPush" class="chip-btn secondary-btn" type="button">Run Broker Fallback</button>
               <button id="ibkrWebsiteFallback" class="chip-btn secondary-btn" type="button">Last-Resort Website</button>
+            </div>
+            <div id="ibkrConsoleDock" class="ibkr-console-dock" hidden>
+              <div class="ibkr-console-head">
+                <div>
+                  <p class="stat-label">Phone Gateway Console</p>
+                  <p id="ibkrConsoleHint" class="hint">Complete the IBKR Gateway login here, then approve the official IBKR Mobile prompt.</p>
+                </div>
+                <div class="ibkr-console-actions">
+                  <button id="ibkrConsoleReload" class="chip-btn secondary-btn" type="button">Reload</button>
+                  <button id="ibkrConsoleClose" class="chip-btn secondary-btn" type="button">Close</button>
+                </div>
+              </div>
+              <iframe
+                id="ibkrConsoleFrame"
+                class="ibkr-console-frame"
+                title="IBKR Gateway console"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                allow="clipboard-read; clipboard-write"
+              ></iframe>
             </div>
             <div class="recovery-evidence">
               <div class="recovery-evidence-head">
