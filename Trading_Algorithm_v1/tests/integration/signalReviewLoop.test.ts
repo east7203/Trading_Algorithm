@@ -149,6 +149,7 @@ const buildReplayLearningAlert = (): SignalAlert => ({
   side: 'LONG',
   detectedAt: '2026-01-06T14:35:00.000Z',
   rankingModelId: 'ranking-model-test',
+  source: 'PAPER_AUTONOMY',
   title: 'NQ autonomous replay test',
   summary: 'Autonomous breakout aligned with research trend.',
   candidate: {

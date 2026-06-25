@@ -95,6 +95,42 @@ const buildCandidate = (): SetupCandidate => ({
   generatedAt: new Date().toISOString()
 });
 
+const buildLossRecord = (index: number): TradeLearningRecord =>
+  buildRecord(index, {
+    review: {
+      reviewStatus: 'COMPLETED',
+      outcome: 'WOULD_LOSE',
+      effectiveOutcome: 'WOULD_LOSE',
+      effectiveOutcomeSource: 'AUTO',
+      notes: 'Auto-label found stop loss before target.'
+    },
+    paperTrade: {
+      paperTradeId: `loss-paper-${index}`,
+      status: 'CLOSED',
+      source: 'paper-autonomy',
+      submittedAt: buildRecentTimestamp(index),
+      expiresAt: buildRecentTimestamp(index),
+      filledAt: buildRecentTimestamp(index),
+      filledPrice: 20000,
+      closedAt: buildRecentTimestamp(index, 4),
+      exitPrice: 19992,
+      exitReason: 'STOP_LOSS',
+      realizedPnl: -100,
+      realizedR: -1,
+      quantity: 1,
+      riskPct: 0.25,
+      riskAmount: 100
+    },
+    reasoning: {
+      alertSummary: 'NQ long breakout retest.',
+      reviewNotes: 'Auto-label found stop loss before target.',
+      passReasons: [],
+      failReasons: ['stop loss hit first'],
+      guardrailCodes: [],
+      why: ['stop loss hit first']
+    }
+  });
+
 describe('self learning service', () => {
   it('stays neutral until enough resolved records exist', async () => {
     const service = new SelfLearningService({
@@ -286,6 +322,34 @@ describe('self learning service', () => {
     expect(autonomyAdjustment.scoreAdjustment).toBeLessThan(0);
     expect(service.status().signalProfile.resolvedRecords).toBe(5);
     expect(service.status().autonomyProfile.resolvedRecords).toBe(5);
+    service.stop();
+  });
+
+  it('suppresses manual setup patterns after repeated resolved losses', async () => {
+    const service = new SelfLearningService({
+      enabled: true,
+      refreshIntervalMs: 60_000,
+      minResolvedRecords: 4,
+      minBucketSamples: 3,
+      recentWindowDays: 30,
+      maxReasonBuckets: 6,
+      recordsProvider: async () => Array.from({ length: 6 }, (_, index) => buildLossRecord(index + 80))
+    });
+
+    await service.start();
+
+    const status = service.status();
+    const setupSymbolHealth = status.manualPatternHealth.find(
+      (entry) => entry.key === 'NY_BREAK_RETEST_MOMENTUM|NQ'
+    );
+    expect(setupSymbolHealth?.state).toBe('DISABLED');
+
+    const signalAdjustment = service.scoreSignalCandidate(buildCandidate());
+    expect(signalAdjustment.action).toBe('SUPPRESS');
+    expect(signalAdjustment.patternState).toBe('DISABLED');
+    expect(signalAdjustment.suppress).toBe(true);
+    expect(signalAdjustment.scoreAdjustment).toBeLessThanOrEqual(-6);
+    expect(signalAdjustment.summary).toContain('disabled');
     service.stop();
   });
 });

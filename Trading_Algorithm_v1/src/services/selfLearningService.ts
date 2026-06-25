@@ -72,6 +72,7 @@ export interface SelfLearningStatus {
   profile: SelfLearningProfile;
   signalProfile: SelfLearningProfile;
   autonomyProfile: SelfLearningProfile;
+  manualPatternHealth: SelfLearningPatternHealth[];
 }
 
 export interface SelfLearningSignalAdjustment {
@@ -79,6 +80,9 @@ export interface SelfLearningSignalAdjustment {
   confidence: number;
   summary: string;
   components: string[];
+  action: 'BOOST' | 'NEUTRAL' | 'PENALIZE' | 'SUPPRESS';
+  patternState: SelfLearningPatternState;
+  suppress: boolean;
 }
 
 export interface SelfLearningAutonomyAdjustment {
@@ -97,6 +101,27 @@ export interface SelfLearningConfig {
   recentWindowDays: number;
   maxReasonBuckets: number;
   recordsProvider: () => Promise<TradeLearningRecord[]> | TradeLearningRecord[];
+}
+
+export type SelfLearningPatternState = 'PROVEN' | 'PROMISING' | 'LEARNING' | 'PROBATION' | 'DISABLED';
+
+export interface SelfLearningPatternHealth {
+  key: string;
+  label: string;
+  scope: 'SETUP_SYMBOL' | 'SETUP';
+  setupType: string;
+  symbol?: SymbolCode;
+  state: SelfLearningPatternState;
+  resolved: number;
+  wins: number;
+  losses: number;
+  breakeven: number;
+  winRate: number;
+  avgR: number;
+  scoreAdjustment: number;
+  confidence: number;
+  riskMultiplier: number;
+  reason: string;
 }
 
 type LearningOutcome = 'WIN' | 'LOSS' | 'FLAT';
@@ -252,6 +277,77 @@ const formatComponent = (label: string, bucket: SelfLearningBucket): string => {
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => [...new Set(values.filter((value): value is string => Boolean(value)))];
 
+const parsePatternKey = (
+  key: string,
+  scope: SelfLearningPatternHealth['scope']
+): Pick<SelfLearningPatternHealth, 'setupType' | 'symbol'> => {
+  if (scope === 'SETUP_SYMBOL') {
+    const [setupType, symbol] = key.split('|');
+    return {
+      setupType: setupType ?? key,
+      symbol: symbol as SymbolCode | undefined
+    };
+  }
+  return {
+    setupType: key
+  };
+};
+
+const classifyPatternState = (
+  bucket: SelfLearningBucket,
+  minBucketSamples: number
+): SelfLearningPatternState => {
+  if (bucket.resolved < minBucketSamples) {
+    return 'LEARNING';
+  }
+  if (bucket.resolved >= minBucketSamples * 2 && bucket.winRate <= 0.28 && bucket.avgR < 0) {
+    return 'DISABLED';
+  }
+  if (bucket.winRate <= 0.4 || bucket.scoreAdjustment <= -1) {
+    return 'PROBATION';
+  }
+  if (bucket.winRate >= 0.62 && bucket.avgR > 0 && bucket.scoreAdjustment >= 1) {
+    return 'PROVEN';
+  }
+  if (bucket.scoreAdjustment > 0) {
+    return 'PROMISING';
+  }
+  return 'LEARNING';
+};
+
+const describePatternHealth = (bucket: SelfLearningBucket, state: SelfLearningPatternState): string => {
+  const rate = `${Math.round(bucket.winRate * 100)}%`;
+  if (state === 'DISABLED') {
+    return `Disabled for now: ${rate} win rate and ${bucket.avgR.toFixed(2)}R average over ${bucket.resolved} resolved trades.`;
+  }
+  if (state === 'PROBATION') {
+    return `On probation: ${rate} win rate over ${bucket.resolved} resolved trades, so future alerts need stronger evidence.`;
+  }
+  if (state === 'PROVEN') {
+    return `Proven edge: ${rate} win rate and ${bucket.avgR.toFixed(2)}R average over ${bucket.resolved} resolved trades.`;
+  }
+  if (state === 'PROMISING') {
+    return `Promising edge: ${rate} win rate over ${bucket.resolved} resolved trades.`;
+  }
+  return `Still learning: ${bucket.resolved} resolved trade${bucket.resolved === 1 ? '' : 's'} collected.`;
+};
+
+const patternPriority = (state: SelfLearningPatternState): number => {
+  if (state === 'DISABLED') {
+    return 5;
+  }
+  if (state === 'PROBATION') {
+    return 4;
+  }
+  if (state === 'PROVEN') {
+    return 3;
+  }
+  if (state === 'PROMISING') {
+    return 2;
+  }
+  return 1;
+};
+
 export class SelfLearningService {
   private started = false;
   private interval: NodeJS.Timeout | undefined;
@@ -340,7 +436,8 @@ export class SelfLearningService {
       recentWindowDays: this.config.recentWindowDays,
       profile: structuredClone(this.profile),
       signalProfile: structuredClone(this.signalProfile),
-      autonomyProfile: structuredClone(this.autonomyProfile)
+      autonomyProfile: structuredClone(this.autonomyProfile),
+      manualPatternHealth: this.buildManualPatternHealth()
     };
   }
 
@@ -351,7 +448,10 @@ export class SelfLearningService {
         scoreAdjustment: 0,
         confidence: 0,
         summary: 'Self-learning is still gathering enough resolved trades.',
-        components: []
+        components: [],
+        action: 'NEUTRAL',
+        patternState: 'LEARNING',
+        suppress: false
       };
     }
 
@@ -378,26 +478,51 @@ export class SelfLearningService {
         scoreAdjustment: 0,
         confidence: 0,
         summary: 'Self-learning does not have a strong edge for this setup yet.',
-        components: []
+        components: [],
+        action: 'NEUTRAL',
+        patternState: 'LEARNING',
+        suppress: false
       };
     }
 
+    const healthEntries = this.buildManualPatternHealth();
+    const directHealth = healthEntries.find((entry) => entry.scope === 'SETUP_SYMBOL' && entry.key === setupSymbolKey)
+      ?? healthEntries.find((entry) => entry.scope === 'SETUP' && entry.key === candidate.setupType)
+      ?? null;
+    const suppress = directHealth?.state === 'DISABLED';
+    const statePenalty = directHealth?.state === 'PROBATION' ? -2 : suppress ? -8 : 0;
+    const rawScoreAdjustment =
+      components.reduce((sum, entry) => sum + ((entry.bucket?.scoreAdjustment ?? 0) * entry.weight), 0) +
+      statePenalty;
     const scoreAdjustment = round(
       clamp(
-        components.reduce((sum, entry) => sum + ((entry.bucket?.scoreAdjustment ?? 0) * entry.weight), 0),
-        -4,
-        4
+        rawScoreAdjustment,
+        -8,
+        6
       ),
       2
     );
     const confidence = round(average(components.map((entry) => entry.bucket?.confidence ?? 0)), 2);
     const componentText = components.map((entry) => formatComponent(entry.label, entry.bucket as SelfLearningBucket));
+    if (directHealth) {
+      componentText.unshift(`${directHealth.scope === 'SETUP_SYMBOL' ? 'pattern' : 'setup'} ${directHealth.state.toLowerCase()}: ${directHealth.reason}`);
+    }
+    const action: SelfLearningSignalAdjustment['action'] = suppress
+      ? 'SUPPRESS'
+      : scoreAdjustment <= -1
+        ? 'PENALIZE'
+        : scoreAdjustment >= 1
+          ? 'BOOST'
+          : 'NEUTRAL';
 
     return {
       scoreAdjustment,
       confidence,
       summary: componentText.join(' • '),
-      components: componentText
+      components: componentText,
+      action,
+      patternState: directHealth?.state ?? 'LEARNING',
+      suppress
     };
   }
 
@@ -454,6 +579,45 @@ export class SelfLearningService {
       summary: componentText.join(' • '),
       components: componentText
     };
+  }
+
+  private buildManualPatternHealth(): SelfLearningPatternHealth[] {
+    const fromBucket = (
+      bucket: SelfLearningBucket,
+      scope: SelfLearningPatternHealth['scope']
+    ): SelfLearningPatternHealth => {
+      const state = classifyPatternState(bucket, this.config.minBucketSamples);
+      const parsed = parsePatternKey(bucket.key, scope);
+      return {
+        key: bucket.key,
+        label: bucket.label,
+        scope,
+        setupType: parsed.setupType,
+        symbol: parsed.symbol,
+        state,
+        resolved: bucket.resolved,
+        wins: bucket.wins,
+        losses: bucket.losses,
+        breakeven: bucket.breakeven,
+        winRate: bucket.winRate,
+        avgR: bucket.avgR,
+        scoreAdjustment: bucket.scoreAdjustment,
+        confidence: bucket.confidence,
+        riskMultiplier: bucket.riskMultiplier,
+        reason: describePatternHealth(bucket, state)
+      };
+    };
+
+    return [
+      ...this.signalProfile.bySetupSymbol.map((bucket) => fromBucket(bucket, 'SETUP_SYMBOL')),
+      ...this.signalProfile.bySetup.map((bucket) => fromBucket(bucket, 'SETUP'))
+    ].sort(
+      (left, right) =>
+        patternPriority(right.state) - patternPriority(left.state) ||
+        Math.abs(right.scoreAdjustment) - Math.abs(left.scoreAdjustment) ||
+        right.resolved - left.resolved ||
+        left.key.localeCompare(right.key)
+    );
   }
 
   private buildProfile(records: TradeLearningRecord[]): SelfLearningProfile {

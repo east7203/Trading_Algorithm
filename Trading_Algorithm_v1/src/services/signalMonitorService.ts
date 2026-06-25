@@ -131,6 +131,7 @@ export type SignalScanReasonCode =
   | 'INSUFFICIENT_TIMEFRAME_CANDLES'
   | 'INSUFFICIENT_SESSION_BARS'
   | 'NO_SETUP_MATCH'
+  | 'LEARNING_SUPPRESSED_PATTERN'
   | 'BELOW_SCORE_THRESHOLD'
   | 'DUPLICATE_ALERT'
   | 'ALERT_READY';
@@ -1807,9 +1808,23 @@ export class SignalMonitorService {
       const researchAiContext = deriveResearchAiContext(candidate, researchStatus);
       const selfLearningContext = this.getSelfLearningSignalAdjustment?.(candidate) ?? null;
       const selfLearningAiContextScore = selfLearningContext?.scoreAdjustment ?? 0;
+      const selfLearningSuppressed = selfLearningContext?.suppress === true;
+      const selfLearningSuppressionReason =
+        selfLearningContext?.summary ?? 'Self-learning suppressed this pattern after repeated poor outcomes.';
+      const eligibility = selfLearningSuppressed
+        ? {
+            ...candidate.eligibility,
+            passed: false,
+            failReasons: [
+              ...candidate.eligibility.failReasons,
+              selfLearningSuppressionReason
+            ]
+          }
+        : candidate.eligibility;
 
       return {
         ...candidate,
+        eligibility,
         metadata: {
           ...candidate.metadata,
           regimeAiContextScore,
@@ -1819,6 +1834,9 @@ export class SignalMonitorService {
           selfLearningConfidence: selfLearningContext?.confidence ?? 0,
           selfLearningSummary: selfLearningContext?.summary,
           selfLearningComponents: selfLearningContext?.components ?? [],
+          selfLearningAction: selfLearningContext?.action,
+          selfLearningPatternState: selfLearningContext?.patternState,
+          selfLearningSuppressed,
           researchTrendDirection: researchAiContext.direction,
           researchTrendConfidence: researchAiContext.confidence,
           researchTrendLeadSymbol: researchAiContext.leadSymbol,
@@ -1858,6 +1876,20 @@ export class SignalMonitorService {
 
     const activeModel = this.rankingModelStore.get();
     const ranked = rankCandidates({ candidates: contextualCandidates }, activeModel);
+    const suppressedByLearning = contextualCandidates.filter((candidate) =>
+      candidate.metadata.selfLearningSuppressed === true
+    );
+    if (ranked.length === 0 && suppressedByLearning.length > 0) {
+      return noAlertResult(
+        'LEARNING_SUPPRESSED_PATTERN',
+        `${symbol} found ${suppressedByLearning.length} setup candidate${suppressedByLearning.length === 1 ? '' : 's'}, but self-learning suppressed ${suppressedByLearning.length === 1 ? 'it' : 'them'} after poor resolved outcomes.`,
+        {
+          candidateCount: contextualCandidates.length,
+          topSetupType: suppressedByLearning[0]?.setupType,
+          status: 'SCANNED'
+        }
+      );
+    }
     const rankedCandidatesWithRisk = ranked.map((candidate) => {
       const riskDecision = evaluateRisk(
         {
