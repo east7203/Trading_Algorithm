@@ -66,6 +66,8 @@ describe('TradingEconomicsCalendarClient', () => {
     const second = await client.listUpcomingEvents();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/calendar/country/all/2026-03-20/2026-03-21?');
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('importance=2');
     expect(first).toHaveLength(2);
     expect(second).toHaveLength(2);
     expect(first[0]).toMatchObject({

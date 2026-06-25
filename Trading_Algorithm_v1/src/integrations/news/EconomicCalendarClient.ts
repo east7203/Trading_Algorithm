@@ -163,12 +163,19 @@ const buildEventWindow = (lookbackHours: number, lookaheadHours: number, nowMs: 
 const buildTradingEconomicsUrl = (
   baseUrl: string,
   apiKey: string,
+  countries: string[],
+  minImportance: number,
   startDate: string,
   endDate: string
 ): string => {
-  const url = new URL(`/calendar/country/All/${startDate}/${endDate}`, baseUrl);
+  const countrySegment =
+    countries[0] === 'All'
+      ? 'all'
+      : countries.map((country) => encodeURIComponent(country.trim().toLowerCase())).join(',');
+  const url = new URL(`/calendar/country/${countrySegment}/${startDate}/${endDate}`, baseUrl);
   url.searchParams.set('c', apiKey);
   url.searchParams.set('f', 'json');
+  url.searchParams.set('importance', String(minImportance));
   return url.toString();
 };
 
@@ -440,7 +447,7 @@ export class TradingEconomicsCalendarClient implements EconomicCalendarClient {
 
   private async refresh(nowMs: number): Promise<NewsEvent[]> {
     const { startDate, endDate } = buildEventWindow(this.lookbackHours, this.lookaheadHours, nowMs);
-    const url = buildTradingEconomicsUrl(this.baseUrl, this.apiKey, startDate, endDate);
+    const url = buildTradingEconomicsUrl(this.baseUrl, this.apiKey, this.countries, this.minImportance, startDate, endDate);
     const signal = AbortSignal.timeout(this.requestTimeoutMs);
     const response = await fetch(url, {
       method: 'GET',
