@@ -10636,6 +10636,8 @@ const bindStatusRecoveryControls = () => {
       setStatus(
         response?.setupRequired
           ? `Status: IBKR Mobile approval cannot be triggered yet. ${response.message || 'Server auto-login is not configured.'}`
+          : response?.approvalPending
+          ? response.message || 'Status: IBKR Mobile approval was requested. Waiting for IBKR Gateway to finish authenticating and open market-data access.'
           : response?.recoveryPending
           ? 'Status: full recovery started. Watch for the official IBKR Mobile notification and approve it on this phone, then return here.'
           : response?.ok
@@ -10649,10 +10651,10 @@ const bindStatusRecoveryControls = () => {
               : reloginAttempt?.ok
                 ? 'Status: Gateway re-login prompt advanced. Watch for the official IBKR Mobile approval notification.'
                 : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.',
-        !(response?.ok || response?.recoveryPending)
+        !(response?.ok || response?.recoveryPending || response?.approvalPending)
       );
       await loadDiagnostics();
-      if (response?.recoveryPending) {
+      if (response?.recoveryPending || response?.approvalPending) {
         [5000, 15000, 30000, 60000].forEach((delay) => {
           window.setTimeout(() => {
             void loadDiagnostics();

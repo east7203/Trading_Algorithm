@@ -294,6 +294,8 @@ interface IbkrRecoveryAttemptResult {
   reloginAttempt?: IbkrLoginTriggerResult;
   resendAttempt: IbkrLoginTriggerResult;
   apiReadiness?: IbkrApiReadinessResult;
+  approvalPending?: boolean;
+  approvalHoldUntil?: string;
 }
 
 interface IbkrApiReadinessResult {
@@ -1639,6 +1641,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     parseIntEnv('IBKR_RECONNECT_FALLBACK_DELAY_SECONDS', 45, 5, 600) * 1000;
   const ibkrReconnectReminderIntervalMs =
     parseIntEnv('IBKR_RECONNECT_REMINDER_MINUTES', 60, 1, 240) * 60 * 1000;
+  const ibkrManualApprovalGraceMs =
+    parseIntEnv('IBKR_MANUAL_APPROVAL_GRACE_SECONDS', 180, 30, 900) * 1000;
   const ibkrReconnectReminderLabel = (() => {
     const totalMinutes = Math.round(ibkrReconnectReminderIntervalMs / (60 * 1000));
     if (totalMinutes % 60 === 0) {
@@ -1669,6 +1673,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   const ibkrAutoLoginState = {
     lastAttemptAtMs: 0
   };
+  let manualIbkrApprovalHoldUntilMs = 0;
+  const isManualIbkrRecoverySource = (source: string): boolean =>
+    source.trim().toLowerCase().startsWith('manual-');
+  const getManualIbkrApprovalHoldRemainingMs = (): number =>
+    Math.max(0, manualIbkrApprovalHoldUntilMs - Date.now());
+  const startManualIbkrApprovalHold = (): string => {
+    manualIbkrApprovalHoldUntilMs = Math.max(manualIbkrApprovalHoldUntilMs, Date.now() + ibkrManualApprovalGraceMs);
+    return new Date(manualIbkrApprovalHoldUntilMs).toISOString();
+  };
+  const shouldDeferAutomaticIbkrRecovery = (source: string): boolean =>
+    !isManualIbkrRecoverySource(source) && getManualIbkrApprovalHoldRemainingMs() > 0;
   const ibkrLoginTriggerInjected = Boolean(options.ibkrLoginTrigger);
   const readIbkrCredentialStatus = async (): Promise<{
     autoLoginEnabled: boolean;
@@ -1817,7 +1832,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     options.ibkrApiReadinessCheck ??
     (async (): Promise<IbkrApiReadinessResult> => {
       const ports = await readIbkrBridgePortCandidates();
-      const waitMs = parseIntEnv('IBKR_RECOVERY_VERIFY_MS', 20_000, 1_000, 120_000);
+      const waitMs = parseIntEnv('IBKR_RECOVERY_VERIFY_MS', 90_000, 1_000, 180_000);
       const pollMs = parseIntEnv('IBKR_RECOVERY_VERIFY_POLL_MS', 1_000, 250, 10_000);
       const socketTimeoutMs = parseIntEnv('IBKR_RECOVERY_SOCKET_TIMEOUT_MS', 750, 100, 5_000);
       const deadline = Date.now() + waitMs;
@@ -1935,6 +1950,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       if (attempt.reason === 'cooldown') {
         return 'The server skipped the login retry because the recovery flow is cooling down.';
       }
+      if (attempt.reason === 'manual-approval-hold') {
+        return 'The server skipped the automatic login retry because it is waiting for your manual IBKR Mobile approval to finish.';
+      }
       if (attempt.reason === 'disabled') {
         return 'The server skipped the login retry because IBKR auto-login is disabled.';
       }
@@ -1973,6 +1991,9 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         : 'The server requested the official IBKR Mobile approval notification again.';
     }
     if (attempt.skipped) {
+      if (attempt.reason === 'manual-approval-hold') {
+        return 'The server skipped the automatic approval resend because a manual IBKR Mobile approval is already in progress.';
+      }
       return 'The server skipped the IBKR Mobile approval notification resend.';
     }
 
@@ -2055,6 +2076,21 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     source: string,
     recoveryOptions: { ignoreCooldown?: boolean; verifyApi?: boolean } = {}
   ): Promise<IbkrRecoveryAttemptResult> => {
+    if (shouldDeferAutomaticIbkrRecovery(source)) {
+      const approvalHoldUntil = new Date(manualIbkrApprovalHoldUntilMs).toISOString();
+      const skippedAttempt: IbkrLoginTriggerResult = {
+        ok: false,
+        skipped: true,
+        reason: 'manual-approval-hold'
+      };
+      return {
+        loginAttempt: skippedAttempt,
+        resendAttempt: skippedAttempt,
+        approvalPending: true,
+        approvalHoldUntil
+      };
+    }
+
     const loginAttempt = await runIbkrAutoLogin(source, recoveryOptions);
     const reloginAttempt = loginAttempt.skipped && loginAttempt.reason === 'disabled'
       ? await runIbkrRelogin(`${source}-relogin`)
@@ -2063,11 +2099,19 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const apiReadiness = recoveryOptions.verifyApi
       ? await verifyIbkrApiReadinessAfterRecovery(source)
       : undefined;
+    const approvalPending = Boolean(
+      resendAttempt.ok && apiReadiness && !apiReadiness.ok && apiReadiness.status === 'PORT_CLOSED'
+    );
+    const approvalHoldUntil = isManualIbkrRecoverySource(source) && resendAttempt.ok
+      ? startManualIbkrApprovalHold()
+      : undefined;
     return {
       loginAttempt,
       reloginAttempt,
       resendAttempt,
-      apiReadiness
+      apiReadiness,
+      approvalPending,
+      approvalHoldUntil
     };
   };
   const runIbkrRecoveryAttempt = async (
@@ -2329,6 +2373,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     );
   };
   const runManualIbkrFullRecovery = async (symbols: string[]): Promise<IbkrRecoveryAttemptResult> => {
+    startManualIbkrApprovalHold();
     const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
       ignoreCooldown: true,
       verifyApi: true
@@ -2396,6 +2441,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       return;
     }
     if (ibkrReconnectState.lastFallbackAtMs >= requestedAtMs) {
+      return;
+    }
+    if (shouldDeferAutomaticIbkrRecovery(source)) {
+      const remainingMs = getManualIbkrApprovalHoldRemainingMs();
+      scheduleIbkrReconnectFallback(Date.now(), symbols, source, Math.min(Math.max(remainingMs, 15_000), 60_000));
       return;
     }
 
@@ -5118,6 +5168,28 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       symbols,
       detail: reason
     });
+    if (shouldDeferAutomaticIbkrRecovery(source)) {
+      const approvalHoldUntil = new Date(manualIbkrApprovalHoldUntilMs).toISOString();
+      await appendIbkrReconnectHistory({
+        kind: 'RECOVERY_ATTEMPT',
+        atMs: Date.now(),
+        source,
+        symbols,
+        detail: `Automatic IBKR recovery deferred while waiting for manual IBKR Mobile approval to finish. Hold expires at ${approvalHoldUntil}.`
+      });
+      scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, fallbackDelaySeconds * 1000);
+      return reply.status(202).send({
+        ok: false,
+        recoveryPending: true,
+        approvalPending: true,
+        approvalHoldUntil,
+        source,
+        symbols,
+        detectedAt,
+        reason,
+        message: 'The server is waiting for the manual IBKR Mobile approval to finish before trying another Gateway recovery.'
+      });
+    }
     const { loginAttempt, reloginAttempt, resendAttempt } = await runIbkrRecoveryAttempt(source);
     await recordIbkrRecoveryAttempt(source, symbols, loginAttempt, resendAttempt, reloginAttempt);
     const triggerLine = describeIbkrLoginAttempt(loginAttempt);
@@ -5227,7 +5299,12 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ok,
         recoveryPending: !ok,
         alreadyRunning: true,
-        manualActionRequired: !ok,
+        approvalPending: result.approvalPending,
+        approvalHoldUntil: result.approvalHoldUntil,
+        manualActionRequired: !ok && !result.approvalPending,
+        message: result.approvalPending
+          ? 'IBKR Mobile approval was requested. The server is waiting for IBKR Gateway to finish authenticating and open the API.'
+          : undefined,
         result,
         ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
       });
@@ -5267,7 +5344,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const ok = Boolean(result.apiReadiness?.ok);
     return reply.status(ok ? 200 : 202).send({
       ok,
-      manualActionRequired: !ok,
+      recoveryPending: !ok,
+      approvalPending: result.approvalPending,
+      approvalHoldUntil: result.approvalHoldUntil,
+      manualActionRequired: !ok && !result.approvalPending,
+      message: result.approvalPending
+        ? 'IBKR Mobile approval was requested. The server is waiting for IBKR Gateway to finish authenticating and open the API.'
+        : undefined,
       result,
       ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
     });

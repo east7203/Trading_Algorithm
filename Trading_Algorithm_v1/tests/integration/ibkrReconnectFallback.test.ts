@@ -130,7 +130,9 @@ describe('IBKR reconnect fallback notifications', () => {
 
     expect(response.statusCode).toBe(202);
     expect(response.json().ok).toBe(false);
-    expect(response.json().manualActionRequired).toBe(true);
+    expect(response.json().recoveryPending).toBe(true);
+    expect(response.json().approvalPending).toBe(true);
+    expect(response.json().manualActionRequired).toBe(false);
     expect(response.json().result.apiReadiness.ok).toBe(false);
     expect(webPushMessages).toHaveLength(2);
     expect(webPushMessages[0].title).toBe('IBKR recovery request received');
@@ -621,5 +623,5 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(webPushMessages).toHaveLength(1);
     expect(webPushMessages[0].title).toBe('IBKR connected');
     expect(telegramMessages).toHaveLength(0);
-  });
+  }, 10000);
 });

@@ -10276,16 +10276,27 @@ const bindStatusRecoveryControls = () => {
       const loginReason = getRecoveryAttemptReason(loginAttempt);
       const resendReason = getRecoveryAttemptReason(resendAttempt);
       setStatus(
-        response?.ok
+        response?.approvalPending
+          ? response.message || 'Status: IBKR Mobile approval was requested. Waiting for IBKR Gateway to finish authenticating and open market-data access.'
+          : response?.recoveryPending
+            ? 'Status: full recovery started. Watch for the official IBKR Mobile notification and approve it on this phone, then return here.'
+          : response?.ok
           ? 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.'
           : loginAttempt.skipped
             ? `Status: server login retry skipped. ${loginReason || 'Please wait a few seconds and try again.'}`
             : resendAttempt.ok
               ? 'Status: Gateway requested the official IBKR Mobile approval again.'
             : `Status: server recovery did not complete.${loginReason ? ` Login: ${loginReason}.` : ''}${resendReason ? ` Mobile approval: ${resendReason}.` : ''}`,
-        !response?.ok
+        !(response?.ok || response?.recoveryPending || response?.approvalPending)
       );
       await loadDiagnostics();
+      if (response?.recoveryPending || response?.approvalPending) {
+        [5000, 15000, 30000, 60000].forEach((delay) => {
+          window.setTimeout(() => {
+            void loadDiagnostics();
+          }, delay);
+        });
+      }
     } catch (error) {
       setStatus(`Status: retry login failed (${error.message})`, true);
     } finally {
