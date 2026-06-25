@@ -1969,17 +1969,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const artifactSummary = formatIbkrArtifactSummary(resolveIbkrArtifacts(attempt));
     if (attempt.ok) {
       return artifactSummary
-        ? `The server ran the built-in broker fallback controls: resend notification, challenge/response, and QR code. ${artifactSummary}`
-        : 'The server ran the built-in broker fallback controls: resend notification, challenge/response, and QR code.';
+        ? `The server requested the official IBKR Mobile approval notification again. ${artifactSummary}`
+        : 'The server requested the official IBKR Mobile approval notification again.';
     }
     if (attempt.skipped) {
-      return 'The server skipped the broker fallback controls.';
+      return 'The server skipped the IBKR Mobile approval notification resend.';
     }
 
     const detail = compactIbkrRecoveryDetail(attempt.stderr || attempt.stdout || attempt.reason);
     const baseMessage = detail
-      ? `The server could not run the broker fallback controls from the current auth screen: ${detail}`
-      : 'The server could not run the broker fallback controls from the current auth screen.';
+      ? `The server could not request the official IBKR Mobile approval from the current auth screen: ${detail}`
+      : 'The server could not request the official IBKR Mobile approval from the current auth screen.';
     return artifactSummary ? `${baseMessage} ${artifactSummary}` : baseMessage;
   };
   const describeIbkrApiReadiness = (readiness?: IbkrApiReadinessResult): string | undefined => {
@@ -2043,7 +2043,15 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       bridgeRestartAttempt
     };
   };
-  const runIbkrRecoveryAttempt = async (
+  let activeIbkrRecoveryAttempt:
+    | {
+        source: string;
+        startedAtMs: number;
+        promise: Promise<IbkrRecoveryAttemptResult>;
+      }
+    | undefined;
+  const getActiveIbkrRecoveryAttempt = () => activeIbkrRecoveryAttempt;
+  const runIbkrRecoveryAttemptCore = async (
     source: string,
     recoveryOptions: { ignoreCooldown?: boolean; verifyApi?: boolean } = {}
   ): Promise<IbkrRecoveryAttemptResult> => {
@@ -2061,6 +2069,28 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       resendAttempt,
       apiReadiness
     };
+  };
+  const runIbkrRecoveryAttempt = async (
+    source: string,
+    recoveryOptions: { ignoreCooldown?: boolean; verifyApi?: boolean } = {}
+  ): Promise<IbkrRecoveryAttemptResult> => {
+    if (activeIbkrRecoveryAttempt) {
+      return await activeIbkrRecoveryAttempt.promise;
+    }
+
+    const promise = runIbkrRecoveryAttemptCore(source, recoveryOptions);
+    activeIbkrRecoveryAttempt = {
+      source,
+      startedAtMs: Date.now(),
+      promise
+    };
+    try {
+      return await promise;
+    } finally {
+      if (activeIbkrRecoveryAttempt?.promise === promise) {
+        activeIbkrRecoveryAttempt = undefined;
+      }
+    }
   };
   const resolvedOperationalReminderConfig = resolveOperationalReminderConfig(options.operationalReminderConfig);
   const operationalReminderEnabled = options.operationalReminderEnabled ?? resolvedOperationalReminderConfig.enabled;
@@ -5168,6 +5198,41 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       });
     }
 
+    const activeRecovery = getActiveIbkrRecoveryAttempt();
+    if (activeRecovery) {
+      const activeForSeconds = Math.max(0, Math.round((Date.now() - activeRecovery.startedAtMs) / 1000));
+      const detail = `Manual full recovery request received from the app while an IBKR recovery from ${activeRecovery.source} has already been running for ${activeForSeconds}s.`;
+      await appendIbkrReconnectHistory({
+        kind: 'RECOVERY_REQUESTED',
+        atMs: Date.now(),
+        source: 'manual-phone-retry',
+        symbols,
+        detail
+      });
+
+      if (!shouldWaitForManualIbkrRecovery(request)) {
+        return reply.status(202).send({
+          ok: false,
+          recoveryPending: true,
+          alreadyRunning: true,
+          manualActionRequired: false,
+          message: 'An IBKR recovery is already running. Watch for the official IBKR Mobile approval notification, then refresh the status panel.',
+          ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
+        });
+      }
+
+      const result = await activeRecovery.promise;
+      const ok = Boolean(result.apiReadiness?.ok);
+      return reply.status(ok ? 200 : 202).send({
+        ok,
+        recoveryPending: !ok,
+        alreadyRunning: true,
+        manualActionRequired: !ok,
+        result,
+        ibkrRecovery: buildIbkrRecoverySnapshot(credentialStatus)
+      });
+    }
+
     await appendIbkrReconnectHistory({
       kind: 'RECOVERY_REQUESTED',
       atMs: Date.now(),
@@ -5215,13 +5280,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       atMs: Date.now(),
       source: 'manual-phone-resend',
       symbols,
-      detail: 'Manual broker fallback request received from the app.'
+      detail: 'Manual IBKR Mobile approval resend request received from the app.'
     });
     await notifyIbkrRecoveryRequest(
-      'IBKR broker fallback request received',
+      'IBKR Mobile approval resend requested',
       'manual-phone-resend',
       symbols,
-      'The server is starting the broker-only fallback routine now.'
+      'The server is asking IBKR Gateway to request the official mobile approval again.'
     );
     const result = await runIbkrResendPush('manual-phone-resend');
     await appendIbkrReconnectHistory({
@@ -5233,7 +5298,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       artifacts: resolveIbkrArtifacts(result)
     });
     await notifyIbkrRecoveryAttempt(
-      'IBKR broker fallback started',
+      'IBKR Mobile approval resend started',
       'manual-phone-resend',
       symbols,
       {

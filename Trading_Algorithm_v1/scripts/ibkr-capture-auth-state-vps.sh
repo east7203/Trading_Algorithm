@@ -6,6 +6,7 @@ PHASE="${2:-capture}"
 DISPLAY_ID="${IBKR_DISPLAY:-:99}"
 WINDOW_NAME="${IBKR_WINDOW_NAME:-IBKR Gateway}"
 AUTH_DIALOG_PATTERNS="${IBKR_AUTH_DIALOG_PATTERNS:-Second Factor Authentication|Secure Login System|IB Key|Login Notification|Challenge/Response|Confirm Login}"
+STATUS_DIALOG_PATTERNS="${IBKR_STATUS_DIALOG_PATTERNS:-Authenticating|IBKR Gateway|Login}"
 CAPTURE_DIR="${IBKR_CAPTURE_DIR:-/opt/ibkr-runtime/logs/ibkr-auth}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -52,6 +53,36 @@ find_auth_dialog() {
   return 1
 }
 
+find_status_dialog() {
+  local pattern=""
+  local window_id=""
+  local window_name=""
+  IFS='|' read -r -a patterns <<<"${STATUS_DIALOG_PATTERNS}"
+  for pattern in "${patterns[@]}"; do
+    pattern="$(printf '%s' "${pattern}" | xargs)"
+    if [ -z "${pattern}" ]; then
+      continue
+    fi
+    while IFS= read -r window_id; do
+      if [ -z "${window_id}" ]; then
+        continue
+      fi
+      window_name="$(xdotool getwindowname "${window_id}" 2>/dev/null || true)"
+      if [[ "${window_name}" == *"${pattern}"* ]]; then
+        printf '%s\n' "${window_id}"
+        return 0
+      fi
+    done < <(visible_window_ids)
+
+    window_id="$(search_window "${pattern}")"
+    if [ -n "${window_id}" ]; then
+      printf '%s\n' "${window_id}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 SOURCE_SAFE="$(safe_token "${SOURCE}")"
 PHASE_SAFE="$(safe_token "${PHASE}")"
 BASE_PATH="${CAPTURE_DIR}/${TIMESTAMP}-${SOURCE_SAFE}-${PHASE_SAFE}"
@@ -61,7 +92,8 @@ mkdir -p "${CAPTURE_DIR}"
 
 GATEWAY_WINDOW_ID="$(search_window "${WINDOW_NAME}")"
 AUTH_DIALOG_ID="$(find_auth_dialog || true)"
-TARGET_WINDOW_ID="${AUTH_DIALOG_ID:-${GATEWAY_WINDOW_ID}}"
+STATUS_DIALOG_ID="$(find_status_dialog || true)"
+TARGET_WINDOW_ID="${AUTH_DIALOG_ID:-${STATUS_DIALOG_ID:-${GATEWAY_WINDOW_ID}}}"
 
 {
   echo "capturedAt=$(date -u +%FT%TZ)"
@@ -72,6 +104,8 @@ TARGET_WINDOW_ID="${AUTH_DIALOG_ID:-${GATEWAY_WINDOW_ID}}"
   echo "gatewayWindowId=${GATEWAY_WINDOW_ID}"
   echo "authDialogPatterns=${AUTH_DIALOG_PATTERNS}"
   echo "authDialogId=${AUTH_DIALOG_ID}"
+  echo "statusDialogPatterns=${STATUS_DIALOG_PATTERNS}"
+  echo "statusDialogId=${STATUS_DIALOG_ID}"
   echo "targetWindowId=${TARGET_WINDOW_ID}"
   if [ -n "${TARGET_WINDOW_ID}" ]; then
     echo "targetWindowName=$(xdotool getwindowname "${TARGET_WINDOW_ID}" 2>/dev/null || true)"
@@ -96,6 +130,25 @@ if [ -n "${TARGET_WINDOW_ID}" ] && command -v xwd >/dev/null 2>&1; then
 
     echo "ARTIFACT:${XWD_PATH}"
     echo "Captured IBKR auth state at ${XWD_PATH}"
+    exit 0
+  fi
+fi
+
+if command -v xwd >/dev/null 2>&1; then
+  ROOT_XWD_PATH="${BASE_PATH}-root.xwd"
+  if xwd -silent -display "${DISPLAY_ID}" -root -out "${ROOT_XWD_PATH}" >/dev/null 2>&1; then
+    if command -v convert >/dev/null 2>&1; then
+      ROOT_PNG_PATH="${BASE_PATH}-root.png"
+      if convert "${ROOT_XWD_PATH}" "${ROOT_PNG_PATH}" >/dev/null 2>&1; then
+        rm -f "${ROOT_XWD_PATH}"
+        echo "ARTIFACT:${ROOT_PNG_PATH}"
+        echo "Captured IBKR root screen at ${ROOT_PNG_PATH}"
+        exit 0
+      fi
+    fi
+
+    echo "ARTIFACT:${ROOT_XWD_PATH}"
+    echo "Captured IBKR root screen at ${ROOT_XWD_PATH}"
     exit 0
   fi
 fi

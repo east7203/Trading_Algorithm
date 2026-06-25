@@ -10,6 +10,10 @@ WINDOW_WIDTH="${IBKR_WINDOW_WIDTH:-790}"
 WINDOW_HEIGHT="${IBKR_WINDOW_HEIGHT:-610}"
 USERNAME_X="${IBKR_USERNAME_FIELD_X:-300}"
 USERNAME_Y="${IBKR_USERNAME_FIELD_Y:-277}"
+PASSWORD_X="${IBKR_PASSWORD_FIELD_X:-300}"
+PASSWORD_Y="${IBKR_PASSWORD_FIELD_Y:-318}"
+LOGIN_BUTTON_X="${IBKR_LOGIN_BUTTON_X:-417}"
+LOGIN_BUTTON_Y="${IBKR_LOGIN_BUTTON_Y:-389}"
 LOGIN_ENV_JSON="${IBKR_LOGIN_ENV_JSON:-/opt/ibkr-runtime/run/ibkr-login.json}"
 CAPTURE_SCRIPT="${IBKR_CAPTURE_SCRIPT:-/opt/trading-algorithm/scripts/ibkr-capture-auth-state-vps.sh}"
 
@@ -89,7 +93,7 @@ for char in sys.argv[1]:
 PY
     case "${action}" in
       TYPE::*)
-        xdotool type --delay "${TYPE_DELAY_MS}" -- "${action#TYPE::}"
+        xdotool type --clearmodifiers --delay "${TYPE_DELAY_MS}" -- "${action#TYPE::}"
         ;;
       KEY::*)
         xdotool key --clearmodifiers "${action#KEY::}"
@@ -97,6 +101,45 @@ PY
     esac
     sleep 0.03
   done
+}
+
+paste_text() {
+  local value="$1"
+
+  if command -v xclip >/dev/null 2>&1; then
+    (printf '%s' "${value}" | timeout 8s xclip -selection clipboard -loops 1) &
+    local clipboard_pid="$!"
+    sleep 0.2
+    xdotool key --clearmodifiers ctrl+v
+    sleep 0.2
+    wait "${clipboard_pid}" || true
+    return 0
+  fi
+
+  type_text "${value}"
+}
+
+focus_and_clear_field() {
+  local x="$1"
+  local y="$2"
+  local absolute_x=$((WINDOW_LEFT + x))
+  local absolute_y=$((WINDOW_TOP + y))
+
+  xdotool windowactivate --sync "${WINDOW_ID}" || true
+  sleep 0.1
+  xdotool mousemove "${absolute_x}" "${absolute_y}" click 1
+  sleep 0.2
+  xdotool key --clearmodifiers ctrl+a BackSpace
+  sleep 0.2
+}
+
+click_relative() {
+  local x="$1"
+  local y="$2"
+  local absolute_x=$((WINDOW_LEFT + x))
+  local absolute_y=$((WINDOW_TOP + y))
+
+  xdotool mousemove "${absolute_x}" "${absolute_y}" click 1
 }
 
 WINDOW_ID=""
@@ -119,19 +162,21 @@ fi
 xdotool windowactivate --sync "${WINDOW_ID}"
 sleep 1
 xdotool windowsize "${WINDOW_ID}" "${WINDOW_WIDTH}" "${WINDOW_HEIGHT}" || true
+eval "$(
+  xdotool getwindowgeometry --shell "${WINDOW_ID}" \
+    | sed -e 's/^X=/WINDOW_LEFT=/' -e 's/^Y=/WINDOW_TOP=/' -e 's/^WIDTH=/WINDOW_WIDTH_ACTUAL=/' -e 's/^HEIGHT=/WINDOW_HEIGHT_ACTUAL=/'
+)"
 
-# The refreshed IB Gateway login form is more reliable when navigated
-# keyboard-first after focusing the username field.
-xdotool mousemove --window "${WINDOW_ID}" "${USERNAME_X}" "${USERNAME_Y}" click 1
-sleep 0.2
-xdotool key --clearmodifiers ctrl+a BackSpace
-sleep 0.2
+# The refreshed IB Gateway login form is more reliable when each field is
+# explicitly focused. Tab focus can land on hidden controls in some builds.
+focus_and_clear_field "${USERNAME_X}" "${USERNAME_Y}"
 type_text "${IBKR_USERNAME}"
 sleep 0.2
-xdotool key --clearmodifiers Tab
-sleep 0.2
-type_text "${IBKR_PASSWORD}"
+focus_and_clear_field "${PASSWORD_X}" "${PASSWORD_Y}"
+paste_text "${IBKR_PASSWORD}"
 sleep 0.4
+click_relative "${LOGIN_BUTTON_X}" "${LOGIN_BUTTON_Y}" || true
+sleep 0.2
 xdotool key --clearmodifiers Return || true
 
 echo "Submitted IBKR Gateway credentials for ${SOURCE} using window ${WINDOW_ID}"

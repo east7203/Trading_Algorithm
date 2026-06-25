@@ -40,7 +40,7 @@ fi
 
 sleep "${START_DELAY_SECONDS}"
 
-for _ in $(seq 1 "${ATTEMPTS}"); do
+for attempt_index in $(seq 1 "${ATTEMPTS}"); do
   xdotool windowactivate --sync "${WINDOW_ID}" || true
 
   # Advance the "Re-login is required" modal if it appears.
@@ -50,13 +50,13 @@ for _ in $(seq 1 "${ATTEMPTS}"); do
   sleep 0.5
 
   if [ -x "${AUTOLOGIN_SCRIPT}" ]; then
-    "${AUTOLOGIN_SCRIPT}" "recovery-attempt-${_}" || true
+    "${AUTOLOGIN_SCRIPT}" "recovery-attempt-${attempt_index}" || true
   else
     xdotool key --window "${WINDOW_ID}" --clearmodifiers Return || true
   fi
 
   if [ -x "${RESEND_PUSH_SCRIPT}" ]; then
-    "${RESEND_PUSH_SCRIPT}" "recovery-attempt-${_}" || true
+    "${RESEND_PUSH_SCRIPT}" "recovery-attempt-${attempt_index}" || true
   fi
 
   sleep "${POLL_SECONDS}"

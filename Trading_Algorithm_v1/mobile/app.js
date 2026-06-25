@@ -10281,8 +10281,8 @@ const bindStatusRecoveryControls = () => {
           : loginAttempt.skipped
             ? `Status: server login retry skipped. ${loginReason || 'Please wait a few seconds and try again.'}`
             : resendAttempt.ok
-              ? 'Status: server login retry did not resubmit credentials, but Gateway still ran the built-in broker fallback controls.'
-            : `Status: server recovery did not complete.${loginReason ? ` Login: ${loginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`,
+              ? 'Status: Gateway requested the official IBKR Mobile approval again.'
+            : `Status: server recovery did not complete.${loginReason ? ` Login: ${loginReason}.` : ''}${resendReason ? ` Mobile approval: ${resendReason}.` : ''}`,
         !response?.ok
       );
       await loadDiagnostics();
@@ -10297,7 +10297,7 @@ const bindStatusRecoveryControls = () => {
   ibkrResendPushEl?.addEventListener('click', async () => {
     ibkrResendPushEl.disabled = true;
     ibkrResendPushEl.textContent = 'Running...';
-    setStatus('Status: asking the server to run the broker fallback...');
+    setStatus('Status: asking the server to request the official IBKR Mobile approval again...');
     try {
       const response = await apiFetch('/ibkr/recovery/resend-push', {
         method: 'POST'
@@ -10306,8 +10306,8 @@ const bindStatusRecoveryControls = () => {
       const resendReason = getRecoveryAttemptReason(result);
       setStatus(
         result.ok
-          ? 'Status: broker fallback ran on the server. Telegram and the recovery timeline will show the next step.'
-          : `Status: broker fallback could not be triggered.${resendReason ? ` ${resendReason}.` : ''}`,
+          ? 'Status: IBKR Mobile approval was requested again. Watch the IBKR app on this phone.'
+          : `Status: IBKR Mobile approval could not be requested.${resendReason ? ` ${resendReason}.` : ''}`,
         !result.ok
       );
       await loadDiagnostics();

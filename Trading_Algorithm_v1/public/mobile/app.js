@@ -10645,7 +10645,7 @@ const bindStatusRecoveryControls = () => {
           : apiReadiness && !apiReadiness.ok
             ? `Status: full recovery still needs manual action. ${apiReason || 'The IBKR API port is not available yet.'}`
             : response?.manualActionRequired
-              ? `Status: full recovery still needs manual action.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Fallback: ${resendReason}.` : ''}`
+              ? `Status: full recovery still needs manual action.${loginReason ? ` Login: ${loginReason}.` : ''}${reloginReason ? ` Relogin: ${reloginReason}.` : ''}${resendReason ? ` Mobile approval: ${resendReason}.` : ''}`
               : reloginAttempt?.ok
                 ? 'Status: Gateway re-login prompt advanced. Watch for the official IBKR Mobile approval notification.'
                 : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.',
