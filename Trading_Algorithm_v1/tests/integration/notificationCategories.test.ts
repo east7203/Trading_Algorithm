@@ -148,7 +148,7 @@ describe('notification category routing', () => {
 
     const response = await ctx.app.inject({
       method: 'POST',
-      path: '/ibkr/recovery/retry-login'
+      path: '/ibkr/recovery/retry-login?wait=1'
     });
 
     expect(response.statusCode).toBeGreaterThanOrEqual(200);

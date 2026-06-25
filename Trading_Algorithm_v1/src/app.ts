@@ -2238,6 +2238,59 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       { telegramFallback: true }
     );
   };
+  const runManualIbkrFullRecovery = async (symbols: string[]): Promise<IbkrRecoveryAttemptResult> => {
+    const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
+      ignoreCooldown: true,
+      verifyApi: true
+    });
+    await recordIbkrRecoveryAttempt(
+      'manual-phone-retry',
+      symbols,
+      result.loginAttempt,
+      result.resendAttempt,
+      result.reloginAttempt,
+      result.apiReadiness
+    );
+    await notifyIbkrRecoveryAttempt(
+      'IBKR recovery started',
+      'manual-phone-retry',
+      symbols,
+      result.loginAttempt,
+      result.resendAttempt,
+      result.reloginAttempt,
+      result.apiReadiness
+    );
+    return result;
+  };
+  const recordManualIbkrRecoveryFailure = async (symbols: string[], error: unknown): Promise<void> => {
+    const message = error instanceof Error ? error.message : String(error);
+    app.log.error({ err: error }, 'Manual IBKR full recovery failed');
+    try {
+      await appendIbkrReconnectHistory({
+        kind: 'RECOVERY_ATTEMPT',
+        atMs: Date.now(),
+        source: 'manual-phone-retry',
+        symbols,
+        detail: `Manual full recovery failed before IBKR API readiness could be verified: ${message}`
+      });
+    } catch (historyError) {
+      app.log.error({ err: historyError }, 'Failed to record manual IBKR recovery failure');
+    }
+  };
+  const shouldWaitForManualIbkrRecovery = (request: FastifyRequest): boolean => {
+    const query = (request.query as { wait?: string; waitForResult?: string } | undefined) ?? {};
+    const body = (request.body as { waitForResult?: boolean } | undefined) ?? {};
+    return query.wait === '1' || query.wait === 'true' || query.waitForResult === '1' || body.waitForResult === true;
+  };
+  const buildIbkrRecoverySnapshot = () => ({
+    pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,
+    lastLoginRequiredAt:
+      ibkrReconnectState.lastLoginRequiredAtMs > 0
+        ? new Date(ibkrReconnectState.lastLoginRequiredAtMs).toISOString()
+        : undefined,
+    lastConnectedAt:
+      ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined
+  });
 
   const sendIbkrReconnectFallback = async (
     requestedAtMs: number,
@@ -5022,7 +5075,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
-  app.post('/ibkr/recovery/retry-login', async (_request, reply) => {
+  app.post('/ibkr/recovery/retry-login', async (request, reply) => {
     const symbols = [...ibkrReconnectState.lastSymbols];
     await appendIbkrReconnectHistory({
       kind: 'RECOVERY_REQUESTED',
@@ -5031,47 +5084,36 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       symbols,
       detail: 'Manual full recovery request received from the app.'
     });
-    await notifyIbkrRecoveryRequest(
+    const requestNotification = notifyIbkrRecoveryRequest(
       'IBKR recovery request received',
       'manual-phone-retry',
       symbols,
       'The server is starting the full IB Gateway recovery routine.'
     );
-    const result = await runIbkrRecoveryAttempt('manual-phone-retry', {
-      ignoreCooldown: true,
-      verifyApi: true
-    });
-    await recordIbkrRecoveryAttempt(
-      'manual-phone-retry',
-      symbols,
-      result.loginAttempt,
-      result.resendAttempt,
-      result.reloginAttempt,
-      result.apiReadiness
-    );
-    await notifyIbkrRecoveryAttempt(
-      'IBKR recovery started',
-      'manual-phone-retry',
-      symbols,
-      result.loginAttempt,
-      result.resendAttempt,
-      result.reloginAttempt,
-      result.apiReadiness
-    );
+    if (!shouldWaitForManualIbkrRecovery(request)) {
+      void requestNotification.catch((error) => {
+        app.log.warn({ err: error }, 'Failed to send manual IBKR recovery request notification');
+      });
+      void runManualIbkrFullRecovery(symbols).catch((error) => {
+        void recordManualIbkrRecoveryFailure(symbols, error);
+      });
+      return reply.status(202).send({
+        ok: false,
+        recoveryPending: true,
+        manualActionRequired: false,
+        message: 'Full IBKR recovery is running in the background. The recovery timeline will show whether API access becomes ready or still needs manual action.',
+        ibkrRecovery: buildIbkrRecoverySnapshot()
+      });
+    }
+
+    await requestNotification;
+    const result = await runManualIbkrFullRecovery(symbols);
     const ok = Boolean(result.apiReadiness?.ok);
     return reply.status(ok ? 200 : 202).send({
       ok,
       manualActionRequired: !ok,
       result,
-      ibkrRecovery: {
-        pendingReconnect: ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs,
-        lastLoginRequiredAt:
-          ibkrReconnectState.lastLoginRequiredAtMs > 0
-            ? new Date(ibkrReconnectState.lastLoginRequiredAtMs).toISOString()
-            : undefined,
-        lastConnectedAt:
-          ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined
-      }
+      ibkrRecovery: buildIbkrRecoverySnapshot()
     });
   });
 

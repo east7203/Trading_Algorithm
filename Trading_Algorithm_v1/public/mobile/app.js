@@ -10646,7 +10646,9 @@ const bindStatusRecoveryControls = () => {
       const resendReason = getRecoveryAttemptReason(resendAttempt);
       const apiReason = getApiReadinessReason(apiReadiness);
       setStatus(
-        response?.ok
+        response?.recoveryPending
+          ? 'Status: full recovery started. The server is checking IBKR in the background; this page will refresh the recovery timeline automatically.'
+          : response?.ok
           ? apiReadiness?.bridgeRestartAttempt?.ok
             ? 'Status: IBKR API is reachable and the bridge was restarted. Refreshing diagnostics now.'
             : 'Status: IBKR API is reachable. Refreshing diagnostics now.'
@@ -10657,9 +10659,16 @@ const bindStatusRecoveryControls = () => {
               : reloginAttempt?.ok
                 ? 'Status: Gateway re-login prompt advanced. Watch for the IBKR phone prompt; if it still waits, open the console and finish login.'
                 : 'Status: server recovery submitted. Telegram and the recovery timeline will show each server-side step.',
-        !response?.ok
+        !(response?.ok || response?.recoveryPending)
       );
       await loadDiagnostics();
+      if (response?.recoveryPending) {
+        [5000, 15000, 30000, 60000].forEach((delay) => {
+          window.setTimeout(() => {
+            void loadDiagnostics();
+          }, delay);
+        });
+      }
     } catch (error) {
       setStatus(`Status: retry login failed (${error.message})`, true);
     } finally {

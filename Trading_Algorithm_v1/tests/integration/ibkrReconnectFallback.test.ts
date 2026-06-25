@@ -7,6 +7,10 @@ import { RiskConfigStore } from '../../src/stores/riskConfigStore.js';
 
 const contexts: AppContext[] = [];
 const tempDirs: string[] = [];
+const wait = async (durationMs: number): Promise<void> =>
+  await new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -120,7 +124,7 @@ describe('IBKR reconnect fallback notifications', () => {
 
     const response = await ctx.app.inject({
       method: 'POST',
-      path: '/ibkr/recovery/retry-login'
+      path: '/ibkr/recovery/retry-login?wait=1'
     });
 
     expect(response.statusCode).toBe(202);
@@ -152,6 +156,73 @@ describe('IBKR reconnect fallback notifications', () => {
         })
       ])
     );
+  });
+
+  it('starts phone full recovery asynchronously so the app does not wait on IBKR desktop automation', async () => {
+    let releaseLogin: () => void = () => {};
+    const loginGate = new Promise<void>((resolve) => {
+      releaseLogin = resolve;
+    });
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-async-recovery-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      ibkrLoginTrigger: async () => {
+        await loginGate;
+        return { ok: false, skipped: true, reason: 'disabled' };
+      },
+      ibkrReloginTrigger: async () => ({ ok: true }),
+      ibkrResendPushTrigger: async () => ({ ok: false, reason: 'missing-auth-dialog' }),
+      ibkrApiReadinessCheck: async () => ({
+        ok: false,
+        status: 'PORT_CLOSED',
+        checkedAt: '2026-03-15T00:01:00.000Z',
+        detail: 'No IBKR API socket is listening on 127.0.0.1:4001.'
+      }),
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async () => ({ attempted: 1, delivered: 1, removed: 0 })
+      } as never,
+      telegramAlertService: null
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/ibkr/recovery/retry-login'
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      ok: false,
+      recoveryPending: true,
+      manualActionRequired: false
+    });
+    expect(response.json().result).toBeUndefined();
+
+    releaseLogin();
+    let latestRecoveryAttempt: unknown;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const diagnosticsResponse = await ctx.app.inject({
+        method: 'GET',
+        path: '/diagnostics'
+      });
+      latestRecoveryAttempt = diagnosticsResponse
+        .json()
+        .diagnostics.ibkrRecovery.history.find((entry: { kind: string }) => entry.kind === 'RECOVERY_ATTEMPT');
+      if (latestRecoveryAttempt) {
+        break;
+      }
+      await wait(25);
+    }
+
+    expect(latestRecoveryAttempt).toMatchObject({
+      kind: 'RECOVERY_ATTEMPT',
+      detail: expect.stringContaining('No IBKR API socket is listening')
+    });
   });
 
   it('advances the Gateway relogin prompt when auto-login is disabled', async () => {
@@ -194,7 +265,7 @@ describe('IBKR reconnect fallback notifications', () => {
 
     const response = await ctx.app.inject({
       method: 'POST',
-      path: '/ibkr/recovery/retry-login'
+      path: '/ibkr/recovery/retry-login?wait=1'
     });
 
     expect(response.statusCode).toBe(202);
@@ -255,7 +326,7 @@ describe('IBKR reconnect fallback notifications', () => {
 
     const response = await ctx.app.inject({
       method: 'POST',
-      path: '/ibkr/recovery/retry-login'
+      path: '/ibkr/recovery/retry-login?wait=1'
     });
 
     expect(response.statusCode).toBe(200);
@@ -493,7 +564,7 @@ describe('IBKR reconnect fallback notifications', () => {
 
     await ctx.app.inject({
       method: 'POST',
-      path: '/ibkr/recovery/retry-login'
+      path: '/ibkr/recovery/retry-login?wait=1'
     });
 
     webPushMessages.length = 0;
