@@ -687,10 +687,10 @@ const buildReplayLearningImpact = (review) => {
     });
     if (persisted?.paperAutonomy) {
       details.push(
-        `Paper autonomy updated ${persisted.paperAutonomy.thesisLabel} • ${Math.round((persisted.paperAutonomy.thesisHitRate ?? 0) * 100)}% hit over ${persisted.paperAutonomy.thesisClosed ?? 0} closed ideas`
+        `Paper engine updated ${persisted.paperAutonomy.thesisLabel} • ${Math.round((persisted.paperAutonomy.thesisHitRate ?? 0) * 100)}% hit over ${persisted.paperAutonomy.thesisClosed ?? 0} closed ideas`
       );
     } else {
-      details.push(`Paper autonomy logged ${paperAutonomyThesisLabel(autonomyThesis)} from this replay review`);
+      details.push(`Paper engine logged ${paperAutonomyThesisLabel(autonomyThesis)} from this replay review`);
     }
   }
 
@@ -723,7 +723,7 @@ const buildReplayLearningImpact = (review) => {
     engineCount: items.length,
     summary:
       details[0] ??
-      'Save an outcome note with a directional result to feed SMC, Paper Autonomy, and Research.',
+      'Save an outcome note with a directional result to feed SMC, Paper Engine, and Research.',
     details
   };
 };
@@ -1711,7 +1711,7 @@ const paperAutonomyThesisLabel = (thesis) => {
     case 'VOLATILITY_COMPRESSION_RELEASE':
       return 'Volatility Compression Release';
     default:
-      return thesis ?? 'Autonomy thesis';
+      return thesis ?? 'Paper idea';
   }
 };
 
@@ -1972,7 +1972,7 @@ const summarizePaperAutonomyPatternBucket = (items, state) => {
       case 'PROVEN':
         return '0 core patterns right now.';
       case 'EXPERIMENTAL':
-        return '0 exploratory probes right now.';
+        return '0 test patterns right now.';
       case 'PROBATION':
         return '0 cooling-off patterns right now.';
       case 'DISABLED':
@@ -2132,8 +2132,8 @@ const renderPaperAutonomyTransparency = () => {
 
   if (paperPatternStateChipEl) {
     paperPatternStateChipEl.textContent = autonomy?.enabled
-      ? `${patternStates.length} tracked • ${Number(explorationBudget?.usedToday ?? 0)}/${Number(explorationBudget?.allowedToday ?? 0)} probes`
-      : 'Autonomy off';
+      ? `${patternStates.length} tracked • ${Number(explorationBudget?.usedToday ?? 0)}/${Number(explorationBudget?.allowedToday ?? 0)} tests`
+      : 'Paper off';
     paperPatternStateChipEl.className = `chip ${autonomy?.enabled ? 'chip-neutral' : 'chip-neutral'}`;
   }
   if (paperPatternProvenEl) {
@@ -2159,18 +2159,18 @@ const renderPaperAutonomyTransparency = () => {
   if (paperPatternBudgetMetaEl) {
     paperPatternBudgetMetaEl.textContent = autonomy?.enabled
       ? describePaperAutonomyBudgetMeta(explorationBudget)
-      : 'Enable paper autonomy to start tracking how much exploration budget is left.';
+      : 'Turn on paper auto-trading to track test budget.';
   }
   if (paperPatternChangeSummaryEl) {
     paperPatternChangeSummaryEl.textContent = autonomy?.enabled
       ? describePaperAutonomyDailyChangeSummary(dailyChanges)
-      : 'Enable paper autonomy to compare today against the prior session.';
+      : 'Turn on paper auto-trading to compare today against the prior session.';
   }
 
   renderPaperAutonomyPatternCards(
     paperPatternStateListEl,
     patternStates,
-    autonomy?.enabled ? 'No autonomy pattern states yet.' : 'Paper autonomy is disabled on this desk.',
+    autonomy?.enabled ? 'No paper pattern states yet.' : 'Paper auto-trading is off on this desk.',
     'paper'
   );
 };
@@ -2191,18 +2191,18 @@ const renderHomePaperAutonomy = () => {
     homePaperAutonomyHeadlineEl.textContent = latestIdea
       ? `${latestIdea.symbol} ${latestIdea.side} • ${latestIdea.thesisLabel ?? paperAutonomyThesisLabel(latestIdea.thesis)}`
       : bestThesis
-        ? `${bestThesis.label} is leading the autonomy book.`
-        : 'Independent futures engine is scanning the desk window.';
+        ? `${bestThesis.label} is the best paper idea type.`
+        : 'Paper engine is scanning the trading window.';
   }
   if (homePaperAutonomyBestThesisEl) {
     homePaperAutonomyBestThesisEl.textContent = bestThesis
       ? `${bestThesis.label} • ${Math.round(Number(bestThesis.hitRate ?? 0) * 100)}% hit rate • ${fmtNum(bestThesis.avgR ?? 0, 2)}R avg`
-      : 'No autonomy thesis has enough closed trades to score yet.';
+      : 'No paper idea type has enough closed trades to score yet.';
   }
   if (homePaperAutonomyPerformanceEl) {
     homePaperAutonomyPerformanceEl.textContent = autonomy
       ? `${autonomy.openIdeas ?? 0} open • ${autonomy.closedIdeas ?? 0} closed • ${fmtSignedUsd(performance?.realizedPnl ?? 0)} • ${Math.round(Number(autonomy.winRate ?? 0) * 100)}% win`
-      : 'Autonomy performance is loading.';
+      : 'Paper performance is loading.';
   }
   if (homePaperAutonomyStateEl) {
     homePaperAutonomyStateEl.textContent = autonomy
@@ -2212,18 +2212,18 @@ const renderHomePaperAutonomy = () => {
   if (homePaperAutonomyStateNoteEl) {
     homePaperAutonomyStateNoteEl.textContent = latestIdea?.reason
       ?? symbolStatus.find((item) => item.direction === 'BULLISH' || item.direction === 'BEARISH')?.reason
-      ?? `Autonomy trades only inside ${formatDeskWindow(autonomy?.session)}.`;
+      ?? `Paper trades only inside ${formatDeskWindow(autonomy?.session)}.`;
   }
 
   renderPaperAutonomyThesisCards(
     homePaperAutonomyThesesEl,
     autonomy?.activeTheses ?? [],
-    'No active autonomy thesis'
+    'No active paper idea'
   );
   renderPaperAutonomySymbolCards(
     homePaperAutonomySymbolsEl,
     autonomy?.symbolStatus ?? [],
-    'No autonomy symbol bias yet'
+    'No paper market bias yet'
   );
 };
 
@@ -2591,8 +2591,8 @@ const renderPaperConfig = () => {
   if (paperConfigMetaEl) {
     paperConfigMetaEl.textContent = paper?.enabled
       ? autonomyMode === 'UNRESTRICTED'
-        ? `Paper engine is in unrestricted autonomy mode with ${formatPaperTradeCap(maxConcurrentTrades)} concurrent trades. It self-sizes at ${Number(autonomyRiskPct).toFixed(2)}% risk from paper equity, and closed paper results feed the learning loop automatically.`
-        : `Paper engine is following only risk-cleared alerts with ${formatPaperTradeCap(maxConcurrentTrades)} concurrent trades. Closed paper results still feed the learning loop automatically.`
+        ? `Paper engine can test any allowed idea with ${formatPaperTradeCap(maxConcurrentTrades)} open trades. It uses ${Number(autonomyRiskPct).toFixed(2)}% risk per trade, and closed paper results feed learning automatically.`
+        : `Paper engine only follows risk-cleared alerts with ${formatPaperTradeCap(maxConcurrentTrades)} open trades. Closed paper results still feed learning automatically.`
       : 'Paper trading is disabled on this desk.';
   }
 };
@@ -2621,7 +2621,7 @@ const buildSymbolDetailStats = (item, deck) => {
     {
       label: 'Model',
       value: deck.modelId ? deck.modelId.slice(-8) : '--',
-      note: deck.lastRetrainedAt ? `Retrained ${fmtRelativeMinutes(deck.lastRetrainedAt)}` : 'No retrain yet'
+      note: deck.lastRetrainedAt ? `Trained ${fmtRelativeMinutes(deck.lastRetrainedAt)}` : 'No training yet'
     }
   ];
 };
@@ -4733,7 +4733,7 @@ const buildSecurityDiagnosticsSummary = () => {
     `Trusted Client: ${trustedClient.value} — ${trustedClient.note}`,
     `Fallback Policy: ${fallback.value} — ${fallback.note}`,
     `Defaults: ${defaults.value} — ${defaults.note}`,
-    `Last App Delivery: ${lastApp.value} — ${lastApp.note}`,
+    `Last Phone Alert: ${lastApp.value} — ${lastApp.note}`,
     `Telegram Backup: ${lastTelegram.value} — ${lastTelegram.note}`
   ];
   const repairState = getSecurityRepairState();
@@ -7172,7 +7172,7 @@ const sendTestTradeAlert = async () =>
     path: '/notifications/test/alert',
     payload: { symbol: 'NQ' },
     pendingStatus: 'Status: sending manual trade alert test...',
-    successStatus: 'Status: manual trade alert test sent. Check your phone and the Recent Activity log.',
+    successStatus: 'Status: manual trade alert test sent. Check your phone and the Recent Alerts log.',
     failureLabel: 'manual trade alert test',
     refreshAlerts: true
   });
@@ -8306,10 +8306,10 @@ const renderPaperAutonomyDiagnostics = (autonomy) => {
     diagPaperAutonomyBestThesisEl.textContent = '--';
     diagPaperAutonomyLastIdeaEl.textContent = '--';
     if (diagPaperAutonomySymbolsEl) {
-      renderEmpty(diagPaperAutonomySymbolsEl, 'Paper autonomy diagnostics unavailable.');
+      renderEmpty(diagPaperAutonomySymbolsEl, 'Paper engine status unavailable.');
     }
     if (diagPaperAutonomyThesesEl) {
-      renderEmpty(diagPaperAutonomyThesesEl, 'No autonomy thesis activity yet.');
+      renderEmpty(diagPaperAutonomyThesesEl, 'No paper idea activity yet.');
     }
     return;
   }
@@ -8321,20 +8321,20 @@ const renderPaperAutonomyDiagnostics = (autonomy) => {
   diagPaperAutonomyPnlEl.textContent = `${fmtSignedUsd(autonomy.performance?.realizedPnl ?? 0)} • ${fmtNum(autonomy.performance?.realizedR ?? 0, 2)}R`;
   diagPaperAutonomyBestThesisEl.textContent = autonomy.bestThesis
     ? `${autonomy.bestThesis.label} • ${Math.round(Number(autonomy.bestThesis.hitRate ?? 0) * 100)}% • ${fmtNum(autonomy.bestThesis.avgR ?? 0, 2)}R avg`
-    : 'No autonomy thesis has enough closed trades to score yet.';
+    : 'No paper idea type has enough closed trades to score yet.';
   diagPaperAutonomyLastIdeaEl.textContent = latestIdea
     ? `${latestIdea.symbol} ${latestIdea.side} • ${latestIdea.thesisLabel ?? paperAutonomyThesisLabel(latestIdea.thesis)} • ${fmtRelativeMinutes(latestIdea.openedAt)} • ${latestIdea.reason}`
-    : 'No autonomy idea opened yet.';
+    : 'No paper idea opened yet.';
 
   renderPaperAutonomySymbolCards(
     diagPaperAutonomySymbolsEl,
     autonomy.symbolStatus ?? [],
-    'No autonomy symbol bias yet.'
+    'No paper market bias yet.'
   );
   renderPaperAutonomyThesisCards(
     diagPaperAutonomyThesesEl,
     (autonomy.thesisStats ?? []).filter((entry) => (entry.openIdeas ?? entry.open ?? 0) > 0 || (entry.open ?? 0) > 0),
-    'No active autonomy thesis'
+    'No active paper idea'
   );
 };
 
@@ -8423,7 +8423,7 @@ const refreshLearningHealthReport = async () => {
 
 const learningBlockerActions = (blocker) => {
   const haystack = `${blocker?.title ?? ''} ${blocker?.detail ?? ''} ${blocker?.action ?? ''}`.toLowerCase();
-  const actions = [{ type: 'refresh', label: 'Refresh Report' }];
+  const actions = [{ type: 'refresh', label: 'Refresh Check' }];
 
   if (haystack.includes('push')) {
     actions.unshift({ type: 'push', label: 'Re-register Push' });
@@ -8511,13 +8511,13 @@ const renderLearningHealthReport = () => {
   if (!report) {
     if (learningReportChipEl) {
       learningReportChipEl.className = 'chip chip-neutral';
-      learningReportChipEl.textContent = 'Report loading';
+      learningReportChipEl.textContent = 'Checking';
     }
     if (learningReportHeadlineEl) {
-      learningReportHeadlineEl.textContent = 'Waiting for the continual-improvement report.';
+      learningReportHeadlineEl.textContent = 'Checking whether learning needs attention.';
     }
     if (learningReportNoteEl) {
-      learningReportNoteEl.textContent = 'The app will summarize model decisions, precision/recall, feed readiness, and blockers here.';
+      learningReportNoteEl.textContent = 'The app will summarize model choice, accuracy, data readiness, and blockers here.';
     }
     if (learningModelDecisionEl) {
       learningModelDecisionEl.textContent = '--';
@@ -8557,7 +8557,7 @@ const renderLearningHealthReport = () => {
       ? 'Promoted challenger'
       : promotion?.promoted === false
         ? 'Rejected challenger'
-        : 'No decision yet';
+      : 'No model choice yet';
     const deltaText = Number.isFinite(Number(promotion?.delta)) ? ` • Δ ${fmtNum(Number(promotion.delta), 4)}` : '';
     const reasonText = promotion?.reason ? ` • ${promotion.reason}` : '';
     learningModelDecisionEl.textContent = `${decisionLabel}${deltaText}${reasonText}`;
@@ -8575,7 +8575,7 @@ const renderLearningHealthReport = () => {
     const feed = sources.liveFeed ?? {};
     const notifications = sources.notifications ?? {};
     learningDataSourcesEl.textContent =
-      `${feed.status ?? '--'} feed • ${feed.latestBarTimestamp ? fmtRelativeMinutes(feed.latestBarTimestamp) : 'no bar'} • ${notifications.webPushSubscribers ?? 0} push subs`;
+      `${feed.status ?? '--'} data • ${feed.latestBarTimestamp ? fmtRelativeMinutes(feed.latestBarTimestamp) : 'no bar'} • ${notifications.webPushSubscribers ?? 0} phones`;
   }
 
   if (learningNextActionEl) {
@@ -8618,14 +8618,14 @@ const learningBucketMeta = (bucket) =>
   `${bucket.scoreAdjustment > 0 ? '+' : ''}${fmtNum(bucket.scoreAdjustment, 1)} score • ${fmtNum(bucket.winRate * 100, 0)}% win • ${bucket.resolved} resolved`;
 
 const learningBucketNote = (bucket) =>
-  `${fmtNum(bucket.avgR, 2)}R avg • confidence ${fmtNum(bucket.confidence * 100, 0)}% • risk x${fmtNum(bucket.riskMultiplier, 2)}`;
+  `${fmtNum(bucket.avgR, 2)}R avg • confidence ${fmtNum(bucket.confidence * 100, 0)}% • size x${fmtNum(bucket.riskMultiplier, 2)}`;
 
 const manualPatternStateLabels = {
   PROVEN: 'Proven',
   PROMISING: 'Promising',
   LEARNING: 'Learning',
-  PROBATION: 'Probation',
-  DISABLED: 'Disabled'
+  PROBATION: 'Be Careful',
+  DISABLED: 'Paused'
 };
 
 const manualPatternStateLabel = (state) => manualPatternStateLabels[state] ?? 'Learning';
@@ -8710,14 +8710,14 @@ const manualSetupHealthFromBucket = (bucket, source, minBucketSamples = 3) => {
     riskMultiplier: Number(bucket.riskMultiplier) || 1,
     reason:
       state === 'PROVEN'
-        ? 'This setup has the strongest outcome history in the current learning sample.'
+        ? 'This setup has the best recent results.'
         : state === 'PROMISING'
-          ? 'This setup is improving, but it still needs more outcome history before it is fully proven.'
+          ? 'This setup is improving, but it still needs more results.'
           : state === 'PROBATION'
-            ? 'This setup is underperforming, so the engine should require stronger confirmation.'
+            ? 'This setup is underperforming, so alerts should need stronger confirmation.'
             : state === 'DISABLED'
-              ? 'This setup is weak enough that the engine should bench it until performance improves.'
-              : 'This setup is still collecting enough outcomes to earn a stronger ranking.',
+              ? 'This setup is weak enough to pause until results improve.'
+              : 'This setup still needs more outcomes before it earns a stronger ranking.',
     source
   };
 };
@@ -8796,8 +8796,8 @@ const renderSetupRankingList = (container, entries, emptyMessage, mode = 'leader
           ? 'learning-pattern-metric-negative'
           : 'learning-pattern-metric-neutral';
     const sourceNote = entry.source === 'All learned setup history'
-      ? 'Using all learned setup history until manual alert outcomes build up.'
-      : 'Manual alert-engine outcomes.';
+      ? 'Using all setup history until manual alert results build up.'
+      : 'Manual alert results.';
     card.innerHTML = `
       <div class="learning-pattern-head setup-ranking-head">
         <div class="setup-ranking-title-row">
@@ -8825,7 +8825,7 @@ const renderSetupRankingList = (container, entries, emptyMessage, mode = 'leader
           <span class="learning-pattern-metric-value ${scoreClass}">${escapeHtml(`${Number(entry.scoreAdjustment) > 0 ? '+' : ''}${fmtNum(Number(entry.scoreAdjustment) || 0, 1)}`)}</span>
         </div>
       </div>
-      <p class="learning-pattern-note">${escapeHtml(`${sourceNote} Confidence ${fmtNum((Number(entry.confidence) || 0) * 100, 0)}% • Risk x${fmtNum(Number(entry.riskMultiplier) || 1, 2)}`)}</p>
+      <p class="learning-pattern-note">${escapeHtml(`${sourceNote} Confidence ${fmtNum((Number(entry.confidence) || 0) * 100, 0)}% • Size x${fmtNum(Number(entry.riskMultiplier) || 1, 2)}`)}</p>
     `;
     container.appendChild(card);
   });
@@ -8842,7 +8842,7 @@ const getLearningTrend = (profile, status) => {
     return {
       label: 'Flat',
       className: 'chip-neutral',
-      headline: 'The engine is still building a confident recent sample.'
+      headline: 'The app still needs more recent results.'
     };
   }
 
@@ -8853,7 +8853,7 @@ const getLearningTrend = (profile, status) => {
     return {
       label: 'Improving',
       className: 'chip-online',
-      headline: `Recent learning is improving by ${formatPercentPoints(winDelta)}.`
+      headline: `Recent results are improving by ${formatPercentPoints(winDelta)}.`
     };
   }
 
@@ -8861,14 +8861,14 @@ const getLearningTrend = (profile, status) => {
     return {
       label: 'Slipping',
       className: 'chip-offline',
-      headline: `Recent learning is slipping by ${formatPercentPoints(winDelta)}.`
+      headline: `Recent results are slipping by ${formatPercentPoints(winDelta)}.`
     };
   }
 
   return {
     label: 'Flat',
     className: 'chip-neutral',
-    headline: 'Recent learning is flat versus the broader trade history.'
+    headline: 'Recent results are about the same as older results.'
   };
 };
 
@@ -8961,13 +8961,13 @@ const renderLearningAutonomyPlaybook = () => {
   if (!autonomy?.enabled) {
     if (learningAutonomyStateChipEl) {
       learningAutonomyStateChipEl.className = 'chip chip-neutral';
-      learningAutonomyStateChipEl.textContent = 'Autonomy off';
+      learningAutonomyStateChipEl.textContent = 'Paper off';
     }
     if (learningAutonomyHeadlineEl) {
-      learningAutonomyHeadlineEl.textContent = 'Paper autonomy is disabled, so no pattern-state playbook is active.';
+      learningAutonomyHeadlineEl.textContent = 'Paper engine is off.';
     }
     if (learningAutonomyContextEl) {
-      learningAutonomyContextEl.textContent = 'Once the paper engine is enabled and starts taking trades, this section will show which setups are core, exploratory, cooling off, or fully benched.';
+      learningAutonomyContextEl.textContent = 'Turn on paper trading to see which patterns it trusts, tests, reduces, or pauses.';
     }
     if (learningAutonomyBudgetEl) {
       learningAutonomyBudgetEl.textContent = '--';
@@ -8990,33 +8990,33 @@ const renderLearningAutonomyPlaybook = () => {
     renderPaperAutonomyPatternCards(
       learningAutonomyPatternListEl,
       [],
-      'Enable paper autonomy to start building a pattern-state playbook.',
+      'Turn on paper trading to start ranking paper patterns.',
       'attention'
     );
     renderPaperAutonomyDecisionCards(
       learningAutonomyDecisionListEl,
       [],
-      'Enable paper autonomy to start logging autonomy decisions.'
+      'Turn on paper trading to start logging paper choices.'
     );
     return;
   }
 
   if (learningAutonomyStateChipEl) {
     learningAutonomyStateChipEl.className = 'chip chip-neutral';
-    learningAutonomyStateChipEl.textContent = `${patternStates.length} tracked • ${autonomy.openIdeas ?? 0} live • ${Number(explorationBudget?.usedToday ?? 0)}/${Number(explorationBudget?.allowedToday ?? 0)} probes`;
+    learningAutonomyStateChipEl.textContent = `${patternStates.length} tracked • ${autonomy.openIdeas ?? 0} live • ${Number(explorationBudget?.usedToday ?? 0)}/${Number(explorationBudget?.allowedToday ?? 0)} tests`;
   }
   if (learningAutonomyHeadlineEl) {
     learningAutonomyHeadlineEl.textContent = provenLeader
-      ? `${provenLeader.label} is the current core pattern, while ${disabledLeader?.label ?? probationLeader?.label ?? 'weaker setups'} stay under tighter control.`
+      ? `${provenLeader.label} is the best current pattern. ${disabledLeader?.label ?? probationLeader?.label ?? 'Weaker setups'} stay under tighter control.`
       : explorationLeader
-        ? `${explorationLeader.label} is still exploratory while the engine looks for a stronger core edge.`
-        : 'The paper engine is active, but it is still collecting enough evidence to separate core patterns from weak ones.';
+        ? `${explorationLeader.label} is still being tested while the paper engine looks for a stronger edge.`
+        : 'The paper engine is active, but it still needs more results to rank patterns clearly.';
   }
   if (learningAutonomyContextEl) {
     const experimentalCount = patternStates.filter((item) => item.state === 'EXPERIMENTAL').length;
     const probationCount = patternStates.filter((item) => item.state === 'PROBATION').length;
     const disabledCount = patternStates.filter((item) => item.state === 'DISABLED').length;
-    learningAutonomyContextEl.textContent = `${patternStates.length} pattern buckets are being tracked across thesis, symbol, and research direction. ${experimentalCount} are exploratory, ${probationCount} are cooling off, and ${disabledCount} are fully benched until performance improves.`;
+    learningAutonomyContextEl.textContent = `${patternStates.length} pattern groups are tracked. ${experimentalCount} are being tested, ${probationCount} need caution, and ${disabledCount} are paused until results improve.`;
   }
   if (learningAutonomyBudgetEl) {
     learningAutonomyBudgetEl.textContent = describePaperAutonomyBudgetMeta(explorationBudget);
@@ -9037,24 +9037,24 @@ const renderLearningAutonomyPlaybook = () => {
   if (learningAutonomyGuardrailEl) {
     learningAutonomyGuardrailEl.textContent = probationLeader
       ? `${probationLeader.label} • ${probationLeader.reason} • ${probationLeader.cooldownSummary}`
-      : 'No pattern is on probation right now.';
+      : 'No pattern needs caution right now.';
   }
   if (learningAutonomyDisabledEl) {
     learningAutonomyDisabledEl.textContent = disabledLeader
       ? `${disabledLeader.label} • ${disabledLeader.reason} • ${disabledLeader.cooldownSummary}`
-      : 'No pattern is fully disabled right now.';
+      : 'No pattern is paused right now.';
   }
 
   renderPaperAutonomyPatternCards(
     learningAutonomyPatternListEl,
     byAttention,
-    'The paper engine has not logged any pattern-state history yet.',
+    'The paper engine has not logged pattern history yet.',
     'attention'
   );
   renderPaperAutonomyDecisionCards(
     learningAutonomyDecisionListEl,
     getPaperAutonomyRecentDecisions(),
-    'No recent autonomy decisions yet.'
+    'No recent paper choices yet.'
   );
 };
 
@@ -9148,7 +9148,7 @@ const renderReviewInsights = () => {
   if (learningHealthChipEl) {
     if (!diagnostics) {
       learningHealthChipEl.className = 'chip chip-neutral';
-      learningHealthChipEl.textContent = 'Diagnostics loading';
+      learningHealthChipEl.textContent = 'Checking';
     } else if (learningDeskClosed && learningFeedIsDegraded(learningFeedStatus)) {
       learningHealthChipEl.className = 'chip chip-neutral';
       learningHealthChipEl.textContent = 'Window closed';
@@ -9160,29 +9160,29 @@ const renderReviewInsights = () => {
       learningHealthChipEl.textContent = String(learningFeedStatus).toUpperCase() === 'STALE' ? 'Live data stale' : 'Live data blocked';
     } else {
       learningHealthChipEl.className = 'chip chip-neutral';
-      learningHealthChipEl.textContent = 'Watching closely';
+      learningHealthChipEl.textContent = 'Watching';
     }
   }
 
   if (learningHealthHeadlineEl) {
     if (!diagnostics) {
-      learningHealthHeadlineEl.textContent = 'Waiting for live diagnostics to load.';
+      learningHealthHeadlineEl.textContent = 'Checking learning status.';
     } else if (learningDeskClosed && learningFeedIsDegraded(learningFeedStatus)) {
       learningHealthHeadlineEl.textContent = describeDeskWindowReadiness(learningDeskWindow);
     } else if (learningFeedStatus !== 'LIVE') {
       learningHealthHeadlineEl.textContent = learningFeedIssueHeadline(learningFeedStatus, learningIbkrPending);
     } else if (!training?.enabled) {
-      learningHealthHeadlineEl.textContent = 'The learning database is live, but scheduled training is paused.';
+      learningHealthHeadlineEl.textContent = 'Learning data is saved, but training is paused.';
     } else if ((tradeLearning?.totalRecords ?? 0) === 0) {
-      learningHealthHeadlineEl.textContent = 'The engine is live, but the learning database has not built enough history yet.';
+      learningHealthHeadlineEl.textContent = 'The app is live, but it needs more results.';
     } else {
-      learningHealthHeadlineEl.textContent = 'Feed, learning database, and training loop are all healthy.';
+      learningHealthHeadlineEl.textContent = 'Learning is working.';
     }
   }
 
   if (learningHealthNoteEl) {
     if (!diagnostics) {
-      learningHealthNoteEl.textContent = 'The learn tab will flag feed, training, or database issues here before they show up elsewhere.';
+      learningHealthNoteEl.textContent = 'If data, training, or saved results need attention, it will show here.';
     } else {
       const awaitingOutcome = learningCases.awaitingOutcome ?? learningCases.pending ?? 0;
       const learned = learningCases.learned ?? learningCases.completed ?? 0;
@@ -9226,13 +9226,13 @@ const renderReviewInsights = () => {
       reviewSummaryChipEl.textContent = `${pendingCount} awaiting outcome`;
     }
     if (learningProfileChipEl) {
-      learningProfileChipEl.textContent = 'Learning profile unavailable';
+      learningProfileChipEl.textContent = 'Learning unavailable';
     }
     if (learningHeadlineEl) {
-      learningHeadlineEl.textContent = 'The learning engine has not loaded a profile yet.';
+      learningHeadlineEl.textContent = 'No learning profile yet.';
     }
     if (learningContextEl) {
-      learningContextEl.textContent = 'Once resolved trades accumulate, this tab will show what the model is learning from wins, losses, research direction, and autonomy thesis results.';
+      learningContextEl.textContent = 'Once trades have outcomes, this tab will show what works and what to avoid.';
     }
     if (learningResolvedRecordsEl) {
       learningResolvedRecordsEl.textContent = '--';
@@ -9260,8 +9260,8 @@ const renderReviewInsights = () => {
     }
     renderLearningBiasContext();
     renderLearningAutonomyPlaybook();
-    renderSetupRankingList(learningFavoringListEl, [], 'No setup outcome history is available yet.');
-    renderSetupRankingList(learningAvoidingListEl, [], 'No setup is being faded yet.', 'fade');
+    renderSetupRankingList(learningFavoringListEl, [], 'No setup results yet.');
+    renderSetupRankingList(learningAvoidingListEl, [], 'No setup needs caution right now.', 'fade');
     return;
   }
 
@@ -9287,15 +9287,15 @@ const renderReviewInsights = () => {
     } else {
       learningHeadlineEl.textContent = bestEdge
         ? `Lean into ${bestSetup ? setupLabel(bestSetup.setupType) : describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)}`
-        : 'The learning engine is still collecting a clear edge.';
+      : 'Still collecting enough results.';
     }
   }
   if (learningContextEl) {
     learningContextEl.textContent = bestSetup && weakestSetup
-      ? `Setup ranking says ${setupLabel(bestSetup.setupType)} is strongest right now, while ${setupLabel(weakestSetup.setupType)} should be faded. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, with ${pendingCount} case${pendingCount === 1 ? '' : 's'} still awaiting outcome.`
+      ? `Best: ${setupLabel(bestSetup.setupType)}. Caution: ${setupLabel(weakestSetup.setupType)}. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall. ${pendingCount} case${pendingCount === 1 ? '' : 's'} still need${pendingCount === 1 ? 's' : ''} an outcome.`
       : bestSetup
-        ? `Setup ranking says ${setupLabel(bestSetup.setupType)} is strongest right now. ${setupRankingMeta(bestSetup)}. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall.`
-        : `${profile.recentResolvedRecords} resolved trades from the last ${status.recentWindowDays}d are shaping the current edge profile. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall, and ${completedCount} completed case${completedCount === 1 ? '' : 's'} are already in the learning loop.`;
+        ? `Best so far: ${setupLabel(bestSetup.setupType)}. ${setupRankingMeta(bestSetup)}. Recent win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall.`
+        : `${profile.recentResolvedRecords} recent results are shaping the rankings. Win rate is ${fmtNum(profile.recentWinRate * 100, 0)}% vs ${fmtNum(profile.overallWinRate * 100, 0)}% overall. ${completedCount} learned case${completedCount === 1 ? '' : 's'} are in the loop.`;
   }
   if (learningResolvedRecordsEl) {
     learningResolvedRecordsEl.textContent = `${profile.resolvedRecords} resolved • ${profile.recentResolvedRecords} recent • ${profile.totalRecords} total`;
@@ -9306,40 +9306,40 @@ const renderReviewInsights = () => {
       : `${status.refreshIntervalMinutes}m refresh cadence`;
   }
   if (learningTopWinReasonEl) {
-    learningTopWinReasonEl.textContent = topWinReason ? `${topWinReason.key} • ${topWinReason.count}` : 'No consistent win reason yet.';
+    learningTopWinReasonEl.textContent = topWinReason ? `${topWinReason.key} • ${topWinReason.count}` : 'No clear win reason yet.';
   }
   if (learningTopLossReasonEl) {
-    learningTopLossReasonEl.textContent = topLossReason ? `${topLossReason.key} • ${topLossReason.count}` : 'No consistent loss reason yet.';
+    learningTopLossReasonEl.textContent = topLossReason ? `${topLossReason.key} • ${topLossReason.count}` : 'No clear loss reason yet.';
   }
   if (learningBestEdgeEl) {
     learningBestEdgeEl.textContent = bestSetup
       ? setupRankingShortSummary(bestSetup)
       : bestEdge
         ? `${describeLearningBucketLabel(bestEdge.category, bestEdge.bucket)} • ${learningBucketMeta(bestEdge.bucket)}`
-      : 'No positive edge has enough evidence yet.';
+      : 'No setup has enough evidence yet.';
   }
   if (learningBiggestDragEl) {
     learningBiggestDragEl.textContent = weakestSetup
       ? setupRankingShortSummary(weakestSetup)
       : biggestDrag
         ? `${describeLearningBucketLabel(biggestDrag.category, biggestDrag.bucket)} • ${learningBucketMeta(biggestDrag.bucket)}`
-      : 'No negative drag stands out yet.';
+      : 'No weak setup stands out yet.';
   }
   if (learningResearchEdgeEl) {
     learningResearchEdgeEl.textContent = researchEdge
       ? `${describeLearningBucketLabel(researchEdge.category, researchEdge.bucket)} • ${learningBucketMeta(researchEdge.bucket)}`
-      : 'Research direction has not separated itself yet.';
+      : 'Research has no clear edge yet.';
   }
   if (learningAutonomyEdgeEl) {
     learningAutonomyEdgeEl.textContent = autonomyEdge
       ? `${describeLearningBucketLabel(autonomyEdge.category, autonomyEdge.bucket)} • ${learningBucketMeta(autonomyEdge.bucket)}`
-      : 'Autonomy thesis edge is still forming.';
+      : 'Paper edge is still forming.';
   }
 
   renderLearningBiasContext();
   renderLearningAutonomyPlaybook();
-  renderSetupRankingList(learningFavoringListEl, setupRankingEntries, 'No setup outcome history is available yet.');
-  renderSetupRankingList(learningAvoidingListEl, setupFadeEntries, 'No setup is being faded yet.', 'fade');
+  renderSetupRankingList(learningFavoringListEl, setupRankingEntries, 'No setup results yet.');
+  renderSetupRankingList(learningAvoidingListEl, setupFadeEntries, 'No setup needs caution right now.', 'fade');
 };
 
 const renderDiagnostics = () => {
@@ -9459,11 +9459,11 @@ const renderDiagnostics = () => {
   const lastAttemptAt = training?.lastRun?.trainedAt ?? training?.lastTrainedAt;
   diagTrainingLastRunEl.textContent = lastAttemptAt
     ? `${fmtDateTimeCompact(lastAttemptAt)} • completed ${fmtRelativeMinutes(lastAttemptAt)}`
-    : 'No retrain attempt yet';
+    : 'No training run yet';
   const activeModelTrainedAt = training?.model?.trainedAt ?? training?.lastTrainedAt;
   diagTrainingActiveModelEl.textContent = activeModelTrainedAt
     ? `${fmtDateTimeCompact(activeModelTrainedAt)} • live ${fmtRelativeMinutes(activeModelTrainedAt)}`
-    : 'Current live model has not been promoted yet';
+    : 'No live model has been chosen yet';
   diagTrainingNextWindowEl.textContent = training?.trainingInProgress
     ? 'Training now'
     : cadence?.nextWindowAt
@@ -9471,7 +9471,7 @@ const renderDiagnostics = () => {
       : 'Waiting for new bars';
   diagTrainingPromotionEl.textContent = training?.promotion?.lastDecision
     ? training.promotion.alwaysPromoteLatestModel
-      ? `Newest retrain goes live • validation ${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
+      ? `Newest training run goes live • validation ${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
       : training.promotion.lastDecision.promoted
         ? `Promoted challenger • +${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
         : `Held champion • ${fmtNum(training.promotion.lastDecision.delta * 100, 2)}%`
@@ -9488,8 +9488,8 @@ const renderDiagnostics = () => {
   diagTrainingFramesEl.textContent = analysisFrames.length ? analysisFrames.join(' • ') : '--';
   diagTrainingTriggerEl.textContent = training?.enabled
     ? training?.promotion?.alwaysPromoteLatestModel
-      ? `Latest retrain becomes the live model automatically. Last run was ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} and the next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
-      : `Last retrain attempt ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} • next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
+      ? `Latest training run becomes the live model automatically. Last run was ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} and the next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
+      : `Last training run ${lastAttemptAt ? fmtRelativeMinutes(lastAttemptAt) : 'never'} • next run needs ${cadence?.barsNeededForNextRetrain ?? '--'} new bars.`
     : 'Continuous training is disabled.';
   sysGlanceFeedEl.textContent =
     recovery?.pendingReconnect
@@ -10986,7 +10986,7 @@ const bindPaperSettingsControls = () => {
       return;
     }
     if (!Number.isFinite(requestedRiskPct) || requestedRiskPct < 0.01 || requestedRiskPct > 5) {
-      setStatus('Status: autonomy risk must be between 0.01 and 5', true);
+      setStatus('Status: paper risk must be between 0.01 and 5', true);
       return;
     }
 
@@ -11015,14 +11015,14 @@ const bindPaperSettingsControls = () => {
       }
       renderPaperAccount();
       setStatus(
-        `Status: paper autonomy updated (${paperAccount.autonomyMode === 'UNRESTRICTED' ? 'unrestricted' : 'follow-allowed'} • cap ${formatPaperTradeCap(paperAccount.maxConcurrentTrades)} • ${Number(paperAccount.autonomyRiskPct).toFixed(2)}% risk)`
+        `Status: paper settings updated (${paperAccount.autonomyMode === 'UNRESTRICTED' ? 'unrestricted' : 'follow-allowed'} • cap ${formatPaperTradeCap(paperAccount.maxConcurrentTrades)} • ${Number(paperAccount.autonomyRiskPct).toFixed(2)}% risk)`
       );
     } catch (error) {
-      setStatus(`Status: failed to update paper autonomy (${error.message})`, true);
+      setStatus(`Status: failed to update paper settings (${error.message})`, true);
     } finally {
       if (savePaperSettingsEl) {
         savePaperSettingsEl.disabled = false;
-        savePaperSettingsEl.textContent = 'Save Paper Autonomy';
+        savePaperSettingsEl.textContent = 'Save Paper Settings';
       }
     }
   });

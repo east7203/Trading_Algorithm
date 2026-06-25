@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=62" />
+    <link rel="stylesheet" href="styles.css?v=63" />
     <!-- Critical layout — inline so SW cache can never serve a stale version -->
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -184,24 +184,24 @@
           <details id="homePaperAutonomyCard" class="home-fold home-brief-card">
             <summary class="home-fold-summary">
               <div>
-                <p class="home-fold-label">Paper Autonomy</p>
-                <p id="homePaperAutonomyHeadline" class="home-fold-title">Independent futures engine is loading.</p>
+                <p class="home-fold-label">Paper Engine</p>
+                <p id="homePaperAutonomyHeadline" class="home-fold-title">Paper engine is loading.</p>
               </div>
               <span id="homePaperAutonomyStamp" class="chip chip-neutral">Updating</span>
             </summary>
             <div class="home-fold-body">
               <div class="home-brief-grid">
                 <article class="home-brief-column">
-                  <p class="card-section-label">Best Thesis</p>
-                  <p id="homePaperAutonomyBestThesis" class="home-why-copy">No autonomy thesis has a track record yet.</p>
+                  <p class="card-section-label">Best Idea Type</p>
+                  <p id="homePaperAutonomyBestThesis" class="home-why-copy">No paper idea type has a track record yet.</p>
                 </article>
                 <article class="home-brief-column">
                   <p class="card-section-label">Performance</p>
-                  <p id="homePaperAutonomyPerformance" class="home-why-copy">Autonomy performance is loading.</p>
+                  <p id="homePaperAutonomyPerformance" class="home-why-copy">Paper performance is loading.</p>
                 </article>
               </div>
               <div class="home-brief-watch">
-                <p class="card-section-label">Active Theses</p>
+                <p class="card-section-label">Active Ideas</p>
                 <div id="homePaperAutonomyTheses" class="home-research-hypothesis-list"></div>
               </div>
               <div class="home-brief-watch">
@@ -276,37 +276,37 @@
             <article class="home-snapshot-card home-snapshot-card-strong">
               <p class="stat-label">Desk State</p>
               <p id="homeDeskState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Feed + session + quiet-window state.</p>
+              <p class="home-snapshot-note">Is the desk ready?</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Top Idea</p>
               <p id="homeTopIdea" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Lead 5m setup on the board.</p>
+              <p class="home-snapshot-note">Best current board idea.</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Learning Loop</p>
               <p id="homeReplayState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Resolved trades plus the live outcome queue.</p>
+              <p class="home-snapshot-note">What has been learned.</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Model</p>
               <p id="homeModelState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Latest live model and retrain rhythm.</p>
+              <p class="home-snapshot-note">Current model status.</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Research Trend</p>
               <p id="homeResearchState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Autonomous price-led trend research from NQ/ES.</p>
+              <p class="home-snapshot-note">Current NQ/ES lean.</p>
             </article>
             <article class="home-snapshot-card">
               <p class="stat-label">Alert Stack</p>
               <p id="homeAlertState" class="home-snapshot-value">--</p>
-              <p class="home-snapshot-note">Phone, Telegram, and recovery path.</p>
+              <p class="home-snapshot-note">Phone alert readiness.</p>
             </article>
             <article class="home-snapshot-card home-snapshot-card-strong">
-              <p class="stat-label">Paper Autonomy</p>
+              <p class="stat-label">Paper Engine</p>
               <p id="homePaperAutonomyState" class="home-snapshot-value">--</p>
-              <p id="homePaperAutonomyStateNote" class="home-snapshot-note">Independent futures ideas and learning.</p>
+              <p id="homePaperAutonomyStateNote" class="home-snapshot-note">Paper ideas and learning.</p>
             </article>
           </section>
 
@@ -379,9 +379,9 @@
         <section id="view-signals" class="view view-signals">
           <div class="section-head board-section-head">
             <div>
-              <p class="section-kicker board-section-kicker">Execution Desk</p>
+              <p class="section-kicker board-section-kicker">Trade Alerts</p>
               <h2>Trade Board</h2>
-              <p class="board-section-copy">See the clearest idea first, know whether to act, and keep the rest of the queue easy to understand.</p>
+              <p class="board-section-copy">Shows the clearest trade idea first, with entry, stop, and target.</p>
             </div>
             <span id="signalFilterSummary" class="chip chip-neutral">All signals</span>
           </div>
@@ -426,14 +426,14 @@
               <div class="board-spotlight-visuals">
                 <article class="board-spotlight-panel">
                   <div class="board-spotlight-panel-head">
-                    <p class="card-section-label">Chart At Alert Time</p>
+                    <p class="card-section-label">Alert Snapshot</p>
                     <span class="chip chip-neutral">Saved when detected</span>
                   </div>
                   <div id="boardSpotlightSnapshot" class="signalChart board-spotlight-chart"></div>
                 </article>
                 <article class="board-spotlight-panel">
                   <div class="board-spotlight-panel-head">
-                    <p class="card-section-label">Current 5m View</p>
+                    <p class="card-section-label">Current Chart</p>
                     <span id="boardSpotlightConfirmMode" class="chip chip-neutral">Current chart</span>
                   </div>
                   <div id="boardSpotlightTradingViewFrame" class="board-spotlight-tv-frame"></div>
@@ -456,7 +456,7 @@
                 </div>
               </div>
               <div class="signal-toolbar-meta">
-                <p class="hint hint-banner">Background push works from the hosted app once notifications are allowed.</p>
+                <p class="hint hint-banner">Phone alerts work after push is allowed.</p>
                 <div class="board-toolbar-actions">
                   <button id="boardRefresh" class="chip-btn secondary-btn" type="button">Check Again</button>
                   <button id="boardProof" class="chip-btn secondary-btn" type="button">Run Proof</button>
@@ -469,21 +469,21 @@
             <section id="boardProofPanel" class="board-proof-panel" hidden>
               <div class="board-proof-head">
                 <div>
-                  <p class="section-kicker">Manual Alert Engine Proof</p>
-                  <h3>Recent Setup Replay</h3>
+                  <p class="section-kicker">Signal Check</p>
+                  <h3>Recent Replay</h3>
                 </div>
                 <span id="boardProofChip" class="chip chip-neutral">Not run</span>
               </div>
-              <p id="boardProofSummary" class="board-proof-summary">Run proof to replay recent NQ/ES candles without creating alerts.</p>
+              <p id="boardProofSummary" class="board-proof-summary">Replay recent NQ/ES candles without sending alerts.</p>
               <div id="boardProofStats" class="board-proof-stats"></div>
               <div id="boardProofSymbols" class="board-proof-symbols"></div>
             </section>
           </section>
           <div class="section-subhead board-list-head">
             <div>
-              <p class="section-kicker board-list-kicker">Signal Queue</p>
+              <p class="section-kicker board-list-kicker">Alert Queue</p>
               <h3>Current Ideas</h3>
-              <p class="board-list-note">Grouped by what you should do next. Tap any card to pin it above.</p>
+              <p class="board-list-note">Grouped by action: ready, wait, or avoid.</p>
             </div>
           </div>
           <div id="alertsList" class="stack"></div>
@@ -561,26 +561,26 @@
           <section class="paper-section paper-section-muted">
             <div class="section-subhead">
               <div>
-                <h3>Autonomy Playbook</h3>
-                <p class="hint">See which paper-engine patterns are core, exploratory, cooling off, or fully benched, plus how much probe budget is left.</p>
+                <h3>Paper Game Plan</h3>
+                <p class="hint">See what the paper engine trusts, tests, reduces, or pauses.</p>
               </div>
               <span id="paperPatternStateChip" class="chip chip-neutral">Tracking --</span>
             </div>
             <section class="insights-grid">
               <article class="insight-card">
-                <p class="stat-label">Core Patterns</p>
+                <p class="stat-label">Best Patterns</p>
                 <p id="paperPatternProven" class="insight-text">--</p>
               </article>
               <article class="insight-card">
-                <p class="stat-label">Exploration</p>
+                <p class="stat-label">Testing</p>
                 <p id="paperPatternExperimental" class="insight-text">--</p>
               </article>
               <article class="insight-card">
-                <p class="stat-label">On Probation</p>
+                <p class="stat-label">Be Careful</p>
                 <p id="paperPatternProbation" class="insight-text">--</p>
               </article>
               <article class="insight-card">
-                <p class="stat-label">Disabled</p>
+                <p class="stat-label">Paused</p>
                 <p id="paperPatternDisabled" class="insight-text">--</p>
               </article>
             </section>
@@ -608,7 +608,7 @@
           <section class="paper-section paper-section-muted">
             <div class="section-subhead">
               <div>
-                <h3>Execution Journal</h3>
+                <h3>Trade Log</h3>
               </div>
             </div>
           <section class="insights-grid">
@@ -617,7 +617,7 @@
               <p id="setupMix" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Guardrail Hits</p>
+              <p class="stat-label">Rule Blocks</p>
               <p id="guardrailSummary" class="insight-text">--</p>
             </article>
             <article class="insight-card">
@@ -633,37 +633,37 @@
           <div class="section-head learning-section-head">
             <div>
               <p class="section-kicker learning-section-kicker">Self-Learning Desk</p>
-              <h2>Learning Lab</h2>
-              <p class="learning-section-copy">See what the engine is reinforcing, where confidence is slipping, and which outcomes still need your feedback.</p>
+              <h2>What Works</h2>
+              <p class="learning-section-copy">See which setups are winning, which ones are fading, and what still needs a result.</p>
             </div>
             <span id="reviewSummaryChip" class="chip chip-neutral">Learning --</span>
           </div>
 
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
-              <h3>What The Engine Is Learning</h3>
+              <h3>Quick Read</h3>
               <div class="chip-row compact-chip-row">
                 <span id="learningTrendBadge" class="chip chip-neutral">Flat</span>
                 <span id="learningProfileChip" class="chip chip-neutral">Learning profile loading</span>
               </div>
             </div>
             <p id="learningHeadline" class="session-summary-headline">--</p>
-            <p id="learningContext" class="session-summary-copy">The system is pulling together setup, symbol, research, and autonomy outcomes from the trade-learning database.</p>
+            <p id="learningContext" class="session-summary-copy">The app is checking recent outcomes and ranking what works best.</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Resolved Trades</p>
+                <p class="stat-label">Learned Trades</p>
                 <p id="learningResolvedRecords" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Refresh State</p>
+                <p class="stat-label">Last Update</p>
                 <p id="learningRefreshState" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Top Win Reason</p>
+                <p class="stat-label">Why Winners Worked</p>
                 <p id="learningTopWinReason" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Top Loss Reason</p>
+                <p class="stat-label">Why Losers Failed</p>
                 <p id="learningTopLossReason" class="insight-text">--</p>
               </article>
             </div>
@@ -671,18 +671,18 @@
 
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
-              <h3>Live Engine Health</h3>
-              <span id="learningHealthChip" class="chip chip-neutral">Diagnostics --</span>
+              <h3>Is Learning Working?</h3>
+              <span id="learningHealthChip" class="chip chip-neutral">Checking --</span>
             </div>
             <p id="learningHealthHeadline" class="session-summary-headline">--</p>
-            <p id="learningHealthNote" class="session-summary-copy">The learn tab will flag feed, training, or database issues here before they show up elsewhere.</p>
+            <p id="learningHealthNote" class="session-summary-copy">If something blocks learning, it will show here in plain English.</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
                 <p class="stat-label">Feed</p>
                 <p id="learningFeedHealth" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Database</p>
+                <p class="stat-label">Saved Results</p>
                 <p id="learningDatabaseHealth" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
@@ -690,7 +690,7 @@
                 <p id="learningTrainingHealth" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Outcome Queue</p>
+                <p class="stat-label">Needs Review</p>
                 <p id="learningQueueHealth" class="insight-text">--</p>
               </article>
             </div>
@@ -698,31 +698,31 @@
 
           <section class="session-summary-card replay-command-card learning-report-card">
             <div class="section-subhead">
-              <h3>Continual Improvement Report</h3>
-              <span id="learningReportChip" class="chip chip-neutral">Report --</span>
+              <h3>Improvement Check</h3>
+              <span id="learningReportChip" class="chip chip-neutral">Check --</span>
             </div>
             <p id="learningReportHeadline" class="session-summary-headline">--</p>
-            <p id="learningReportNote" class="session-summary-copy">This report explains whether the app is learning, what changed today, and what must be fixed before new learning is fully trusted.</p>
+            <p id="learningReportNote" class="session-summary-copy">Shows whether the app is improving or needs attention.</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Model Decision</p>
+                <p class="stat-label">Model Choice</p>
                 <p id="learningModelDecision" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Precision / Recall</p>
+                <p class="stat-label">Accuracy</p>
                 <p id="learningPrecisionRecall" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Data Sources</p>
+                <p class="stat-label">Inputs</p>
                 <p id="learningDataSources" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Next Action</p>
+                <p class="stat-label">Do Next</p>
                 <p id="learningNextAction" class="insight-text">--</p>
               </article>
             </div>
             <div class="learning-action-row">
-              <button id="learningRefreshReport" class="chip-btn secondary-btn" type="button">Refresh Report</button>
+              <button id="learningRefreshReport" class="chip-btn secondary-btn" type="button">Refresh Check</button>
               <button id="learningRepairPush" class="chip-btn secondary-btn" type="button">Re-register Push</button>
               <button id="learningOpenIbkrRecovery" class="chip-btn secondary-btn" type="button">Open IBKR Recovery</button>
             </div>
@@ -731,14 +731,14 @@
 
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
-              <h3>Live Bias Context</h3>
+              <h3>Market Lean</h3>
               <span id="learningBiasChip" class="chip chip-neutral">Bias --</span>
             </div>
             <p id="learningBiasHeadline" class="session-summary-headline">--</p>
-            <p id="learningBiasNote" class="session-summary-copy">Use this as regime context for what the learning engine is reinforcing or fading.</p>
+            <p id="learningBiasNote" class="session-summary-copy">Current NQ/ES lean, used as context for setup rankings.</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Research Bias</p>
+                <p class="stat-label">Market Bias</p>
                 <p id="learningBiasResearch" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
@@ -746,7 +746,7 @@
                 <p id="learningBiasLead" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Top Board Read</p>
+                <p class="stat-label">Board Read</p>
                 <p id="learningBiasBoard" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
@@ -758,63 +758,63 @@
 
           <section class="insights-grid review-insights-grid">
             <article class="insight-card">
-              <p class="stat-label">Top Learned Edge</p>
+              <p class="stat-label">Best Setup</p>
               <p id="learningBestEdge" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Biggest Drag</p>
+              <p class="stat-label">Weakest Setup</p>
               <p id="learningBiggestDrag" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Research Edge</p>
+              <p class="stat-label">Research Read</p>
               <p id="learningResearchEdge" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Autonomy Thesis</p>
+              <p class="stat-label">Paper Edge</p>
               <p id="learningAutonomyEdge" class="insight-text">--</p>
             </article>
           </section>
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Setup Leaderboard</h3>
-              <span class="chip chip-neutral">Ranked by real outcomes</span>
+              <h3>Best Setups</h3>
+              <span class="chip chip-neutral">Ranked by results</span>
             </div>
             <div id="learningFavoringList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Setups To Fade</h3>
-              <span class="chip chip-neutral">Weak, probation, or disabled</span>
+              <h3>Use Caution</h3>
+              <span class="chip chip-neutral">Weak or paused setups</span>
             </div>
             <div id="learningAvoidingList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="session-summary-card replay-command-card">
             <div class="section-subhead">
-              <h3>Autonomy Playbook</h3>
+              <h3>Paper Engine Choices</h3>
               <span id="learningAutonomyStateChip" class="chip chip-neutral">Autonomy --</span>
             </div>
             <p id="learningAutonomyHeadline" class="session-summary-headline">--</p>
-            <p id="learningAutonomyContext" class="session-summary-copy">This section will explain which paper-engine patterns are trusted, exploratory, cooling off, or fully benched.</p>
+            <p id="learningAutonomyContext" class="session-summary-copy">Shows what the paper engine trusts, tests, reduces, or pauses.</p>
             <p id="learningAutonomyBudget" class="session-summary-copy">--</p>
             <p id="learningAutonomyChangeSummary" class="session-summary-copy">--</p>
             <div class="session-summary-grid">
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Core Leader</p>
+                <p class="stat-label">Best Pattern</p>
                 <p id="learningAutonomyLeader" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Exploration Budget</p>
+                <p class="stat-label">Test Budget</p>
                 <p id="learningAutonomyExploration" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">On Probation</p>
+                <p class="stat-label">Be Careful</p>
                 <p id="learningAutonomyGuardrail" class="insight-text">--</p>
               </article>
               <article class="insight-card session-summary-item">
-                <p class="stat-label">Disabled</p>
+                <p class="stat-label">Paused</p>
                 <p id="learningAutonomyDisabled" class="insight-text">--</p>
               </article>
             </div>
@@ -822,23 +822,23 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Paper Engine State Board</h3>
-              <span class="chip chip-neutral">Why the autonomy engine is trusting or benching setups</span>
+              <h3>Paper Pattern List</h3>
+              <span class="chip chip-neutral">Why it trusts or pauses ideas</span>
             </div>
             <div id="learningAutonomyPatternList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Recent Autonomy Decisions</h3>
-              <span class="chip chip-neutral">Accepted, reduced, or blocked by the playbook</span>
+              <h3>Recent Paper Choices</h3>
+              <span class="chip chip-neutral">Accepted, reduced, or blocked</span>
             </div>
             <div id="learningAutonomyDecisionList" class="stack learning-pattern-list"></div>
           </section>
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Awaiting Outcome</h3>
+              <h3>Needs Result</h3>
               <span id="reviewPendingQueueChip" class="chip chip-neutral">0 waiting</span>
             </div>
             <div id="reviewsPendingList" class="stack"></div>
@@ -846,7 +846,7 @@
 
           <section class="review-section">
             <div class="section-subhead">
-              <h3>Recent Learned Cases</h3>
+              <h3>Learned Cases</h3>
               <span id="reviewCompletedQueueChip" class="chip chip-neutral">0 learned</span>
             </div>
             <div id="reviewsCompletedList" class="stack"></div>
@@ -858,26 +858,26 @@
             <div>
               <p class="section-kicker control-section-kicker">Desk Operations</p>
               <h2>Desk Control</h2>
-              <p class="control-section-copy">Tune the paper engine, alert delivery, and operator workspace from one clean control room.</p>
+              <p class="control-section-copy">Set paper trading, alerts, and rules from one place.</p>
             </div>
           </div>
           <section class="settings-block settings-block-accent system-summary-block control-overview-card">
             <div class="block-head">
               <div class="block-copy">
                 <p class="block-eyebrow">Control Center</p>
-                <h3>Your Desk In Plain English</h3>
-                <p class="section-kicker">A plain-language snapshot so you do not need to read raw diagnostics.</p>
+                <h3>Plain-English Status</h3>
+                <p class="section-kicker">Quick status without raw diagnostics.</p>
               </div>
             </div>
             <p id="systemOverview" class="system-overview-copy">--</p>
           </section>
           <section class="system-glance-grid">
             <article class="insight-card system-glance-card">
-              <p class="stat-label">Connection</p>
+              <p class="stat-label">Server</p>
               <p id="sysGlanceFeed" class="insight-text">--</p>
             </article>
             <article class="insight-card system-glance-card">
-              <p class="stat-label">Desk Rules</p>
+              <p class="stat-label">Signal Rules</p>
               <p id="sysGlanceModel" class="insight-text">--</p>
             </article>
             <article class="insight-card system-glance-card">
@@ -893,37 +893,37 @@
             <div class="block-head">
               <div class="block-copy">
                 <p class="block-eyebrow">Paper Engine</p>
-                <h3>Paper Autonomy</h3>
-                <p class="section-kicker">Let the paper engine trade on its own. Set the cap to 0 if you want it completely unrestricted.</p>
+                <h3>Paper Auto-Trading</h3>
+                <p class="section-kicker">Let the paper account test ideas on its own.</p>
               </div>
             </div>
             <div class="stack controls-stack">
               <div class="control-row">
-                <label for="paperAutonomyMode">Autonomy Mode</label>
+                <label for="paperAutonomyMode">Auto-Trading Mode</label>
                 <select id="paperAutonomyMode">
                   <option value="UNRESTRICTED">Unrestricted learning</option>
                   <option value="FOLLOW_ALLOWED_ALERTS">Follow allowed alerts only</option>
                 </select>
               </div>
               <div class="control-row">
-                <label for="paperAutonomyRiskPct">Autonomy Risk %</label>
+                <label for="paperAutonomyRiskPct">Risk Per Paper Trade</label>
                 <input id="paperAutonomyRiskPct" type="number" min="0.01" max="5" step="0.01" inputmode="decimal" />
               </div>
               <div class="control-row">
-                <label for="paperMaxConcurrentTrades">Max Concurrent Paper Trades</label>
+                <label for="paperMaxConcurrentTrades">Max Open Paper Trades</label>
                 <input id="paperMaxConcurrentTrades" type="number" min="0" max="50" step="1" inputmode="numeric" />
               </div>
             </div>
             <div class="settings-inline-actions">
-              <button id="savePaperSettings" class="primary-btn" type="button">Save Paper Autonomy</button>
+              <button id="savePaperSettings" class="primary-btn" type="button">Save Paper Settings</button>
             </div>
-            <p id="paperConfigMeta" class="hint settings-note">Paper autonomy settings are loading.</p>
+            <p id="paperConfigMeta" class="hint settings-note">Paper settings are loading.</p>
           </section>
           <section class="settings-block">
             <div class="block-head">
               <div class="block-copy">
                 <p class="block-eyebrow">Routing</p>
-                <h3>Connection</h3>
+                <h3>Server Connection</h3>
                 <p class="section-kicker">Keep the desk pointed at the right server before the session starts.</p>
               </div>
             </div>
@@ -949,14 +949,14 @@
             <div class="block-head">
               <div class="block-copy">
                 <p class="block-eyebrow">Manual Engine</p>
-                <h3>Desk Rules</h3>
-                <p class="section-kicker">Tune your morning window and what counts as a strong enough setup.</p>
+                <h3>Signal Rules</h3>
+                <p class="section-kicker">Set when alerts are allowed and how strong they must be.</p>
               </div>
               <button id="applyMorningPreset" class="chip-btn" type="button">Morning Default</button>
             </div>
             <div class="stack controls-stack">
               <div class="control-row">
-                <label for="signalMinScore">Minimum Score</label>
+                <label for="signalMinScore">Minimum Alert Score</label>
                 <input id="signalMinScore" type="number" min="0" max="100" step="1" />
               </div>
               <div class="control-row">
@@ -972,15 +972,15 @@
                 <input id="signalSessionEnd" type="time" />
               </div>
               <div class="control-row">
-                <label for="signalNyRangeMinutes">Opening Range Length</label>
+                <label for="signalNyRangeMinutes">Opening Range</label>
                 <input id="signalNyRangeMinutes" type="number" min="15" max="180" step="5" />
               </div>
               <div class="control-row control-row-toggle">
-                <label for="signalRequireRange">Wait For Opening Range Close</label>
+                <label for="signalRequireRange">Wait For Range Close</label>
                 <input id="signalRequireRange" type="checkbox" />
               </div>
               <div class="control-row control-row-toggle">
-                <label for="signalAPlusOnly">A+ Only After First Hour</label>
+                <label for="signalAPlusOnly">Require A+ After First Hour</label>
                 <input id="signalAPlusOnly" type="checkbox" />
               </div>
             </div>
@@ -998,7 +998,7 @@
             </div>
 
             <div class="toggle-group">
-              <p class="group-label">Setup Types</p>
+              <p class="group-label">Setups</p>
               <label class="toggle-chip">
                 <input id="setupSweepMssToggle" type="checkbox" />
                 <span>Sweep -> MSS -> FVG</span>
@@ -1021,7 +1021,7 @@
               </label>
             </div>
 
-            <button id="saveSignalSettings" class="primary-btn" type="button">Save Desk Rules</button>
+            <button id="saveSignalSettings" class="primary-btn" type="button">Save Signal Rules</button>
           </section>
 
           <section class="settings-block settings-block-accent">
@@ -1029,7 +1029,7 @@
               <div class="block-copy">
                 <p class="block-eyebrow">Notifications</p>
                 <h3>Alert Delivery</h3>
-                <p class="section-kicker">Choose what can interrupt you on this device and verify it before market hours.</p>
+                <p class="section-kicker">Choose what can interrupt you.</p>
               </div>
             </div>
 
@@ -1044,7 +1044,7 @@
                 <div class="security-health-title-row">
                   <div>
                     <p class="stat-label">Security / System Health</p>
-                    <p class="hint">Live backend posture for internal auth, trusted app writes, fallback policy, and weak-default checks.</p>
+                  <p class="hint">Plain status for auth, trusted app writes, fallback policy, and weak defaults.</p>
                   </div>
                   <span id="securityHealthBadge" class="chip chip-neutral">Checking</span>
                 </div>
@@ -1098,8 +1098,8 @@
             <div class="safe-summary-card push-health-panel">
               <div class="notification-activity-head">
                 <div>
-                  <p class="stat-label">Push Health</p>
-                  <p class="hint">Live readiness checks for this device plus the most recent delivery outcomes.</p>
+                    <p class="stat-label">Phone Alert Health</p>
+                    <p class="hint">Checks whether this phone can receive app banners.</p>
                 </div>
               </div>
               <div class="push-health-grid">
@@ -1109,7 +1109,7 @@
                   <p id="pushHealthPermissionNote" class="push-health-note">Inspecting device notification permission.</p>
                 </article>
                 <article class="push-health-card">
-                  <p class="stat-label">Install Mode</p>
+                  <p class="stat-label">App Mode</p>
                   <p id="pushHealthInstall" class="push-health-value">Checking...</p>
                   <p id="pushHealthInstallNote" class="push-health-note">Determining whether this is running as an app or browser tab.</p>
                 </article>
@@ -1119,7 +1119,7 @@
                   <p id="pushHealthRegistrationNote" class="push-health-note">Checking whether this device is registered for app push.</p>
                 </article>
                 <article class="push-health-card">
-                  <p class="stat-label">Last App Delivery</p>
+                  <p class="stat-label">Last Phone Alert</p>
                   <p id="pushHealthLastApp" class="push-health-value">Waiting...</p>
                   <p id="pushHealthLastAppNote" class="push-health-note">No app delivery has been recorded yet.</p>
                 </article>
@@ -1168,8 +1168,8 @@
             <div class="safe-summary-card notification-activity-panel">
               <div class="notification-activity-head">
                 <div>
-                  <p class="stat-label">Recent Activity</p>
-                  <p class="hint">Latest sends, app delivery counts, and Telegram fallback decisions.</p>
+                  <p class="stat-label">Recent Alerts</p>
+                  <p class="hint">Latest sends, app deliveries, and Telegram fallback decisions.</p>
                 </div>
               </div>
               <div id="notificationActivityList" class="stack notification-activity-list"></div>
@@ -1243,35 +1243,35 @@
         <section id="view-status" class="view view-status">
           <div class="section-head">
             <div>
-              <h2>Engine Room</h2>
+              <h2>System Status</h2>
             </div>
           </div>
           <section id="ibkrRecoveryPanel" class="recovery-panel">
             <div class="recovery-panel-head">
               <div>
-                <p class="stat-label">IBKR Recovery</p>
-                <p class="section-kicker">Use these controls only if the IBKR session actually asks for reauthentication.</p>
+                <p class="stat-label">IBKR Login Recovery</p>
+                <p class="section-kicker">Use only when IBKR asks you to log in again.</p>
               </div>
               <div class="recovery-state-cluster">
                 <span id="diagQuietMode" class="quiet-mode-pill">Quiet mode --</span>
                 <span id="diagIbkrRecoveryState" class="recovery-state-pill">Checking</span>
               </div>
             </div>
-            <p id="diagQuietModeHint" class="quiet-mode-copy">Quiet mode follows your trading window and suppresses noisy recovery alerts when the desk is closed.</p>
+            <p id="diagQuietModeHint" class="quiet-mode-copy">Quiet mode follows your trading window and keeps closed-hours alerts quiet.</p>
             <p id="diagIbkrRecoveryHint" class="recovery-copy">Waiting for live status.</p>
             <div class="recovery-actions">
               <button id="ibkrRetryLogin" class="chip-btn secondary-btn" type="button">Run Full Recovery</button>
             </div>
             <div class="recovery-evidence">
               <div class="recovery-evidence-head">
-                <p class="stat-label">Latest Auth Evidence</p>
-                <p class="hint">These captures come from the live VPS when recovery gets stuck.</p>
+                <p class="stat-label">Latest Login Evidence</p>
+                <p class="hint">Screenshots/logs from the VPS if recovery gets stuck.</p>
               </div>
               <div id="ibkrRecoveryEvidence" class="recovery-evidence-list"></div>
             </div>
             <div class="recovery-timeline">
               <div class="recovery-timeline-head">
-                <p class="stat-label">Recent Recovery Events</p>
+                <p class="stat-label">Recent Recovery Steps</p>
               </div>
               <div id="ibkrRecoveryTimeline" class="recovery-timeline-list"></div>
             </div>
@@ -1304,7 +1304,7 @@
           </section>
           <section class="insights-grid">
             <article class="insight-card">
-              <p class="stat-label">Live Feed</p>
+              <p class="stat-label">Market Data</p>
               <p id="diagLiveFeed" class="insight-text">--</p>
             </article>
             <article class="insight-card">
@@ -1316,11 +1316,11 @@
               <p id="diagModel" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Subscribers</p>
+              <p class="stat-label">Alert Devices</p>
               <p id="diagSubscribers" class="insight-text">--</p>
             </article>
             <article class="insight-card">
-              <p class="stat-label">Signal Monitor</p>
+              <p class="stat-label">Alert Engine</p>
               <p id="diagSignalMonitor" class="insight-text">--</p>
             </article>
             <article class="insight-card">
@@ -1331,7 +1331,7 @@
           <section class="training-panel">
             <div class="training-panel-head">
               <div>
-                <p class="stat-label">Macro Calendar</p>
+                <p class="stat-label">News Calendar</p>
               </div>
             </div>
             <div class="training-panel-grid">
@@ -1353,7 +1353,7 @@
           <section class="training-panel">
             <div class="training-panel-head">
               <div>
-                <p class="stat-label">Paper Autonomy Engine</p>
+                <p class="stat-label">Paper Engine</p>
               </div>
             </div>
             <div class="training-panel-grid">
@@ -1374,7 +1374,7 @@
                 <p id="diagPaperAutonomyPnl" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card training-panel-card-wide">
-                <p class="stat-label">Best Thesis</p>
+                <p class="stat-label">Best Idea Type</p>
                 <p id="diagPaperAutonomyBestThesis" class="training-panel-value training-panel-value-compact">--</p>
               </article>
               <article class="training-panel-card training-panel-card-wide">
@@ -1386,7 +1386,7 @@
                 <div id="diagPaperAutonomySymbols" class="training-panel-list"></div>
               </article>
               <article class="training-panel-card training-panel-card-wide">
-                <p class="stat-label">Active Theses</p>
+                <p class="stat-label">Active Ideas</p>
                 <div id="diagPaperAutonomyTheses" class="training-panel-list"></div>
               </article>
             </div>
@@ -1394,7 +1394,7 @@
           <section class="training-panel">
             <div class="training-panel-head">
               <div>
-                <p class="stat-label">Research Model</p>
+                <p class="stat-label">Market Research</p>
               </div>
             </div>
             <div class="training-panel-grid">
@@ -1427,15 +1427,15 @@
                 <p id="diagResearchWhy" class="training-panel-value training-panel-value-compact">--</p>
               </article>
               <article class="training-panel-card training-panel-card-wide">
-                <p class="stat-label">Best Thesis</p>
+                <p class="stat-label">Best Idea</p>
                 <p id="diagResearchBestThesis" class="training-panel-value training-panel-value-compact">--</p>
               </article>
               <article class="training-panel-card training-panel-card-wide">
-                <p class="stat-label">Active Hypotheses</p>
+                <p class="stat-label">Active Ideas</p>
                 <div id="diagResearchHypotheses" class="training-panel-list"></div>
               </article>
               <article class="training-panel-card training-panel-card-wide">
-                <p class="stat-label">Latest Research Insight</p>
+                <p class="stat-label">Latest Research Note</p>
                 <p id="diagResearchInsight" class="training-panel-value training-panel-value-compact">--</p>
               </article>
             </div>
@@ -1443,7 +1443,7 @@
           <section class="training-panel">
             <div class="training-panel-head">
               <div>
-                <p class="stat-label">Continuous Training</p>
+                <p class="stat-label">Model Training</p>
               </div>
             </div>
             <div class="training-panel-grid">
@@ -1452,23 +1452,23 @@
                 <p id="diagTrainingCadence" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card">
-                <p class="stat-label">Latest Retrain Run</p>
+                <p class="stat-label">Last Training Run</p>
                 <p id="diagTrainingLastRun" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card">
-                <p class="stat-label">Active Live Model</p>
+                <p class="stat-label">Live Model</p>
                 <p id="diagTrainingActiveModel" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card">
-                <p class="stat-label">Next Retrain Gate</p>
+                <p class="stat-label">Next Training</p>
                 <p id="diagTrainingNextWindow" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card">
-                <p class="stat-label">Live Model Update</p>
+                <p class="stat-label">Model Update</p>
                 <p id="diagTrainingPromotion" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card">
-                <p class="stat-label">Feedback Loop</p>
+                <p class="stat-label">Learning Feedback</p>
                 <p id="diagLearningFeedback" class="training-panel-value">--</p>
               </article>
               <article class="training-panel-card">
@@ -1845,6 +1845,6 @@
       </section>
     </div>
 
-    <script type="module" src="app.js?v=68"></script>
+    <script type="module" src="app.js?v=69"></script>
   </body>
 </html>
