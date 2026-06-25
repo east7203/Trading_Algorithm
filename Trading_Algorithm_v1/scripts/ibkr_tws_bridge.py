@@ -861,6 +861,7 @@ class LiveBridgeRunner:
                         f'Subscribed {entry.source_symbol}->{entry.target_symbol} using {sub.resolved_contract_summary}'
                     )
 
+                self.flush_remaining()
                 self.notify_connected_once()
                 backoff_ms = self.args.reconnect_min_ms
                 last_status = time.monotonic()
