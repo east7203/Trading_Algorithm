@@ -10,6 +10,7 @@ import type {
   SignalReviewEntry,
   SignalChartSnapshot,
   SignalMonitorSettings,
+  SetupType,
   SetupCandidate,
   SignalAlert,
   SignalGenerationInput,
@@ -83,6 +84,13 @@ interface EvaluateSymbolResult {
   matchedAlerts: number;
   publishedAlerts: number;
   skippedAlerts: number;
+  reasonCode?: SignalScanReasonCode;
+  reason?: string;
+  candidateCount?: number;
+  topSetupType?: SetupType;
+  topScore?: number;
+  minScoreThreshold?: number;
+  status?: SignalScanSymbolStatus['status'];
 }
 
 interface AppChannelDeliverySummary {
@@ -105,8 +113,58 @@ export interface SignalMonitorStatus {
   alertCount: number;
   lastAlertAt?: string;
   latestBarTimestampBySymbol: Partial<Record<SymbolCode, string>>;
+  enabledSymbols?: SymbolCode[];
+  enabledSetups?: SetupType[];
+  lastScan?: SignalScanSnapshot;
   lastError?: string;
 }
+
+export type SignalScanReasonCode =
+  | 'MONITOR_INACTIVE'
+  | 'SYMBOL_DISABLED'
+  | 'NO_BARS'
+  | 'INSUFFICIENT_1M_BARS'
+  | 'TIMESTAMP_NOT_FOUND'
+  | 'WAITING_FOR_5M_CLOSE'
+  | 'OUTSIDE_TRADING_WINDOW'
+  | 'OPENING_RANGE_INCOMPLETE'
+  | 'INSUFFICIENT_TIMEFRAME_CANDLES'
+  | 'INSUFFICIENT_SESSION_BARS'
+  | 'NO_SETUP_MATCH'
+  | 'BELOW_SCORE_THRESHOLD'
+  | 'DUPLICATE_ALERT'
+  | 'ALERT_READY';
+
+export interface SignalScanSymbolStatus {
+  symbol: SymbolCode;
+  status: 'PUBLISHED' | 'MATCHED' | 'SCANNED' | 'WAITING' | 'NO_DATA' | 'SKIPPED' | 'OFF';
+  scannedAt: string;
+  latestBarAt?: string;
+  reasonCode?: SignalScanReasonCode;
+  reason: string;
+  matchedAlerts: number;
+  publishedAlerts: number;
+  skippedAlerts: number;
+  candidateCount?: number;
+  topSetupType?: SetupType;
+  topScore?: number;
+  minScoreThreshold?: number;
+}
+
+export interface SignalScanSnapshot {
+  started: boolean;
+  scannedAt: string;
+  source: string;
+  scannedSymbols: number;
+  matchedAlerts: number;
+  publishedAlerts: number;
+  skippedAlerts: number;
+  alertCount: number;
+  lastAlertAt?: string;
+  symbolStatus: SignalScanSymbolStatus[];
+}
+
+export interface SignalMonitorRefreshResult extends SignalScanSnapshot {}
 
 const dtfCache = new Map<string, Intl.DateTimeFormat>();
 const getFormatter = (timezone: string): Intl.DateTimeFormat => {
@@ -328,6 +386,51 @@ const summarizeCandidate = (candidate: SetupCandidate): string => {
   return `${candidate.symbol} ${candidate.side} • ${candidate.setupType} • ${score}`;
 };
 
+const noAlertResult = (
+  reasonCode: SignalScanReasonCode,
+  reason: string,
+  extras: Partial<EvaluateSymbolResult> = {}
+): EvaluateSymbolResult => ({
+  matchedAlerts: 0,
+  publishedAlerts: 0,
+  skippedAlerts: 0,
+  reasonCode,
+  reason,
+  ...extras
+});
+
+const scanStatusFromResult = (result: EvaluateSymbolResult): SignalScanSymbolStatus['status'] => {
+  if (result.status) {
+    return result.status;
+  }
+  if (result.publishedAlerts > 0) {
+    return 'PUBLISHED';
+  }
+  if (result.matchedAlerts > 0) {
+    return 'MATCHED';
+  }
+  if (result.skippedAlerts > 0) {
+    return 'SKIPPED';
+  }
+  switch (result.reasonCode) {
+    case 'NO_BARS':
+    case 'INSUFFICIENT_1M_BARS':
+      return 'NO_DATA';
+    case 'MONITOR_INACTIVE':
+    case 'SYMBOL_DISABLED':
+      return 'OFF';
+    case 'TIMESTAMP_NOT_FOUND':
+    case 'WAITING_FOR_5M_CLOSE':
+    case 'OUTSIDE_TRADING_WINDOW':
+    case 'OPENING_RANGE_INCOMPLETE':
+    case 'INSUFFICIENT_TIMEFRAME_CANDLES':
+    case 'INSUFFICIENT_SESSION_BARS':
+      return 'WAITING';
+    default:
+      return 'SCANNED';
+  }
+};
+
 const asNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
@@ -488,6 +591,7 @@ export class SignalMonitorService {
   private barsBySymbol = new Map<SymbolCode, OneMinuteBar[]>();
   private alertKeys = new Set<string>();
   private lastAlertAt: string | undefined;
+  private lastScan: SignalScanSnapshot | undefined;
   private escalationInterval: NodeJS.Timeout | undefined;
 
   constructor(
@@ -538,7 +642,8 @@ export class SignalMonitorService {
   }
 
   status(): SignalMonitorStatus {
-    const enabledSymbols = new Set(this.getSettings().enabledSymbols);
+    const settings = this.getSettings();
+    const enabledSymbols = new Set(settings.enabledSymbols);
     const latestBarTimestampBySymbol: Partial<Record<SymbolCode, string>> = {};
     for (const [symbol, bars] of this.barsBySymbol.entries()) {
       if (enabledSymbols.size > 0 && !enabledSymbols.has(symbol)) {
@@ -556,6 +661,9 @@ export class SignalMonitorService {
       alertCount: this.alerts.length,
       lastAlertAt: this.lastAlertAt,
       latestBarTimestampBySymbol,
+      enabledSymbols: settings.enabledSymbols,
+      enabledSetups: settings.enabledSetups,
+      lastScan: this.lastScan,
       lastError: this.lastError
     };
   }
@@ -568,42 +676,65 @@ export class SignalMonitorService {
     notifyChannels?: boolean;
     recordJournal?: boolean;
     source?: string;
-  } = {}): Promise<{
-    started: boolean;
-    scannedSymbols: number;
-    matchedAlerts: number;
-    publishedAlerts: number;
-    skippedAlerts: number;
-    alertCount: number;
-    lastAlertAt?: string;
-  }> {
+  } = {}): Promise<SignalMonitorRefreshResult> {
+    const source = options.source ?? 'manual-refresh';
+    const scannedAt = new Date().toISOString();
+    const settings = this.getSettings();
+
     if (!this.config.enabled || !this.started) {
-      return {
+      const symbolStatus = settings.enabledSymbols.map((symbol) => ({
+        symbol,
+        status: 'OFF' as const,
+        scannedAt,
+        latestBarAt: this.barsBySymbol.get(symbol)?.at(-1)?.timestamp,
+        reasonCode: 'MONITOR_INACTIVE' as const,
+        reason: this.config.enabled
+          ? 'The manual alert engine is not started.'
+          : 'The manual alert engine is disabled.',
+        matchedAlerts: 0,
+        publishedAlerts: 0,
+        skippedAlerts: 0
+      }));
+      this.lastScan = {
         started: this.started,
+        scannedAt,
+        source,
         scannedSymbols: 0,
         matchedAlerts: 0,
         publishedAlerts: 0,
         skippedAlerts: 0,
         alertCount: this.alerts.length,
-        lastAlertAt: this.lastAlertAt
+        lastAlertAt: this.lastAlertAt,
+        symbolStatus
       };
+      return this.lastScan;
     }
 
-    const settings = this.getSettings();
     let scannedSymbols = 0;
     let matchedAlerts = 0;
     let publishedAlerts = 0;
     let skippedAlerts = 0;
+    const symbolStatus: SignalScanSymbolStatus[] = [];
 
     for (const symbol of settings.enabledSymbols) {
       const latestBar = this.barsBySymbol.get(symbol)?.at(-1);
       if (!latestBar) {
+        symbolStatus.push({
+          symbol,
+          status: 'NO_DATA',
+          scannedAt,
+          reasonCode: 'NO_BARS',
+          reason: `${symbol} has no one-minute bars loaded yet, so the engine cannot identify a setup for it.`,
+          matchedAlerts: 0,
+          publishedAlerts: 0,
+          skippedAlerts: 0
+        });
         continue;
       }
 
       scannedSymbols += 1;
       const result = await this.evaluateSymbolAtBar(symbol, latestBar.timestamp, {
-        source: options.source ?? 'manual-refresh',
+        source,
         publishAlerts: true,
         notifyChannels: options.notifyChannels ?? true,
         recordJournal: options.recordJournal ?? true,
@@ -612,17 +743,36 @@ export class SignalMonitorService {
       matchedAlerts += result.matchedAlerts;
       publishedAlerts += result.publishedAlerts;
       skippedAlerts += result.skippedAlerts;
+      symbolStatus.push({
+        symbol,
+        status: scanStatusFromResult(result),
+        scannedAt,
+        latestBarAt: latestBar.timestamp,
+        reasonCode: result.reasonCode,
+        reason: result.reason ?? `${symbol} was scanned.`,
+        matchedAlerts: result.matchedAlerts,
+        publishedAlerts: result.publishedAlerts,
+        skippedAlerts: result.skippedAlerts,
+        candidateCount: result.candidateCount,
+        topSetupType: result.topSetupType,
+        topScore: result.topScore,
+        minScoreThreshold: result.minScoreThreshold
+      });
     }
 
-    return {
+    this.lastScan = {
       started: this.started,
+      scannedAt,
+      source,
       scannedSymbols,
       matchedAlerts,
       publishedAlerts,
       skippedAlerts,
       alertCount: this.alerts.length,
-      lastAlertAt: this.lastAlertAt
+      lastAlertAt: this.lastAlertAt,
+      symbolStatus
     };
+    return this.lastScan;
   }
 
   buildLiveChartSnapshot(candidate: SetupCandidate): SignalChartSnapshot | undefined {
@@ -1271,22 +1421,39 @@ export class SignalMonitorService {
   ): Promise<EvaluateSymbolResult> {
     const settings = this.getSettings();
     if (!settings.enabledSymbols.includes(symbol)) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'SYMBOL_DISABLED',
+        `${symbol} is disabled in the manual alert settings.`,
+        { status: 'OFF' }
+      );
     }
 
     const symbolBars = barsBySymbol.get(symbol);
     if (!symbolBars || symbolBars.length < this.config.lookbackBars1m) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      const loadedBars = symbolBars?.length ?? 0;
+      return noAlertResult(
+        loadedBars === 0 ? 'NO_BARS' : 'INSUFFICIENT_1M_BARS',
+        `${symbol} needs ${this.config.lookbackBars1m} one-minute bars before setup detection can run; ${loadedBars} loaded.`,
+        { status: loadedBars === 0 ? 'NO_DATA' : 'WAITING' }
+      );
     }
 
     const currentIndex = symbolBars.findIndex((bar) => bar.timestamp === timestamp);
     if (currentIndex < 0) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'TIMESTAMP_NOT_FOUND',
+        `${symbol} does not have the requested scan timestamp loaded yet.`,
+        { status: 'WAITING' }
+      );
     }
 
     const currentBar = symbolBars[currentIndex];
     if (!isIntervalClosed(currentBar.timestamp, 5)) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'WAITING_FOR_5M_CLOSE',
+        `${symbol} is waiting for the current five-minute candle to close before checking setups.`,
+        { status: 'WAITING' }
+      );
     }
 
     const barsUntilNow = symbolBars.slice(0, currentIndex + 1);
@@ -1296,16 +1463,28 @@ export class SignalMonitorService {
     const localNow = getLocalTimeParts(currentBar.timestamp, settings.timezone);
 
     if (!inWindow(localNow.minuteOfDay, sessionStart, sessionEnd)) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'OUTSIDE_TRADING_WINDOW',
+        `${symbol} is outside the manual alert trading window (${settings.sessionStartHour}:${String(settings.sessionStartMinute).padStart(2, '0')}-${settings.sessionEndHour}:${String(settings.sessionEndMinute).padStart(2, '0')} ${settings.timezone}).`,
+        { status: 'WAITING' }
+      );
     }
 
     if (settings.requireOpeningRangeComplete && localNow.minuteOfDay < rangeEnd) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'OPENING_RANGE_INCOMPLETE',
+        `${symbol} is waiting for the opening range to finish before alerts are allowed.`,
+        { status: 'WAITING' }
+      );
     }
 
     const candles1m = takeLast(barsUntilNow, this.config.lookbackBars1m).map(barToCandle);
     if (candles1m.length < this.config.lookbackBars1m) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'INSUFFICIENT_1M_BARS',
+        `${symbol} does not have enough recent one-minute candles for scoring yet.`,
+        { status: 'WAITING' }
+      );
     }
 
     const candles5m = completeCandles(barsUntilNow, currentBar.timestamp, 5, 20);
@@ -1316,7 +1495,11 @@ export class SignalMonitorService {
     const candlesW1 = completeCandles(barsUntilNow, currentBar.timestamp, 10080, 20);
 
     if (candles5m.length < 3 || candles15m.length < 5) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'INSUFFICIENT_TIMEFRAME_CANDLES',
+        `${symbol} is waiting for enough completed 5m and 15m candles to confirm a setup.`,
+        { status: 'WAITING' }
+      );
     }
 
     const dayScan = takeLast(barsUntilNow, 12 * 60);
@@ -1326,7 +1509,11 @@ export class SignalMonitorService {
     });
 
     if (sessionBarsToday.length < 30) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'INSUFFICIENT_SESSION_BARS',
+        `${symbol} needs at least 30 bars in the active session before setup detection is trusted.`,
+        { status: 'WAITING' }
+      );
     }
 
     const latest15mStart = candles15m[candles15m.length - 1]?.timestamp;
@@ -1387,7 +1574,11 @@ export class SignalMonitorService {
       settings.enabledSetups.includes(candidate.setupType)
     );
     if (candidates.length === 0) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      return noAlertResult(
+        'NO_SETUP_MATCH',
+        `${symbol} was scanned, but none of the enabled setup patterns matched the current candles.`,
+        { candidateCount: 0, status: 'SCANNED' }
+      );
     }
 
     const newsEvents = await this.calendarClient.listUpcomingEvents();
@@ -1507,12 +1698,27 @@ export class SignalMonitorService {
       settings.aPlusOnlyAfterFirstHour && localNow.minuteOfDay >= rangeEnd
         ? Math.max(settings.minFinalScore, settings.aPlusMinScore)
         : settings.minFinalScore;
+    const topRankedCandidate = rankedCandidatesWithRisk[0]?.candidate;
     const qualifyingCandidates = rankedCandidatesWithRisk.filter(
       ({ candidate }) => (candidate.finalScore ?? 0) >= minScoreThreshold
     );
     const topCandidate = qualifyingCandidates[0]?.candidate;
     if (!topCandidate) {
-      return { matchedAlerts: 0, publishedAlerts: 0, skippedAlerts: 0 };
+      const topScore =
+        typeof topRankedCandidate?.finalScore === 'number' ? topRankedCandidate.finalScore : undefined;
+      return noAlertResult(
+        'BELOW_SCORE_THRESHOLD',
+        topRankedCandidate
+          ? `${symbol} found ${rankedCandidatesWithRisk.length} setup candidate${rankedCandidatesWithRisk.length === 1 ? '' : 's'}, but the top score ${topScore?.toFixed(1) ?? 'n/a'} is below the alert threshold ${minScoreThreshold}.`
+          : `${symbol} found setup candidates, but none could be scored for alerting.`,
+        {
+          candidateCount: rankedCandidatesWithRisk.length,
+          topSetupType: topRankedCandidate?.setupType,
+          topScore,
+          minScoreThreshold,
+          status: 'SCANNED'
+        }
+      );
     }
 
     if (options.recordJournal) {
@@ -1598,7 +1804,32 @@ export class SignalMonitorService {
       }
     }
 
-    return { matchedAlerts, publishedAlerts, skippedAlerts };
+    if (matchedAlerts === 0 && skippedAlerts > 0) {
+      return {
+        matchedAlerts,
+        publishedAlerts,
+        skippedAlerts,
+        reasonCode: 'DUPLICATE_ALERT',
+        reason: `${symbol} still matches a setup, but that alert is already on the board.`,
+        candidateCount: qualifyingCandidates.length,
+        topSetupType: topCandidate.setupType,
+        topScore: topCandidate.finalScore,
+        minScoreThreshold,
+        status: 'SKIPPED'
+      };
+    }
+
+    return {
+      matchedAlerts,
+      publishedAlerts,
+      skippedAlerts,
+      reasonCode: 'ALERT_READY',
+      reason: `${symbol} matched ${matchedAlerts} setup${matchedAlerts === 1 ? '' : 's'} that met the alert rules.`,
+      candidateCount: qualifyingCandidates.length,
+      topSetupType: topCandidate.setupType,
+      topScore: topCandidate.finalScore,
+      minScoreThreshold
+    };
   }
 
   private async publishAlert(

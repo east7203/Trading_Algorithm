@@ -1075,6 +1075,49 @@ const renderBoardRefreshMeta = () => {
   boardNewSinceCheckEl.classList.toggle('no-new', lastBoardNewAlertCount === 0);
 };
 
+const describeSignalScanEntry = (entry) => {
+  if (!entry) {
+    return '';
+  }
+
+  const scoreText = Number.isFinite(Number(entry.topScore)) && Number.isFinite(Number(entry.minScoreThreshold))
+    ? ` Top ${Number(entry.topScore).toFixed(1)} / need ${Number(entry.minScoreThreshold).toFixed(0)}.`
+    : '';
+  const reason = entry.reason || 'Scanned with no new alert.';
+  return `${entry.symbol}: ${reason}${scoreText}`;
+};
+
+const describeSignalScan = (scan, options = {}) => {
+  if (!scan) {
+    return options.empty ?? 'No board scan has run yet. Tap Check Again to scan now.';
+  }
+
+  if (!scan.started) {
+    return 'Manual alert engine is off.';
+  }
+
+  const publishedAlerts = Number(scan.publishedAlerts) || 0;
+  if (publishedAlerts > 0) {
+    return `${publishedAlerts} new trade alert${publishedAlerts === 1 ? '' : 's'} found.`;
+  }
+
+  const statuses = Array.isArray(scan.symbolStatus) ? scan.symbolStatus : [];
+  const limit = options.compact ? 2 : 3;
+  const details = statuses.slice(0, limit).map(describeSignalScanEntry).filter(Boolean);
+  if (details.length > 0) {
+    return details.join(' • ');
+  }
+
+  return 'Scanned, but no enabled setup qualified for an alert.';
+};
+
+const boardNoSignalMessage = () => {
+  const scan = latestDiagnostics?.diagnostics?.signalMonitor?.lastScan;
+  return `No live signals yet. ${describeSignalScan(scan, {
+    empty: 'Tap Check Again to scan NQ/ES now.'
+  })}`;
+};
+
 const resolveBoardSpotlightAlert = (filteredAlerts, allAlerts = latestAlerts) =>
   filteredAlerts.find((alert) => alert.alertId === focusedAlertId)
   ?? filteredAlerts.find(hasSavedSignalSnapshot)
@@ -8711,7 +8754,10 @@ const renderDiagnostics = () => {
   diagModelEl.textContent = diagnostics.rankingModel?.modelId ?? '--';
   diagSubscribersEl.textContent = `Web ${diagnostics.notifications?.webPushSubscribers ?? 0} • Native ${diagnostics.notifications?.nativePushDevices ?? 0}${diagnostics.notifications?.nativePushReady ? ' ready' : diagnostics.notifications?.nativePushReadyReason ? ` (${diagnostics.notifications.nativePushReadyReason})` : ' off'} • TG ${diagnostics.notifications?.telegramReady ? 'on' : 'off'} • Sun ${diagnostics.notifications?.ibkrLoginReminderEnabled ? 'on' : 'off'}`;
   diagSignalMonitorEl.textContent = diagnostics.signalMonitor?.started
-    ? `On • ${diagnostics.signalMonitor.alertCount ?? 0} alerts`
+    ? `On • ${diagnostics.signalMonitor.alertCount ?? 0} alerts • ${describeSignalScan(
+        diagnostics.signalMonitor.lastScan,
+        { compact: true, empty: 'No scan yet' }
+      )}`
     : 'Off';
   diagLastAlertEl.textContent = diagnostics.lastAlert
     ? `${diagnostics.lastAlert.symbol} ${diagnostics.lastAlert.side} • ${fmtTime(diagnostics.lastAlert.detectedAt)}`
@@ -9181,8 +9227,9 @@ const refreshBoardAlerts = async () => {
     const scannedSymbols = Number(refresh.scannedSymbols) || 0;
     const publishedAlerts = Number(refresh.publishedAlerts) || 0;
     const matchedAlerts = Number(refresh.matchedAlerts) || 0;
+    const scanDetail = describeSignalScan(refresh, { compact: true });
     setStatus(
-      `Status: board checked ${scannedSymbols} ${scannedSymbols === 1 ? 'market' : 'markets'} • ${publishedAlerts} new alert${publishedAlerts === 1 ? '' : 's'} • ${matchedAlerts} match${matchedAlerts === 1 ? '' : 'es'} reviewed.`
+      `Status: board checked ${scannedSymbols} ${scannedSymbols === 1 ? 'market' : 'markets'} • ${publishedAlerts} new alert${publishedAlerts === 1 ? '' : 's'} • ${matchedAlerts} match${matchedAlerts === 1 ? '' : 'es'} reviewed. ${scanDetail}`
     );
   } catch (error) {
     await Promise.all([loadAlerts(), loadDiagnostics()]);
@@ -9227,7 +9274,7 @@ const loadAlerts = async () => {
     const filteredAlerts = getFilteredAlerts(latestAlerts);
 
     if (!latestAlerts.length) {
-      renderEmpty(alertsListEl, 'No live signals yet. The app will alert you when a setup is detected.');
+      renderEmpty(alertsListEl, boardNoSignalMessage());
       updateStats();
       return;
     }

@@ -226,6 +226,34 @@ describe('signal monitor integration', () => {
     expect(refreshPayload.ok).toBe(true);
     expect(refreshPayload.refresh.started).toBe(true);
     expect(refreshPayload.refresh.scannedSymbols).toBeGreaterThan(0);
+    expect(refreshPayload.refresh.symbolStatus).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: 'NQ',
+          latestBarAt: expect.any(String)
+        }),
+        expect.objectContaining({
+          symbol: 'ES',
+          status: 'NO_DATA',
+          reasonCode: 'NO_BARS'
+        })
+      ])
+    );
+
+    const monitorStatusResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/monitor/status'
+    });
+
+    expect(monitorStatusResponse.statusCode).toBe(200);
+    expect(monitorStatusResponse.json().monitor.lastScan.symbolStatus).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: 'ES',
+          reasonCode: 'NO_BARS'
+        })
+      ])
+    );
 
     const afterRefresh = await ctx.app.inject({
       method: 'GET',
