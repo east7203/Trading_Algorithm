@@ -1277,7 +1277,7 @@ const resolveCalendarClient = (override?: EconomicCalendarClient): EconomicCalen
 };
 
 export const buildApp = (options: BuildAppOptions = {}): AppContext => {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, trustProxy: true });
   const trustedClientHeader = 'x-tradeassist-client';
   const trustedClientValues = new Set(['mobile-web', 'native-app', 'desktop-app']);
   const publicRoutePrefixes = ['/mobile', '/health'];

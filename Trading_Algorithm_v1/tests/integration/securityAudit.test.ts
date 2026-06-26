@@ -35,6 +35,24 @@ describe('security hardening', () => {
     expect(response.json().message).toBe('Forbidden');
   });
 
+  it('blocks unauthenticated api reads proxied through nginx loopback', async () => {
+    const ctx = withApp(buildApp());
+
+    const response = await ctx.app.inject({
+      method: 'GET',
+      path: '/diagnostics',
+      remoteAddress: '127.0.0.1',
+      headers: {
+        'x-forwarded-for': '203.0.113.10',
+        'x-forwarded-proto': 'https',
+        host: '134-209-125-140.sslip.io'
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().message).toBe('Forbidden');
+  });
+
   it('allows same-origin app requests with the trusted client header', async () => {
     const ctx = withApp(buildApp({ paperTradingEnabled: true }));
 
