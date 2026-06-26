@@ -100,6 +100,17 @@ interface AppChannelDeliverySummary {
   errors: string[];
 }
 
+interface SignalAlertDeliverySummary {
+  app: AppChannelDeliverySummary;
+  telegram: {
+    fallbackRequested: boolean;
+    triggerReason: NotificationActivityTelegramTriggerReason;
+    attempted: boolean;
+    sent: boolean;
+    error?: string;
+  };
+}
+
 type SignalAlertNotificationActivityLogger = (entry: NotificationActivityEntryInput) => Promise<void> | void;
 
 const REPLAY_HISTORY_DIRS = [
@@ -1098,7 +1109,7 @@ export class SignalMonitorService {
     };
   }
 
-  async triggerTestAlert(symbol: SymbolCode = 'NQ'): Promise<SignalAlert> {
+  async triggerTestAlert(symbol: SymbolCode = 'NQ'): Promise<{ alert: SignalAlert; delivery: SignalAlertDeliverySummary | null }> {
     const activeModel = this.rankingModelStore.get();
     const symbolBars = this.barsBySymbol.get(symbol) ?? [];
     const latestBar = symbolBars[symbolBars.length - 1];
@@ -1223,7 +1234,7 @@ export class SignalMonitorService {
       chartSnapshot: createChartSnapshot(candles5m, candidate, sessionLevels)
     };
 
-    await this.publishAlert(alert, {
+    const delivery = await this.publishAlert(alert, {
       timestamp: detectedAt,
       candidateId: candidate.id,
       symbol,
@@ -1232,7 +1243,7 @@ export class SignalMonitorService {
       source: 'manual-test'
     });
 
-    return alert;
+    return { alert, delivery };
   }
 
   private startEscalationLoop(): void {
@@ -2091,7 +2102,7 @@ export class SignalMonitorService {
       source: string;
     },
     notifyChannels = true
-  ): Promise<void> {
+  ): Promise<SignalAlertDeliverySummary | null> {
     this.alerts.unshift(alert);
     this.alerts = this.alerts.slice(0, this.config.maxAlerts);
     this.lastAlertAt = alert.detectedAt;
@@ -2121,8 +2132,9 @@ export class SignalMonitorService {
       outcome: reviewEntry.outcome
     };
 
+    let deliverySummary: SignalAlertDeliverySummary | null = null;
     if (notifyChannels) {
-      await this.notifyAlertChannels(alert, {
+      deliverySummary = await this.notifyAlertChannels(alert, {
         reason: 'initial',
         reminderCount: alert.reviewState?.escalationCount ?? 0
       });
@@ -2132,6 +2144,8 @@ export class SignalMonitorService {
       alert,
       source: context.source
     });
+
+    return deliverySummary;
   }
 
   private async notifyAlertChannels(
@@ -2140,7 +2154,7 @@ export class SignalMonitorService {
       reason: 'initial' | 'reminder';
       reminderCount: number;
     }
-  ): Promise<void> {
+  ): Promise<SignalAlertDeliverySummary> {
     const appDelivery = await this.notifyAppAlertChannels(alert, delivery);
     if (appDelivery.errors.length > 0) {
       this.lastError = appDelivery.errors.at(-1);
@@ -2175,6 +2189,17 @@ export class SignalMonitorService {
                 ? 'app-error'
               : 'zero-app-deliveries';
 
+    const summary: SignalAlertDeliverySummary = {
+      app: appDelivery,
+      telegram: {
+        fallbackRequested: true,
+        triggerReason: telegramTriggerReason,
+        attempted: shouldFallbackToTelegram,
+        sent: telegramSent,
+        error: telegramError
+      }
+    };
+
     await this.onNotificationActivity?.({
       at: new Date().toISOString(),
       kind: 'signal-alert',
@@ -2195,13 +2220,15 @@ export class SignalMonitorService {
         error: appDelivery.errors.at(-1)
       },
       telegram: {
-        fallbackRequested: true,
-        triggerReason: telegramTriggerReason,
-        attempted: shouldFallbackToTelegram,
-        sent: telegramSent,
-        error: telegramError
+        fallbackRequested: summary.telegram.fallbackRequested,
+        triggerReason: summary.telegram.triggerReason,
+        attempted: summary.telegram.attempted,
+        sent: summary.telegram.sent,
+        error: summary.telegram.error
       }
     });
+
+    return summary;
   }
 
   private async notifyAppAlertChannels(

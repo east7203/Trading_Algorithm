@@ -193,6 +193,19 @@ describe('notification category routing', () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(response.json().delivery).toMatchObject({
+      app: {
+        attempted: 1,
+        delivered: 0,
+        removed: 0
+      },
+      telegram: {
+        fallbackRequested: true,
+        triggerReason: 'zero-app-deliveries',
+        attempted: true,
+        sent: true
+      }
+    });
     expect(telegramAlerts).toHaveLength(1);
 
     const activityResponse = await ctx.app.inject({
@@ -211,5 +224,60 @@ describe('notification category routing', () => {
         sent: true
       }
     });
+  });
+
+  it('reports successful app delivery for manual trade alerts without Telegram fallback', async () => {
+    const signalAlerts: Array<Record<string, unknown>> = [];
+    const telegramAlerts: Array<Record<string, unknown>> = [];
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      nativePushNotificationService: null,
+      webPushNotificationService: {
+        start: async () => undefined,
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        subscribe: async () => undefined,
+        unsubscribe: async () => undefined,
+        notifySignalAlert: async (message: Record<string, unknown>) => {
+          signalAlerts.push(message);
+          return { attempted: 1, delivered: 1, removed: 0 };
+        },
+        notifyGeneric: async () => ({ attempted: 0, delivered: 0, removed: 0 })
+      } as unknown as WebPushNotificationService,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifySignalAlert: async (message: Record<string, unknown>) => {
+          telegramAlerts.push(message);
+          return { sent: true };
+        },
+        notifyGeneric: async () => ({ sent: true })
+      } as never
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/test/alert',
+      payload: {
+        symbol: 'NQ'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().delivery).toMatchObject({
+      app: {
+        attempted: 1,
+        delivered: 1,
+        removed: 0
+      },
+      telegram: {
+        fallbackRequested: true,
+        triggerReason: 'app-delivered',
+        attempted: false,
+        sent: false
+      }
+    });
+    expect(signalAlerts).toHaveLength(1);
+    expect(telegramAlerts).toHaveLength(0);
   });
 });

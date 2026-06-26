@@ -4903,7 +4903,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
     const rawSymbol = (request.body as { symbol?: string } | undefined)?.symbol?.toUpperCase();
     const symbol = rawSymbol === 'ES' ? 'ES' : 'NQ';
-    const alert = await signalMonitorService.triggerTestAlert(symbol);
+    const { alert, delivery } = await signalMonitorService.triggerTestAlert(symbol);
 
     return reply.status(200).send({
       ok: true,
@@ -4919,7 +4919,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         entry: alert.candidate.entry,
         stopLoss: alert.candidate.stopLoss,
         takeProfit: alert.candidate.takeProfit[0] ?? null
-      }
+      },
+      delivery
     });
   });
 

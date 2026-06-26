@@ -302,6 +302,8 @@ describe('mobile app endpoints', () => {
     expect(typeof payload.alert.entry).toBe('number');
     expect(typeof payload.alert.stopLoss).toBe('number');
     expect(typeof payload.alert.takeProfit).toBe('number');
+    expect(payload.delivery).toBeTruthy();
+    expect(payload.delivery.app).toBeTruthy();
   });
 
   it('serves a live futures confirm chart snapshot for board alerts', async () => {
