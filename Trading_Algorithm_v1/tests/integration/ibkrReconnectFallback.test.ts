@@ -11,6 +11,55 @@ const wait = async (durationMs: number): Promise<void> =>
   await new Promise((resolve) => {
     setTimeout(resolve, durationMs);
   });
+const flushAsyncWork = async (): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  await Promise.resolve();
+};
+const createManualReconnectClock = (initialIso: string) => {
+  let nowMs = Date.parse(initialIso);
+  let nextId = 1;
+  const timers = new Map<number, { id: number; runAtMs: number; callback: () => void }>();
+
+  return {
+    now: () => nowMs,
+    setTimeout: (callback: () => void, delayMs: number): NodeJS.Timeout => {
+      const timer = { id: nextId, runAtMs: nowMs + Math.max(0, delayMs), callback };
+      nextId += 1;
+      timers.set(timer.id, timer);
+      return timer as unknown as NodeJS.Timeout;
+    },
+    clearTimeout: (timer: NodeJS.Timeout): void => {
+      const id = (timer as unknown as { id?: number }).id;
+      if (typeof id === 'number') {
+        timers.delete(id);
+      }
+    },
+    pendingCount: () => timers.size,
+    nextRunAt: (): string | undefined => {
+      const nextTimer = [...timers.values()].sort((left, right) => left.runAtMs - right.runAtMs)[0];
+      return nextTimer ? new Date(nextTimer.runAtMs).toISOString() : undefined;
+    },
+    advanceBy: async (durationMs: number): Promise<void> => {
+      const targetMs = nowMs + durationMs;
+      while (true) {
+        const nextTimer = [...timers.values()]
+          .filter((timer) => timer.runAtMs <= targetMs)
+          .sort((left, right) => left.runAtMs - right.runAtMs)[0];
+        if (!nextTimer) {
+          break;
+        }
+        timers.delete(nextTimer.id);
+        nowMs = nextTimer.runAtMs;
+        nextTimer.callback();
+        await flushAsyncWork();
+      }
+      nowMs = targetMs;
+      await flushAsyncWork();
+    }
+  };
+};
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -375,14 +424,21 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(restartCalls).toEqual(['manual-phone-retry-bridge-restart']);
   });
 
-  it('sends an approval follow-up alert if login-required does not recover in time', async () => {
+  it('sends hourly top-of-hour approval reminders until IBKR reconnects', async () => {
+    const reconnectClock = createManualReconnectClock('2026-03-15T10:45:30.000Z');
     const webPushMessages: Array<Record<string, unknown>> = [];
     const telegramMessages: Array<Record<string, unknown>> = [];
     const loginTriggerCalls: string[] = [];
     const resendTriggerCalls: string[] = [];
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-hourly-reminder-'));
+    tempDirs.push(tempDir);
 
     const ctx = buildApp({
       operationalReminderEnabled: false,
+      ibkrReconnectStateStorePath: path.join(tempDir, 'ibkr-reconnect-state.json'),
+      ibkrReconnectNow: reconnectClock.now,
+      ibkrReconnectSetTimeout: reconnectClock.setTimeout,
+      ibkrReconnectClearTimeout: reconnectClock.clearTimeout,
       ibkrLoginTrigger: async (source) => {
         loginTriggerCalls.push(source);
         return { ok: true };
@@ -415,11 +471,15 @@ describe('IBKR reconnect fallback notifications', () => {
         symbols: ['NQ', 'YM'],
         source: 'manual-phone-retry',
         reason: 'Fallback test',
+        detectedAt: '2026-03-15T10:45:30.000Z',
         fallbackDelaySeconds: 5
       }
     });
 
     expect(response.statusCode).toBe(200);
+    expect(response.json().nextReminderAt).toBe('2026-03-15T11:00:00.000Z');
+    expect(reconnectClock.pendingCount()).toBe(1);
+    expect(reconnectClock.nextRunAt()).toBe('2026-03-15T11:00:00.000Z');
     expect(loginTriggerCalls).toEqual(['manual-phone-retry']);
     expect(resendTriggerCalls).toEqual(['manual-phone-retry-push']);
     expect(webPushMessages).toHaveLength(1);
@@ -428,9 +488,11 @@ describe('IBKR reconnect fallback notifications', () => {
     );
     expect(telegramMessages).toHaveLength(0);
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5_500);
-    });
+    await reconnectClock.advanceBy((14 * 60 + 29) * 1000);
+
+    expect(webPushMessages).toHaveLength(1);
+
+    await reconnectClock.advanceBy(1000);
 
     expect(loginTriggerCalls).toEqual(['manual-phone-retry', 'manual-phone-retry-reminder']);
     expect(resendTriggerCalls).toEqual(['manual-phone-retry-push', 'manual-phone-retry-reminder-push']);
@@ -438,6 +500,38 @@ describe('IBKR reconnect fallback notifications', () => {
     expect(webPushMessages[1].title).toBe('IBKR still not connected');
     expect(webPushMessages[1].url).toBe('https://134-209-125-140.sslip.io/mobile/?tab=status&focus=ibkr-connection');
     expect(telegramMessages).toHaveLength(0);
+
+    await reconnectClock.advanceBy(60 * 60 * 1000);
+
+    expect(loginTriggerCalls).toEqual([
+      'manual-phone-retry',
+      'manual-phone-retry-reminder',
+      'manual-phone-retry-reminder'
+    ]);
+    expect(resendTriggerCalls).toEqual([
+      'manual-phone-retry-push',
+      'manual-phone-retry-reminder-push',
+      'manual-phone-retry-reminder-push'
+    ]);
+    expect(webPushMessages).toHaveLength(3);
+    expect(webPushMessages[2].title).toBe('IBKR still not connected');
+
+    const connected = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/connected',
+      payload: {
+        symbols: ['NQ', 'YM'],
+        source: 'manual-phone-retry',
+        connectedAt: '2026-03-15T12:00:05.000Z'
+      }
+    });
+
+    expect(connected.statusCode).toBe(200);
+    const countAfterConnected = webPushMessages.length;
+
+    await reconnectClock.advanceBy(60 * 60 * 1000);
+
+    expect(webPushMessages).toHaveLength(countAfterConnected);
   }, 12000);
 
   it('falls back to Telegram when app notifications do not deliver', async () => {

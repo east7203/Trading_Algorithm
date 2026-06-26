@@ -174,6 +174,9 @@ interface BuildAppOptions {
   ibkrResendPushTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
   ibkrApiReadinessCheck?: () => Promise<IbkrApiReadinessResult>;
   ibkrBridgeRestartTrigger?: (source: string) => Promise<IbkrLoginTriggerResult>;
+  ibkrReconnectNow?: () => number;
+  ibkrReconnectSetTimeout?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
+  ibkrReconnectClearTimeout?: (timer: NodeJS.Timeout) => void;
   webPushEnabled?: boolean;
   webPushConfig?: Partial<WebPushNotificationConfig>;
   webPushNotificationService?: WebPushNotificationService | null;
@@ -1656,13 +1659,28 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     };
   };
   const trainingStatusUrl = `${process.env.APP_BASE_URL ?? process.env.TELEGRAM_APP_URL ?? 'https://134-209-125-140.sslip.io'}/mobile/?tab=status&focus=learning`;
-  const ibkrReconnectFallbackDelayMs =
-    parseIntEnv('IBKR_RECONNECT_FALLBACK_DELAY_SECONDS', 45, 5, 600) * 1000;
+  const ibkrReconnectNow = options.ibkrReconnectNow ?? (() => Date.now());
+  const ibkrReconnectSetTimeout = options.ibkrReconnectSetTimeout ?? setTimeout;
+  const ibkrReconnectClearTimeout = options.ibkrReconnectClearTimeout ?? clearTimeout;
   const ibkrReconnectReminderIntervalMs =
     parseIntEnv('IBKR_RECONNECT_REMINDER_MINUTES', 60, 1, 240) * 60 * 1000;
+  const ibkrReconnectReminderOnTheHour = parseBooleanEnv('IBKR_RECONNECT_REMINDER_ON_THE_HOUR', true);
   const ibkrManualApprovalGraceMs =
     parseIntEnv('IBKR_MANUAL_APPROVAL_GRACE_SECONDS', 180, 30, 900) * 1000;
+  const nextIbkrReconnectReminderDelayMs = (nowMs = ibkrReconnectNow()): number => {
+    if (!ibkrReconnectReminderOnTheHour) {
+      return ibkrReconnectReminderIntervalMs;
+    }
+
+    const nextHour = new Date(nowMs);
+    nextHour.setUTCMinutes(0, 0, 0);
+    nextHour.setUTCHours(nextHour.getUTCHours() + 1);
+    return Math.max(0, nextHour.getTime() - nowMs);
+  };
   const ibkrReconnectReminderLabel = (() => {
+    if (ibkrReconnectReminderOnTheHour) {
+      return '1 hour on the hour';
+    }
     const totalMinutes = Math.round(ibkrReconnectReminderIntervalMs / (60 * 1000));
     if (totalMinutes % 60 === 0) {
       const hours = totalMinutes / 60;
@@ -2249,9 +2267,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
           })
         : null
       : options.marketResearchService;
-  const ibkrReconnectState: IbkrReconnectStateSnapshot & { pendingTimer?: NodeJS.Timeout } = {
+  const ibkrReconnectState: IbkrReconnectStateSnapshot & { pendingTimer?: NodeJS.Timeout; nextReminderAtMs?: number } = {
     ...ibkrReconnectStateStore.get(),
-    pendingTimer: undefined
+    pendingTimer: undefined,
+    nextReminderAtMs: undefined
   };
   const ibkrRecoveryHistoryLimit = 24;
   const persistIbkrReconnectState = async (): Promise<void> => {
@@ -2448,7 +2467,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ? new Date(ibkrReconnectState.lastLoginRequiredAtMs).toISOString()
         : undefined,
     lastConnectedAt:
-      ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined
+      ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined,
+    nextReminderAt:
+      ibkrReconnectState.nextReminderAtMs && ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs
+        ? new Date(ibkrReconnectState.nextReminderAtMs).toISOString()
+        : undefined
   });
 
   const sendIbkrReconnectFallback = async (
@@ -2459,14 +2482,13 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     if (ibkrReconnectState.lastConnectedAtMs >= requestedAtMs) {
       return;
     }
-    if (ibkrReconnectState.lastFallbackAtMs >= requestedAtMs) {
-      return;
-    }
     if (shouldDeferAutomaticIbkrRecovery(source)) {
       const remainingMs = getManualIbkrApprovalHoldRemainingMs();
-      scheduleIbkrReconnectFallback(Date.now(), symbols, source, Math.min(Math.max(remainingMs, 15_000), 60_000));
+      scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, Math.min(Math.max(remainingMs, 15_000), 60_000));
       return;
     }
+
+    scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, nextIbkrReconnectReminderDelayMs());
 
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const title = 'IBKR still not connected';
@@ -2507,7 +2529,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       );
     }
 
-    ibkrReconnectState.lastFallbackAtMs = Date.now();
+    ibkrReconnectState.lastFallbackAtMs = ibkrReconnectNow();
     ibkrReconnectState.lastSource = source;
     ibkrReconnectState.lastSymbols = [...symbols];
     await appendIbkrReconnectHistory({
@@ -2518,7 +2540,6 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       detail: buildIbkrRecoveryAttemptDetail(loginAttempt, resendAttempt, reloginAttempt),
       artifacts: buildIbkrRecoveryArtifacts(loginAttempt, resendAttempt, reloginAttempt)
     });
-    scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, ibkrReconnectReminderIntervalMs);
   };
 
   const scheduleIbkrReconnectFallback = (
@@ -2528,11 +2549,15 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     delayMs: number
   ): void => {
     if (ibkrReconnectState.pendingTimer) {
-      clearTimeout(ibkrReconnectState.pendingTimer);
+      ibkrReconnectClearTimeout(ibkrReconnectState.pendingTimer);
       ibkrReconnectState.pendingTimer = undefined;
+      ibkrReconnectState.nextReminderAtMs = undefined;
     }
+    ibkrReconnectState.nextReminderAtMs = ibkrReconnectNow() + Math.max(0, delayMs);
 
-    ibkrReconnectState.pendingTimer = setTimeout(() => {
+    ibkrReconnectState.pendingTimer = ibkrReconnectSetTimeout(() => {
+      ibkrReconnectState.pendingTimer = undefined;
+      ibkrReconnectState.nextReminderAtMs = undefined;
       void sendIbkrReconnectFallback(requestedAtMs, symbols, source);
     }, delayMs);
   };
@@ -3009,22 +3034,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs
       && !ibkrReconnectState.pendingTimer
     ) {
-      const baseTimestamp =
-        ibkrReconnectState.lastFallbackAtMs >= ibkrReconnectState.lastLoginRequiredAtMs
-          ? ibkrReconnectState.lastFallbackAtMs
-          : ibkrReconnectState.lastLoginRequiredAtMs;
-      const cadenceMs =
-        ibkrReconnectState.lastFallbackAtMs >= ibkrReconnectState.lastLoginRequiredAtMs
-          ? ibkrReconnectReminderIntervalMs
-          : ibkrReconnectFallbackDelayMs;
-      const elapsedMs = Math.max(0, Date.now() - baseTimestamp);
-      const delayMs = Math.max(5_000, cadenceMs - elapsedMs);
-
       scheduleIbkrReconnectFallback(
         ibkrReconnectState.lastLoginRequiredAtMs,
         [...ibkrReconnectState.lastSymbols],
         ibkrReconnectState.lastSource ?? 'ibkr-bridge',
-        delayMs
+        nextIbkrReconnectReminderDelayMs()
       );
     }
   });
@@ -3059,9 +3073,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
 
   app.addHook('onClose', async () => {
     if (ibkrReconnectState.pendingTimer) {
-      clearTimeout(ibkrReconnectState.pendingTimer);
+      ibkrReconnectClearTimeout(ibkrReconnectState.pendingTimer);
       ibkrReconnectState.pendingTimer = undefined;
     }
+    ibkrReconnectState.nextReminderAtMs = undefined;
   });
 
   const syncPaperSessionState = async (now = new Date().toISOString()) => {
@@ -4559,6 +4574,10 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ibkrReconnectState.lastConnectedAtMs > 0 ? new Date(ibkrReconnectState.lastConnectedAtMs).toISOString() : undefined,
       lastReminderAt:
         ibkrReconnectState.lastFallbackAtMs > 0 ? new Date(ibkrReconnectState.lastFallbackAtMs).toISOString() : undefined,
+      nextReminderAt:
+        ibkrReconnectState.nextReminderAtMs && ibkrReconnectState.lastLoginRequiredAtMs > ibkrReconnectState.lastConnectedAtMs
+          ? new Date(ibkrReconnectState.nextReminderAtMs).toISOString()
+          : undefined,
       consoleUrl: ibkrConsoleUrl,
       lastResortWebsiteUrl: ibkrMobileUrl,
       websiteFallbackUrl: ibkrMobileUrl,
@@ -5113,7 +5132,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       ibkrReconnectState.lastSymbols = [...symbols];
     }
     if (ibkrReconnectState.pendingTimer) {
-      clearTimeout(ibkrReconnectState.pendingTimer);
+      ibkrReconnectClearTimeout(ibkrReconnectState.pendingTimer);
       ibkrReconnectState.pendingTimer = undefined;
     }
     const loopbackRequest = isLoopbackIp(request.ip);
@@ -5207,15 +5226,11 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     const detectedAt = body.detectedAt ?? new Date().toISOString();
     const source = body.source?.trim() || 'ibkr-bridge';
     const reason = body.reason?.trim() || 'IBKR session is not authenticated yet.';
-    const fallbackDelaySeconds =
-      typeof body.fallbackDelaySeconds === 'number' && Number.isFinite(body.fallbackDelaySeconds)
-        ? Math.max(5, Math.min(600, Math.round(body.fallbackDelaySeconds)))
-        : Math.round(ibkrReconnectFallbackDelayMs / 1000);
     const symbolText = symbols.length > 0 ? ` for ${symbols.join(', ')}` : '';
     const title = 'IBKR login required';
     const bodyText = `The server-side IBKR bridge needs a login${symbolText}.`;
     const deliveryStatus = buildDeliveryFreshness(new Date().toISOString(), detectedAt, 'IBKR login required');
-    const requestedAtMs = Date.parse(detectedAt) || Date.now();
+    const requestedAtMs = Date.parse(detectedAt) || ibkrReconnectNow();
     ibkrReconnectState.lastLoginRequiredAtMs = requestedAtMs;
     ibkrReconnectState.lastFallbackAtMs = 0;
     ibkrReconnectState.lastSource = source;
@@ -5236,12 +5251,14 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         symbols,
         detail: `Automatic IBKR recovery deferred while waiting for manual IBKR Mobile approval to finish. Hold expires at ${approvalHoldUntil}.`
       });
-      scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, fallbackDelaySeconds * 1000);
+      const nextReminderDelayMs = nextIbkrReconnectReminderDelayMs();
+      scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, nextReminderDelayMs);
       return reply.status(202).send({
         ok: false,
         recoveryPending: true,
         approvalPending: true,
         approvalHoldUntil,
+        nextReminderAt: new Date(ibkrReconnectNow() + nextReminderDelayMs).toISOString(),
         source,
         symbols,
         detectedAt,
@@ -5279,7 +5296,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
                 `Source: ${source}`,
                 `Detected at: ${detectedAt}`,
                 `Reason: ${reason}`,
-                `You will get a follow-up notice in about ${fallbackDelaySeconds}s if it still does not reconnect.`,
+                `You will get a follow-up notice at the next top of the hour if it still does not reconnect.`,
                 `After that, reminders will repeat every ${ibkrReconnectReminderLabel} until it reconnects.`
               ],
               buttons: [
@@ -5292,7 +5309,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ]
       : [];
 
-    scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, fallbackDelaySeconds * 1000);
+    const nextReminderDelayMs = nextIbkrReconnectReminderDelayMs();
+    scheduleIbkrReconnectFallback(requestedAtMs, symbols, source, nextReminderDelayMs);
 
     return reply.status(200).send({
       ok: true,
@@ -5302,7 +5320,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       reason,
       loginAttempt,
       resendAttempt,
-      fallbackDelaySeconds,
+      nextReminderAt: new Date(ibkrReconnectNow() + nextReminderDelayMs).toISOString(),
       deliveries
     });
   });

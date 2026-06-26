@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp, type AppContext } from '../../src/app.js';
 
 const contexts: AppContext[] = [];
@@ -17,8 +17,54 @@ const waitFor = async (fn: () => Promise<boolean>, timeoutMs = 3_000, intervalMs
   }
   throw new Error(`Condition not met within ${timeoutMs}ms`);
 };
+const flushAsyncWork = async (): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  await Promise.resolve();
+};
+const createManualReconnectClock = (initialIso: string) => {
+  let nowMs = Date.parse(initialIso);
+  let nextId = 1;
+  const timers = new Map<number, { id: number; runAtMs: number; callback: () => void }>();
+
+  return {
+    now: () => nowMs,
+    setTimeout: (callback: () => void, delayMs: number): NodeJS.Timeout => {
+      const timer = { id: nextId, runAtMs: nowMs + Math.max(0, delayMs), callback };
+      nextId += 1;
+      timers.set(timer.id, timer);
+      return timer as unknown as NodeJS.Timeout;
+    },
+    clearTimeout: (timer: NodeJS.Timeout): void => {
+      const id = (timer as unknown as { id?: number }).id;
+      if (typeof id === 'number') {
+        timers.delete(id);
+      }
+    },
+    advanceBy: async (durationMs: number): Promise<void> => {
+      const targetMs = nowMs + durationMs;
+      while (true) {
+        const nextTimer = [...timers.values()]
+          .filter((timer) => timer.runAtMs <= targetMs)
+          .sort((left, right) => left.runAtMs - right.runAtMs)[0];
+        if (!nextTimer) {
+          break;
+        }
+        timers.delete(nextTimer.id);
+        nowMs = nextTimer.runAtMs;
+        nextTimer.callback();
+        await flushAsyncWork();
+      }
+      nowMs = targetMs;
+      await flushAsyncWork();
+    }
+  };
+};
 
 afterEach(async () => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
   while (contexts.length > 0) {
     const ctx = contexts.pop();
     if (ctx) {
@@ -36,6 +82,7 @@ afterEach(async () => {
 
 describe('IBKR reconnect state persistence', () => {
   it('persists reconnect history across app restarts', async () => {
+    const reconnectClock = createManualReconnectClock('2026-03-14T05:59:55.000Z');
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ibkr-reconnect-state-'));
     tempDirs.push(tempDir);
     const statePath = path.join(tempDir, 'ibkr-reconnect-state.json');
@@ -44,6 +91,9 @@ describe('IBKR reconnect state persistence', () => {
       const ctx = buildApp({
         operationalReminderEnabled: false,
         ibkrReconnectStateStorePath: statePath,
+        ibkrReconnectNow: reconnectClock.now,
+        ibkrReconnectSetTimeout: reconnectClock.setTimeout,
+        ibkrReconnectClearTimeout: reconnectClock.clearTimeout,
         ibkrLoginTrigger: async () => ({ ok: true }),
         ibkrResendPushTrigger: async () => ({ ok: true }),
         webPushNotificationService: {
@@ -61,7 +111,7 @@ describe('IBKR reconnect state persistence', () => {
     };
 
     const firstCtx = buildContext();
-    const loginRequiredAt = '2026-03-14T05:00:00.000Z';
+    const loginRequiredAt = '2026-03-14T05:59:55.000Z';
 
     const loginRequiredResponse = await firstCtx.app.inject({
       method: 'POST',
@@ -75,8 +125,25 @@ describe('IBKR reconnect state persistence', () => {
     });
 
     expect(loginRequiredResponse.statusCode).toBe(200);
+    expect(loginRequiredResponse.json().nextReminderAt).toBe('2026-03-14T06:00:00.000Z');
 
-    await new Promise((resolve) => setTimeout(resolve, 5_500));
+    await reconnectClock.advanceBy(5_000);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const reminderPoll = await firstCtx.app.inject({
+        method: 'GET',
+        path: '/diagnostics'
+      });
+      const recovery = reminderPoll.json().diagnostics.ibkrRecovery;
+      if (typeof recovery.lastReminderAt === 'string') {
+        break;
+      }
+      await flushAsyncWork();
+    }
+    const reminderReady = await firstCtx.app.inject({
+      method: 'GET',
+      path: '/diagnostics'
+    });
+    expect(typeof reminderReady.json().diagnostics.ibkrRecovery.lastReminderAt).toBe('string');
 
     await firstCtx.app.close();
     contexts.pop();
@@ -105,7 +172,7 @@ describe('IBKR reconnect state persistence', () => {
       ])
     );
 
-    const connectedAt = '2026-03-14T05:10:00.000Z';
+    const connectedAt = '2026-03-14T06:10:00.000Z';
     const connectedResponse = await secondCtx.app.inject({
       method: 'POST',
       path: '/notifications/ibkr/connected',
