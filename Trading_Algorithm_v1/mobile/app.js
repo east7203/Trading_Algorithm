@@ -5483,17 +5483,74 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
     />
   `;
 
-  const grid = [takeProfit, entry, stopLoss]
+  const tradeLevelDefs = [
+    {
+      label: 'TP',
+      price: takeProfit,
+      y: targetY,
+      tone: 'target',
+      stroke: '#52de9d',
+      dash: '5 4',
+      width: minimal ? 1.8 : 1.45
+    },
+    {
+      label: 'IN',
+      price: entry,
+      y: entryY,
+      tone: 'entry',
+      stroke: '#4d8dff',
+      dash: '0',
+      width: minimal ? 2.15 : 1.75
+    },
+    {
+      label: 'SL',
+      price: stopLoss,
+      y: stopY,
+      tone: 'stop',
+      stroke: '#ff6f78',
+      dash: '5 4',
+      width: minimal ? 1.8 : 1.45
+    }
+  ];
+
+  const grid = tradeLevelDefs
     .map(
-      (price, index) => `
+      (level) => `
         <line
           x1="${padding.left}"
-          y1="${priceToY(price)}"
+          y1="${level.y}"
           x2="${plotRight}"
-          y2="${priceToY(price)}"
-          stroke="${index === 1 ? 'rgba(230, 236, 244, 0.36)' : 'rgba(190, 204, 219, 0.22)'}"
-          stroke-dasharray="${index === 1 ? '0' : '3 4'}"
-          stroke-width="${index === 1 ? '1.1' : '1'}"
+          y2="${level.y}"
+          stroke="rgba(3, 7, 13, 0.58)"
+          stroke-linecap="round"
+          stroke-width="${level.width + 2.1}"
+        />
+        <line
+          x1="${padding.left}"
+          y1="${level.y}"
+          x2="${plotRight}"
+          y2="${level.y}"
+          stroke="${level.stroke}"
+          stroke-dasharray="${level.dash}"
+          stroke-linecap="round"
+          stroke-width="${level.width}"
+          opacity="${minimal ? '0.98' : '0.82'}"
+        />
+      `
+    )
+    .join('');
+
+  const levelAnchorMarkers = tradeLevelDefs
+    .map(
+      (level) => `
+        <circle
+          cx="${tradeStartX}"
+          cy="${level.y}"
+          r="${level.tone === 'entry' ? (minimal ? 4.6 : 4.2) : (minimal ? 3.7 : 3.3)}"
+          fill="${level.stroke}"
+          stroke="rgba(5, 9, 16, 0.72)"
+          stroke-width="1.6"
+          opacity="${level.tone === 'entry' ? '0.98' : '0.9'}"
         />
       `
     )
@@ -5594,13 +5651,10 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
   `;
 
   const priceTag = (label, price, y, tone) => {
-    if (minimal) {
-      return '';
-    }
     const formattedPrice = fmtNum(price, 2);
     const labelText = `${label} ${formattedPrice}`;
-    const widthPx = expanded ? 74 : 64;
-    const heightPx = expanded ? 19 : 17;
+    const widthPx = minimal ? (expanded ? 78 : 72) : (expanded ? 74 : 64);
+    const heightPx = minimal ? (expanded ? 18 : 16) : (expanded ? 19 : 17);
     const x = plotRight - widthPx;
     const fill =
       tone === 'target'
@@ -5629,9 +5683,9 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
         />
         <text
           x="${x + widthPx / 2 + 4}"
-          y="${y + 3}"
+          y="${y + (minimal ? 2.8 : 3)}"
           fill="#f8fbff"
-          font-size="${expanded ? '8.1' : '7.4'}"
+          font-size="${minimal ? (expanded ? '7.4' : '6.8') : (expanded ? '8.1' : '7.4')}"
           font-weight="700"
           text-anchor="middle"
         >${escapeHtml(labelText)}</text>
@@ -5747,6 +5801,7 @@ const renderReplayTradeBoxChartMarkup = (snapshot, candidate, options = {}) => {
         ${candles}
         ${tradeTrail}
         ${entryGuide}
+        ${levelAnchorMarkers}
         ${entryDot}
         ${entryArrow}
         ${entryLabel}
