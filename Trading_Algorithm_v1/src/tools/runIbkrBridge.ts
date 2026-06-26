@@ -182,14 +182,9 @@ const run = async (): Promise<void> => {
   ];
 
   const trainingApiKey = optionalEnv('TRAINING_API_KEY');
-  if (trainingApiKey) {
-    args.push('--training-api-key', trainingApiKey);
-  }
   const notifyApiKey = optionalEnv('IBKR_NOTIFY_CONNECTED_API_KEY') ?? trainingApiKey;
   if (notifyApiKey) {
-    args.push('--notify-connected-api-key', notifyApiKey);
     args.push('--notify-connected-api-key-header', process.env.IBKR_NOTIFY_CONNECTED_API_KEY_HEADER ?? process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key');
-    args.push('--notify-login-required-api-key', notifyApiKey);
     args.push(
       '--notify-login-required-api-key-header',
       process.env.IBKR_NOTIFY_LOGIN_REQUIRED_API_KEY_HEADER ??

@@ -1056,6 +1056,18 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     if args.command == 'live-bridge':
+        args.training_api_key = args.training_api_key or os.getenv('TRAINING_API_KEY')
+        args.notify_connected_api_key = (
+            args.notify_connected_api_key
+            or os.getenv('IBKR_NOTIFY_CONNECTED_API_KEY')
+            or os.getenv('TRAINING_API_KEY')
+        )
+        args.notify_login_required_api_key = (
+            args.notify_login_required_api_key
+            or os.getenv('IBKR_NOTIFY_LOGIN_REQUIRED_API_KEY')
+            or os.getenv('IBKR_NOTIFY_CONNECTED_API_KEY')
+            or os.getenv('TRAINING_API_KEY')
+        )
         runner = LiveBridgeRunner(args)
         runner.run()
         return

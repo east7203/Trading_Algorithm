@@ -1306,7 +1306,7 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
   );
   registerInternalApiKey(
     process.env.IBKR_NOTIFY_LOGIN_REQUIRED_API_KEY_HEADER ?? process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key',
-    process.env.IBKR_NOTIFY_CONNECTED_API_KEY ?? process.env.TRAINING_API_KEY
+    process.env.IBKR_NOTIFY_LOGIN_REQUIRED_API_KEY ?? process.env.IBKR_NOTIFY_CONNECTED_API_KEY ?? process.env.TRAINING_API_KEY
   );
   const explicitAppOriginsConfigured = Boolean(normalizeOrigin(process.env.APP_BASE_URL) || normalizeOrigin(process.env.TELEGRAM_APP_URL));
   const securityWarnings: string[] = [];
