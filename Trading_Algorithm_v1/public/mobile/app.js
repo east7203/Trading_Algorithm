@@ -1018,6 +1018,19 @@ const boardPrimaryReason = (alert) => {
   return primaryCode ? humanizeRiskReason(primaryCode) : '';
 };
 
+const fundedAccountPlanLabel = (alert) => {
+  const funded = alert?.riskDecision?.fundedAccount;
+  if (!funded?.enabled) {
+    return 'Funded plan: standard desk risk rules.';
+  }
+
+  const action = funded.action === 'TAKE' ? 'Take' : funded.action === 'REDUCE' ? 'Reduce' : 'Skip';
+  const confidence = String(funded.confidenceLabel || 'LOW').replace('_', '+');
+  const riskPct = Number(funded.recommendedRiskPct);
+  const risk = Number.isFinite(riskPct) ? `${fmtNum(riskPct, 2)}%` : '--';
+  return `Funded plan: ${action} ${risk} • ${confidence} confidence. ${funded.passPlan || ''}`.trim();
+};
+
 const boardSentenceCase = (value) =>
   value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : '';
 
@@ -9845,6 +9858,11 @@ const buildSignalAlertCard = (alert) => {
   node.querySelector('.signalRisk').textContent = alert.riskDecision.allowed
     ? `${fmtNum(alert.riskDecision.finalRiskPct, 2)}%`
     : 'Not ready';
+  const fundedPlanEl = node.querySelector('.fundedAccountPlan');
+  if (fundedPlanEl) {
+    fundedPlanEl.textContent = fundedAccountPlanLabel(alert);
+    fundedPlanEl.dataset.action = alert?.riskDecision?.fundedAccount?.action ?? 'STANDARD';
+  }
   node.querySelector('.entry').textContent = fmtNum(alert.candidate.entry, 2);
   node.querySelector('.stopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
   node.querySelector('.takeProfitOne').textContent = fmtNum(alert.candidate.takeProfit?.[0], 2);

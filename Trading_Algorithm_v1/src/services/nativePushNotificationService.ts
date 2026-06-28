@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import type { SignalAlert } from '../domain/types.js';
 import type { AppNotificationMessage } from './operationalReminderService.js';
 import {
+  buildFundedAccountSummary,
   buildReminderStatusText,
   buildTradeLevelSummary,
   signalAlertSourceLabel
@@ -269,6 +270,7 @@ export class NativePushNotificationService {
             signalAlertSourceLabel(alert),
             `${alert.symbol} ${alert.side}`,
             ...buildTradeLevelSummary(alert),
+            buildFundedAccountSummary(alert),
             typeof alert.candidate.finalScore === 'number'
               ? `Score ${alert.candidate.finalScore.toFixed(1)}`
               : 'Score --',

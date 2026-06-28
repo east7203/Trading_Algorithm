@@ -122,6 +122,19 @@ export interface RiskConfig {
     confirmedBy?: string;
     confirmedAt?: string;
   };
+  fundedAccount: {
+    enabled: boolean;
+    accountSize: number;
+    profitTargetPct: number;
+    maxDrawdownPct: number;
+    dailyLossLimitPct: number;
+    minRiskPct: number;
+    maxRiskPct: number;
+    confidenceFloor: number;
+    dailyLossBufferFraction: number;
+    drawdownBufferFraction: number;
+    nearTargetProgressPct: number;
+  };
 }
 
 export interface AccountSnapshot {
@@ -173,6 +186,24 @@ export interface RiskDecision {
   blockedByTradingWindow: boolean;
   blockedByPolicy: boolean;
   checkedAt: string;
+  fundedAccount?: {
+    enabled: boolean;
+    action: 'TAKE' | 'REDUCE' | 'SKIP';
+    confidenceScore: number;
+    confidenceLabel: 'LOW' | 'MEDIUM' | 'HIGH' | 'A_PLUS';
+    recommendedRiskPct: number;
+    recommendedRiskAmount: number;
+    maxSafeRiskPct: number;
+    requestedRiskPct: number;
+    targetProgressPct: number;
+    remainingToTargetPct: number;
+    dailyLossBufferPct: number;
+    drawdownUsedPct: number;
+    drawdownBufferPct: number;
+    rewardRiskRatio?: number;
+    passPlan: string;
+    reasons: string[];
+  };
 }
 
 export interface ExecutionIntent {

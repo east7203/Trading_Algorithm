@@ -755,6 +755,26 @@ textarea {
   pointer-events: none;
 }
 
+.fundedAccountPlan {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-strong) 70%, transparent 30%);
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent 28%);
+}
+
+.fundedAccountPlan[data-action='TAKE'] {
+  color: var(--good);
+}
+
+.fundedAccountPlan[data-action='REDUCE'] {
+  color: var(--warn);
+}
+
+.fundedAccountPlan[data-action='SKIP'] {
+  color: var(--bad);
+}
+
 .signal-levels,
 .evidence-strip {
   display: flex;

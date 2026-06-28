@@ -57,3 +57,18 @@ export const buildReminderStatusText = (
   delivery.reason === 'reminder' && (delivery.reminderCount ?? 0) > 0
     ? 'Still unacknowledged'
     : null;
+
+export const buildFundedAccountSummary = (alert: SignalAlert): string | null => {
+  const funded = alert.riskDecision.fundedAccount;
+  if (!funded?.enabled) {
+    return null;
+  }
+
+  const action =
+    funded.action === 'TAKE'
+      ? 'Take'
+      : funded.action === 'REDUCE'
+        ? 'Reduce'
+        : 'Skip';
+  return `${action} ${funded.recommendedRiskPct.toFixed(2)}% • ${funded.confidenceLabel.replace('_', '+')} confidence • ${funded.passPlan}`;
+};

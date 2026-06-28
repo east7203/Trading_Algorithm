@@ -56,12 +56,88 @@ describe('evaluateRisk', () => {
     const decision = evaluateRisk(baseInput(), store.get());
     expect(decision.allowed).toBe(true);
     expect(decision.finalRiskPct).toBe(0.5);
+    expect(decision.fundedAccount).toMatchObject({
+      enabled: true,
+      action: 'TAKE',
+      confidenceLabel: 'MEDIUM',
+      recommendedRiskPct: 0.5
+    });
     expect(decision.blockedByTradingWindow).toBe(false);
+  });
+
+  it('reduces funded-account risk when daily loss buffer is shrinking', () => {
+    const store = new RiskConfigStore();
+    store.patch({
+      policyConfirmation: {
+        firmUsageApproved: true,
+        platformUsageApproved: true,
+        confirmedBy: 'tester',
+        confirmedAt: '2026-03-07T14:00:00.000Z'
+      }
+    });
+
+    const decision = evaluateRisk(
+      {
+        ...baseInput(),
+        account: {
+          ...baseInput().account,
+          dailyLossPct: 1.5
+        },
+        requestedRiskPct: 0.5
+      },
+      store.get()
+    );
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.finalRiskPct).toBe(0.17);
+    expect(decision.reasonCodes).toContain('FUNDED_ACCOUNT_RISK_REDUCED');
+    expect(decision.fundedAccount).toMatchObject({
+      action: 'REDUCE',
+      dailyLossBufferPct: 0.5,
+      recommendedRiskPct: 0.17
+    });
+  });
+
+  it('blocks funded-account trades when confidence is too low', () => {
+    const store = new RiskConfigStore();
+    store.patch({
+      policyConfirmation: {
+        firmUsageApproved: true,
+        platformUsageApproved: true,
+        confirmedBy: 'tester',
+        confirmedAt: '2026-03-07T14:00:00.000Z'
+      }
+    });
+
+    const decision = evaluateRisk(
+      {
+        ...baseInput(),
+        candidate: {
+          ...candidate,
+          baseScore: 45,
+          finalScore: 48,
+          oneMinuteConfidence: 0.35
+        }
+      },
+      store.get()
+    );
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.finalRiskPct).toBe(0);
+    expect(decision.positionSize).toBe(0);
+    expect(decision.reasonCodes).toContain('FUNDED_ACCOUNT_RISK_REJECTED');
+    expect(decision.fundedAccount).toMatchObject({
+      action: 'SKIP',
+      confidenceLabel: 'LOW'
+    });
   });
 
   it('enforces hard max cap of 1.00% risk', () => {
     const store = new RiskConfigStore();
     store.patch({
+      fundedAccount: {
+        enabled: false
+      },
       policyConfirmation: {
         firmUsageApproved: true,
         platformUsageApproved: true,

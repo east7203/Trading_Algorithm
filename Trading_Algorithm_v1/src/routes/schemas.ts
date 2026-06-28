@@ -63,7 +63,27 @@ export const riskDecisionSchema = z.object({
   blockedByNewsWindow: z.boolean(),
   blockedByTradingWindow: z.boolean(),
   blockedByPolicy: z.boolean(),
-  checkedAt: z.string().datetime()
+  checkedAt: z.string().datetime(),
+  fundedAccount: z
+    .object({
+      enabled: z.boolean(),
+      action: z.enum(['TAKE', 'REDUCE', 'SKIP']),
+      confidenceScore: z.number(),
+      confidenceLabel: z.enum(['LOW', 'MEDIUM', 'HIGH', 'A_PLUS']),
+      recommendedRiskPct: z.number(),
+      recommendedRiskAmount: z.number(),
+      maxSafeRiskPct: z.number(),
+      requestedRiskPct: z.number(),
+      targetProgressPct: z.number(),
+      remainingToTargetPct: z.number(),
+      dailyLossBufferPct: z.number(),
+      drawdownUsedPct: z.number(),
+      drawdownBufferPct: z.number(),
+      rewardRiskRatio: z.number().optional(),
+      passPlan: z.string(),
+      reasons: z.array(z.string())
+    })
+    .optional()
 });
 
 export const signalGenerateBodySchema = z.object({
@@ -149,6 +169,21 @@ export const riskConfigPatchSchema = z
     maxSpreadPoints: z.number().positive().optional(),
     maxSlippagePoints: z.number().positive().optional(),
     killSwitchEnabled: z.boolean().optional(),
+    fundedAccount: z
+      .object({
+        enabled: z.boolean().optional(),
+        accountSize: z.number().positive().optional(),
+        profitTargetPct: z.number().positive().optional(),
+        maxDrawdownPct: z.number().positive().optional(),
+        dailyLossLimitPct: z.number().positive().optional(),
+        minRiskPct: z.number().min(0).optional(),
+        maxRiskPct: z.number().positive().optional(),
+        confidenceFloor: z.number().min(0).max(1).optional(),
+        dailyLossBufferFraction: z.number().positive().max(1).optional(),
+        drawdownBufferFraction: z.number().positive().max(1).optional(),
+        nearTargetProgressPct: z.number().min(0).max(1).optional()
+      })
+      .optional(),
     tradingWindow: z
       .object({
         enabled: z.boolean().optional(),
