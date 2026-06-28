@@ -3276,16 +3276,16 @@ const parseTimeValue = (value) => {
   };
 };
 
-const recommendedMorningPreset = () => ({
+const recommendedAllAlertsPreset = () => ({
   sessionStartHour: 8,
   sessionStartMinute: 30,
-  sessionEndHour: 10,
-  sessionEndMinute: 30,
+  sessionEndHour: 13,
+  sessionEndMinute: 0,
   nyRangeMinutes: 60,
-  minFinalScore: 74,
-  aPlusOnlyAfterFirstHour: true,
-  aPlusMinScore: 82,
-  requireOpeningRangeComplete: true
+  minFinalScore: 0,
+  aPlusOnlyAfterFirstHour: false,
+  aPlusMinScore: 0,
+  requireOpeningRangeComplete: false
 });
 
 const normalizeTabName = (tab) => {
@@ -10982,7 +10982,7 @@ const bindWebAppInstallControls = () => {
 
 const bindSignalSettingsControls = () => {
   applyMorningPresetEl.addEventListener('click', () => {
-    const preset = recommendedMorningPreset();
+    const preset = recommendedAllAlertsPreset();
     renderSignalSettings({
       ...(signalSettings ?? {}),
       ...preset,
@@ -10996,7 +10996,7 @@ const bindSignalSettingsControls = () => {
           'WERLEIN_FOREVER_MODEL'
         ]
     });
-    setStatus('Status: optimal morning preset loaded. Save to apply.');
+    setStatus('Status: all-alert preset loaded. Save to apply.');
   });
 
   saveSignalSettingsEl.addEventListener('click', async () => {

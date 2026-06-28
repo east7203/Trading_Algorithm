@@ -20,12 +20,12 @@ export const defaultSignalMonitorSettings = (): SignalMonitorSettings => ({
   sessionEndHour: 13,
   sessionEndMinute: 0,
   nyRangeMinutes: 60,
-  minFinalScore: 74,
+  minFinalScore: 0,
   enabledSymbols: [...VALID_SYMBOLS],
   enabledSetups: [...VALID_SETUPS],
-  requireOpeningRangeComplete: true,
-  aPlusOnlyAfterFirstHour: true,
-  aPlusMinScore: 82
+  requireOpeningRangeComplete: false,
+  aPlusOnlyAfterFirstHour: false,
+  aPlusMinScore: 0
 });
 
 const ensureTimeComponent = (value: number, label: string, max: number): void => {
