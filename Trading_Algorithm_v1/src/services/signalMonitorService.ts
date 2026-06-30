@@ -6,6 +6,7 @@ import type {
   Candle,
   MarketConditions,
   RiskConfig,
+  RiskDecision,
   SignalReviewOutcome,
   SignalReviewEntry,
   SignalChartSnapshot,
@@ -147,6 +148,7 @@ export type SignalScanReasonCode =
   | 'LEARNING_SUPPRESSED_PATTERN'
   | 'BELOW_SCORE_THRESHOLD'
   | 'BELOW_PROJECTED_RETURN_THRESHOLD'
+  | 'SETUP_NO_LONGER_ACTIONABLE'
   | 'DUPLICATE_ALERT'
   | 'ALERT_READY';
 
@@ -449,6 +451,71 @@ const summarizeCandidate = (candidate: SetupCandidate): string => {
   const score =
     typeof candidate.finalScore === 'number' ? `score ${candidate.finalScore.toFixed(1)}` : 'unscored';
   return `${candidate.symbol} ${candidate.side} • ${candidate.setupType} • ${score}`;
+};
+
+const evaluateAlertActionability = (
+  candidate: SetupCandidate,
+  riskDecision: RiskDecision,
+  currentBar: OneMinuteBar,
+  minProjectedReturnDollars: number
+): {
+  actionable: boolean;
+  reason: string;
+  liveProjectedRewardAmount: number;
+} => {
+  const target = candidate.takeProfit[0];
+  const latestPrice = currentBar.close;
+  if (typeof target !== 'number' || !Number.isFinite(target)) {
+    return {
+      actionable: false,
+      reason: 'TP1 is missing, so the alert is not tradeable.',
+      liveProjectedRewardAmount: 0
+    };
+  }
+
+  const targetAlreadyTouched =
+    candidate.side === 'LONG'
+      ? currentBar.high >= target || latestPrice >= target
+      : currentBar.low <= target || latestPrice <= target;
+  if (targetAlreadyTouched) {
+    return {
+      actionable: false,
+      reason: `TP1 was already touched before the alert could be sent (${candidate.side === 'LONG' ? 'high' : 'low'} ${candidate.side === 'LONG' ? currentBar.high.toFixed(2) : currentBar.low.toFixed(2)} vs TP1 ${target.toFixed(2)}).`,
+      liveProjectedRewardAmount: 0
+    };
+  }
+
+  const stopAlreadyTouched =
+    candidate.side === 'LONG'
+      ? currentBar.low <= candidate.stopLoss || latestPrice <= candidate.stopLoss
+      : currentBar.high >= candidate.stopLoss || latestPrice >= candidate.stopLoss;
+  if (stopAlreadyTouched) {
+    return {
+      actionable: false,
+      reason: `Stop was already touched before the alert could be sent (${candidate.side === 'LONG' ? 'low' : 'high'} ${candidate.side === 'LONG' ? currentBar.low.toFixed(2) : currentBar.high.toFixed(2)} vs stop ${candidate.stopLoss.toFixed(2)}).`,
+      liveProjectedRewardAmount: 0
+    };
+  }
+
+  const remainingRewardPoints =
+    candidate.side === 'LONG'
+      ? Math.max(0, target - latestPrice)
+      : Math.max(0, latestPrice - target);
+  const liveProjectedRewardAmount = Number((remainingRewardPoints * Math.max(0, riskDecision.positionSize)).toFixed(2));
+
+  if (liveProjectedRewardAmount < minProjectedReturnDollars) {
+    return {
+      actionable: false,
+      reason: `The setup moved too close to TP1 before alerting; live TP1 potential is $${liveProjectedRewardAmount.toFixed(0)} and your worthwhile-alert filter is $${minProjectedReturnDollars.toFixed(0)}+.`,
+      liveProjectedRewardAmount
+    };
+  }
+
+  return {
+    actionable: true,
+    reason: `Live TP1 potential is $${liveProjectedRewardAmount.toFixed(0)} from the latest close.`,
+    liveProjectedRewardAmount
+  };
 };
 
 const noAlertResult = (
@@ -1969,9 +2036,25 @@ export class SignalMonitorService {
     const scoreQualifiedCandidates = rankedCandidatesWithRisk.filter(
       ({ candidate }) => (candidate.finalScore ?? 0) >= minScoreThreshold
     );
-    const qualifyingCandidates = scoreQualifiedCandidates.filter(
+    const returnQualifiedCandidates = scoreQualifiedCandidates.filter(
       ({ riskDecision }) => (riskDecision.projectedRewardAmount ?? 0) >= minProjectedReturnDollars
     );
+    const actionableCandidates = returnQualifiedCandidates
+      .map((context) => ({
+        ...context,
+        actionability: evaluateAlertActionability(
+          context.candidate,
+          context.riskDecision,
+          currentBar,
+          minProjectedReturnDollars
+        )
+      }))
+      .filter(({ actionability }) => actionability.actionable);
+    const qualifyingCandidates = actionableCandidates.map(({ candidate, riskDecision, alert }) => ({
+      candidate,
+      riskDecision,
+      alert
+    }));
     const topCandidate = qualifyingCandidates[0]?.candidate;
     if (scoreQualifiedCandidates.length === 0) {
       const topScore =
@@ -1992,18 +2075,43 @@ export class SignalMonitorService {
       );
     }
     if (!topCandidate) {
-      const topReturnCandidate = scoreQualifiedCandidates[0];
-      const topProjectedReturnDollars = topReturnCandidate?.riskDecision.projectedRewardAmount ?? 0;
+      const topReturnCandidate = returnQualifiedCandidates[0];
+      const topProjectedReturnDollars =
+        topReturnCandidate?.riskDecision.projectedRewardAmount
+        ?? scoreQualifiedCandidates[0]?.riskDecision.projectedRewardAmount
+        ?? 0;
       const topScore =
-        typeof topReturnCandidate?.candidate.finalScore === 'number'
-          ? topReturnCandidate.candidate.finalScore
+        typeof (topReturnCandidate ?? scoreQualifiedCandidates[0])?.candidate.finalScore === 'number'
+          ? (topReturnCandidate ?? scoreQualifiedCandidates[0])?.candidate.finalScore
           : undefined;
+      if (returnQualifiedCandidates.length > 0) {
+        const staleCandidate = returnQualifiedCandidates[0];
+        const staleActionability = evaluateAlertActionability(
+          staleCandidate.candidate,
+          staleCandidate.riskDecision,
+          currentBar,
+          minProjectedReturnDollars
+        );
+        return noAlertResult(
+          'SETUP_NO_LONGER_ACTIONABLE',
+          `${symbol} found a setup that met score and TP1 return rules, but it is no longer actionable: ${staleActionability.reason}`,
+          {
+            candidateCount: rankedCandidatesWithRisk.length,
+            topSetupType: staleCandidate.candidate.setupType,
+            topScore,
+            minScoreThreshold,
+            topProjectedReturnDollars: staleActionability.liveProjectedRewardAmount,
+            minProjectedReturnDollars,
+            status: 'SCANNED'
+          }
+        );
+      }
       return noAlertResult(
         'BELOW_PROJECTED_RETURN_THRESHOLD',
         `${symbol} found ${scoreQualifiedCandidates.length} setup candidate${scoreQualifiedCandidates.length === 1 ? '' : 's'} that met the score rules, but the best TP1 projection was $${topProjectedReturnDollars.toFixed(0)} and your worthwhile-alert filter is $${minProjectedReturnDollars.toFixed(0)}+.`,
         {
           candidateCount: rankedCandidatesWithRisk.length,
-          topSetupType: topReturnCandidate?.candidate.setupType,
+          topSetupType: scoreQualifiedCandidates[0]?.candidate.setupType,
           topScore,
           minScoreThreshold,
           topProjectedReturnDollars,
