@@ -16,7 +16,8 @@ export type IbkrReconnectHistoryKind =
   | 'RECOVERY_ATTEMPT'
   | 'REMINDER'
   | 'CONNECTED'
-  | 'FALLBACK_ACTIVATED';
+  | 'FALLBACK_ACTIVATED'
+  | 'MARKET_DATA_NOT_LIVE';
 
 export interface IbkrReconnectHistoryEntry {
   kind: IbkrReconnectHistoryKind;
@@ -91,6 +92,7 @@ const normalizeHistoryEntry = (value: unknown): IbkrReconnectHistoryEntry | null
       || candidate.kind === 'REMINDER'
       || candidate.kind === 'CONNECTED'
       || candidate.kind === 'FALLBACK_ACTIVATED'
+      || candidate.kind === 'MARKET_DATA_NOT_LIVE'
       ? candidate.kind
       : null;
 

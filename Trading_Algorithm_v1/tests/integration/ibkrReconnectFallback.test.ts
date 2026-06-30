@@ -80,6 +80,54 @@ afterEach(async () => {
 });
 
 describe('IBKR reconnect fallback notifications', () => {
+  it('sends a high-priority alert when market data is not confirmed live', async () => {
+    const webPushMessages: Array<Record<string, unknown>> = [];
+    const telegramMessages: Array<Record<string, unknown>> = [];
+
+    const ctx = buildApp({
+      webPushNotificationService: {
+        start: async () => {},
+        status: () => ({ enabled: true, ready: true, subscriberCount: 1 }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          webPushMessages.push(message);
+          return { attempted: 1, delivered: 1, removed: 0 };
+        }
+      } as never,
+      telegramAlertService: {
+        status: () => ({ enabled: true, ready: true, chatConfigured: true }),
+        notifyGeneric: async (message: Record<string, unknown>) => {
+          telegramMessages.push(message);
+          return { sent: true };
+        }
+      } as never
+    });
+    contexts.push(ctx);
+
+    const response = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/market-data-not-live',
+      payload: {
+        source: 'market-data-watchdog',
+        detectedAt: '2026-06-30T14:00:00.000Z',
+        liveFeedStatus: 'DELAYED',
+        marketSessionState: 'OPEN',
+        latestBarTimestamp: '2026-06-30T13:47:00.000Z',
+        barAgeMs: 13 * 60_000
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(webPushMessages).toHaveLength(1);
+    expect(webPushMessages[0]).toMatchObject({
+      title: 'Market data not live',
+      category: 'broker-recovery',
+      priority: 'high',
+      tag: 'market-data-not-live'
+    });
+    expect(String(webPushMessages[0].body)).toContain('not confirmed live/non-delayed');
+    expect(telegramMessages).toHaveLength(0);
+  });
+
   it('keeps Telegram quiet when the IBKR reminder reaches app subscribers', async () => {
     const webPushMessages: Array<Record<string, unknown>> = [];
     const telegramMessages: Array<Record<string, unknown>> = [];

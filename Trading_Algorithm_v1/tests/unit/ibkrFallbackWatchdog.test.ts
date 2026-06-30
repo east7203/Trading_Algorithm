@@ -16,15 +16,35 @@ describe('evaluateFallbackWatchdog', () => {
       nextStaleSinceMs: undefined,
       shouldActivateFallback: false,
       shouldDeactivateFallback: false,
+      shouldNotifyNotLive: false,
       primaryReady: false
     });
   });
 
-  it('treats an active IBKR API session as primary readiness and shuts yahoo back down', () => {
+  it('does not treat a reachable IBKR API session as healthy while bars are stale', () => {
     expect(
       evaluateFallbackWatchdog({
         liveFeedStatus: 'STALE',
-        nowMs: 1_000,
+        nowMs: 90_000,
+        staleSinceMs: 500,
+        thresholdMs: 60_000,
+        yahooOnline: true,
+        primaryReady: true
+      })
+    ).toEqual({
+      nextStaleSinceMs: 500,
+      shouldActivateFallback: false,
+      shouldDeactivateFallback: false,
+      shouldNotifyNotLive: true,
+      primaryReady: false
+    });
+  });
+
+  it('treats a reachable IBKR API session as recovered only when the feed is live', () => {
+    expect(
+      evaluateFallbackWatchdog({
+        liveFeedStatus: 'LIVE',
+        nowMs: 90_000,
         staleSinceMs: 500,
         thresholdMs: 60_000,
         yahooOnline: true,
@@ -34,6 +54,7 @@ describe('evaluateFallbackWatchdog', () => {
       nextStaleSinceMs: undefined,
       shouldActivateFallback: false,
       shouldDeactivateFallback: true,
+      shouldNotifyNotLive: false,
       primaryReady: true
     });
   });
@@ -52,6 +73,7 @@ describe('evaluateFallbackWatchdog', () => {
       nextStaleSinceMs: 10_000,
       shouldActivateFallback: false,
       shouldDeactivateFallback: false,
+      shouldNotifyNotLive: false,
       primaryReady: false
     });
   });
@@ -70,6 +92,7 @@ describe('evaluateFallbackWatchdog', () => {
       nextStaleSinceMs: 10_000,
       shouldActivateFallback: true,
       shouldDeactivateFallback: false,
+      shouldNotifyNotLive: true,
       primaryReady: false
     });
   });
@@ -88,6 +111,28 @@ describe('evaluateFallbackWatchdog', () => {
       nextStaleSinceMs: 10_000,
       shouldActivateFallback: false,
       shouldDeactivateFallback: false,
+      shouldNotifyNotLive: true,
+      primaryReady: false
+    });
+  });
+
+  it('honors the not-live notification cooldown', () => {
+    expect(
+      evaluateFallbackWatchdog({
+        liveFeedStatus: 'DELAYED',
+        nowMs: 90_000,
+        staleSinceMs: 10_000,
+        thresholdMs: 60_000,
+        alertCooldownMs: 60_000,
+        lastNotLiveAlertAtMs: 50_000,
+        yahooOnline: true,
+        primaryReady: false
+      })
+    ).toEqual({
+      nextStaleSinceMs: 10_000,
+      shouldActivateFallback: false,
+      shouldDeactivateFallback: false,
+      shouldNotifyNotLive: false,
       primaryReady: false
     });
   });

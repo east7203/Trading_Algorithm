@@ -5555,6 +5555,83 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     });
   });
 
+  app.post('/notifications/ibkr/market-data-not-live', async (request, reply) => {
+    const body =
+      (request.body as
+        | {
+            source?: string;
+            detectedAt?: string;
+            latestBarTimestamp?: string;
+            liveFeedStatus?: string;
+            marketSessionState?: string;
+            barAgeMs?: number;
+            staleMinutes?: number;
+          }
+        | undefined) ?? {};
+    const source = body.source?.trim() || 'market-data-watchdog';
+    const detectedAt = body.detectedAt ?? new Date().toISOString();
+    const detectedAtMs = Date.parse(detectedAt) || Date.now();
+    const liveFeedStatus = body.liveFeedStatus?.trim().toUpperCase() || 'UNKNOWN';
+    const staleMinutes =
+      typeof body.staleMinutes === 'number' && Number.isFinite(body.staleMinutes)
+        ? Math.max(1, Math.round(body.staleMinutes))
+        : typeof body.barAgeMs === 'number' && Number.isFinite(body.barAgeMs)
+          ? Math.max(1, Math.round(body.barAgeMs / 60_000))
+          : undefined;
+    const title = 'Market data not live';
+    const bodyText =
+      staleMinutes !== undefined
+        ? `Market data is ${liveFeedStatus.toLowerCase()} and not confirmed live/non-delayed. Last bar is about ${staleMinutes} minute(s) old.`
+        : `Market data is ${liveFeedStatus.toLowerCase()} and not confirmed live/non-delayed.`;
+
+    await appendIbkrReconnectHistory({
+      kind: 'MARKET_DATA_NOT_LIVE',
+      atMs: detectedAtMs,
+      source,
+      symbols: [...ibkrReconnectState.lastSymbols],
+      detail: body.latestBarTimestamp
+        ? `${bodyText} Last bar: ${body.latestBarTimestamp}.`
+        : bodyText
+    });
+
+    const deliveries = [
+      await notifyTradeAssistChannels(
+        {
+          title,
+          body: bodyText,
+          url: ibkrStatusUrl,
+          tag: 'market-data-not-live',
+          category: 'broker-recovery',
+          priority: 'high'
+        },
+        {
+          title,
+          lines: [
+            bodyText,
+            `Feed status: ${liveFeedStatus}`,
+            body.marketSessionState ? `Market session: ${body.marketSessionState}` : undefined,
+            body.latestBarTimestamp ? `Last bar: ${body.latestBarTimestamp}` : 'Last bar timestamp unavailable.',
+            `Source: ${source}`,
+            `Detected at: ${detectedAt}`,
+            'Trade alerts should be treated as blocked until this returns to LIVE.'
+          ].filter((line): line is string => Boolean(line)),
+          buttons: [{ text: 'Open Status', url: ibkrStatusUrl }]
+        },
+        { telegramFallback: true }
+      )
+    ];
+
+    return reply.status(200).send({
+      ok: true,
+      source,
+      detectedAt,
+      liveFeedStatus,
+      latestBarTimestamp: body.latestBarTimestamp,
+      staleMinutes,
+      deliveries
+    });
+  });
+
   app.post('/notifications/native/register', async (request, reply) => {
     try {
       if (!nativePushNotificationService) {

@@ -8,6 +8,8 @@ interface DiagnosticsResponse {
   diagnostics?: {
     liveFeedStatus?: string;
     latestBarTimestamp?: string;
+    liveFeedBarAgeMs?: number;
+    marketSessionState?: string;
   };
 }
 
@@ -23,6 +25,8 @@ export interface WatchdogEvaluationInput {
   nowMs: number;
   staleSinceMs?: number;
   thresholdMs: number;
+  alertCooldownMs?: number;
+  lastNotLiveAlertAtMs?: number;
   yahooOnline: boolean;
   primaryReady: boolean;
 }
@@ -31,45 +35,74 @@ export interface WatchdogEvaluationResult {
   nextStaleSinceMs?: number;
   shouldActivateFallback: boolean;
   shouldDeactivateFallback: boolean;
+  shouldNotifyNotLive: boolean;
   primaryReady: boolean;
 }
 
 export const evaluateFallbackWatchdog = (
   input: WatchdogEvaluationInput
 ): WatchdogEvaluationResult => {
-  if (input.primaryReady) {
+  const normalizedStatus = input.liveFeedStatus.trim().toUpperCase();
+  const primaryReady = input.primaryReady && normalizedStatus === 'LIVE';
+  const shouldTrackNotLive = normalizedStatus !== 'LIVE' && normalizedStatus !== 'AFTER_HOURS';
+  const nextStaleSinceMs = shouldTrackNotLive ? input.staleSinceMs ?? input.nowMs : undefined;
+  const alertCooldownMs = input.alertCooldownMs ?? 60 * 60_000;
+  const staleLongEnough =
+    nextStaleSinceMs !== undefined && input.nowMs - nextStaleSinceMs >= input.thresholdMs;
+  const shouldNotifyNotLive = Boolean(
+    shouldTrackNotLive
+    && staleLongEnough
+    && (
+      input.lastNotLiveAlertAtMs === undefined
+      || input.nowMs - input.lastNotLiveAlertAtMs >= alertCooldownMs
+    )
+  );
+
+  if (primaryReady) {
     return {
       nextStaleSinceMs: undefined,
       shouldActivateFallback: false,
       shouldDeactivateFallback: input.yahooOnline,
-      primaryReady: true
+      shouldNotifyNotLive: false,
+      primaryReady
     };
   }
 
-  const normalizedStatus = input.liveFeedStatus.trim().toUpperCase();
   if (normalizedStatus === 'LIVE') {
     return {
       nextStaleSinceMs: undefined,
       shouldActivateFallback: false,
       shouldDeactivateFallback: false,
+      shouldNotifyNotLive: false,
       primaryReady: false
     };
   }
 
-  const nextStaleSinceMs = input.staleSinceMs ?? input.nowMs;
+  if (!shouldTrackNotLive) {
+    return {
+      nextStaleSinceMs: undefined,
+      shouldActivateFallback: false,
+      shouldDeactivateFallback: false,
+      shouldNotifyNotLive: false,
+      primaryReady: false
+    };
+  }
+
   if (input.yahooOnline) {
     return {
       nextStaleSinceMs,
       shouldActivateFallback: false,
       shouldDeactivateFallback: false,
+      shouldNotifyNotLive,
       primaryReady: false
     };
   }
 
   return {
     nextStaleSinceMs,
-    shouldActivateFallback: input.nowMs - nextStaleSinceMs >= input.thresholdMs,
+    shouldActivateFallback: staleLongEnough,
     shouldDeactivateFallback: false,
+    shouldNotifyNotLive,
     primaryReady: false
   };
 };
@@ -203,16 +236,20 @@ const run = async (): Promise<void> => {
 
   const diagnosticsUrl = `${(process.env.TRAINING_API_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')}/diagnostics`;
   const fallbackNotifyUrl = `${(process.env.TRAINING_API_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')}/notifications/ibkr/fallback-activated`;
+  const marketDataNotLiveNotifyUrl = `${(process.env.TRAINING_API_BASE_URL ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')}/notifications/ibkr/market-data-not-live`;
   const trainingApiKey = process.env.TRAINING_API_KEY?.trim() || undefined;
   const trainingApiKeyHeader = process.env.TRAINING_API_KEY_HEADER ?? 'x-api-key';
   const checkIntervalMs = parseIntOr(process.env.IBKR_FALLBACK_WATCHDOG_CHECK_SECONDS, 60, 5) * 1000;
   const staleThresholdMs =
     parseIntOr(process.env.IBKR_FALLBACK_WATCHDOG_STALE_MINUTES, 8, 1) * 60 * 1000;
+  const alertCooldownMs =
+    parseIntOr(process.env.IBKR_MARKET_DATA_ALERT_MINUTES, 60, 1) * 60 * 1000;
   const ibkrHost = process.env.IBKR_HOST ?? '127.0.0.1';
   const ibkrPort = parseIntOr(process.env.IBKR_PORT, 4001, 1);
 
   let staleSinceMs: number | undefined;
   let fallbackActivated = false;
+  let lastNotLiveAlertAtMs: number | undefined;
 
   while (true) {
     try {
@@ -223,6 +260,8 @@ const run = async (): Promise<void> => {
       const diagnostics = (await diagnosticsResponse.json()) as DiagnosticsResponse;
       const liveFeedStatus = diagnostics.diagnostics?.liveFeedStatus ?? 'UNKNOWN';
       const latestBarTimestamp = diagnostics.diagnostics?.latestBarTimestamp;
+      const liveFeedBarAgeMs = diagnostics.diagnostics?.liveFeedBarAgeMs;
+      const marketSessionState = diagnostics.diagnostics?.marketSessionState;
       const yahooStatus = await getPm2ProcessStatus('yahoo-bridge');
       const yahooOnline = yahooStatus === 'online';
       const ibkrBridgeOnline = (await getPm2ProcessStatus('ibkr-bridge')) === 'online';
@@ -233,6 +272,8 @@ const run = async (): Promise<void> => {
         nowMs: Date.now(),
         staleSinceMs,
         thresholdMs: staleThresholdMs,
+        alertCooldownMs,
+        lastNotLiveAlertAtMs,
         yahooOnline,
         primaryReady: ibkrBridgeOnline && ibkrApiReady
       });
@@ -247,6 +288,26 @@ const run = async (): Promise<void> => {
         fallbackActivated = false;
         // eslint-disable-next-line no-console
         console.log('[ibkr-fallback-watchdog] Yahoo fallback stopped after IBKR primary feed recovered.');
+      }
+
+      if (decision.shouldNotifyNotLive) {
+        lastNotLiveAlertAtMs = Date.now();
+        await postJson(
+          marketDataNotLiveNotifyUrl,
+          {
+            source: 'market-data-watchdog',
+            detectedAt: new Date().toISOString(),
+            latestBarTimestamp,
+            liveFeedStatus,
+            marketSessionState,
+            barAgeMs: liveFeedBarAgeMs,
+            staleMinutes: Math.round(staleThresholdMs / (60 * 1000))
+          },
+          trainingApiKey,
+          trainingApiKeyHeader
+        );
+        // eslint-disable-next-line no-console
+        console.log(`[ibkr-fallback-watchdog] Market data not-live alert sent for status=${liveFeedStatus}.`);
       }
 
       if (decision.shouldActivateFallback && !fallbackActivated) {
