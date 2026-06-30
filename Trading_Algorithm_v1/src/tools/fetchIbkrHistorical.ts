@@ -76,6 +76,20 @@ const loadEnvFile = (filePath: string): void => {
   }
 };
 
+const resolvePythonBin = (): string => {
+  const explicitPythonBin = process.env.IBKR_PYTHON_BIN?.trim();
+  if (explicitPythonBin) {
+    return explicitPythonBin;
+  }
+
+  const venvPython = path.resolve(process.cwd(), '.venv-ibkr/bin/python');
+  if (fs.existsSync(venvPython)) {
+    return venvPython;
+  }
+
+  return 'python3';
+};
+
 const mapTimeframeToBarSize = (raw: string): string => {
   const normalized = raw.trim().toLowerCase();
   if (normalized === '1m' || normalized === '1min' || normalized === '1 minute') {
@@ -171,7 +185,7 @@ const run = async (): Promise<void> => {
   loadEnvFile(envFile);
 
   const args = parseArgs(process.argv.slice(2));
-  const pythonBin = process.env.IBKR_PYTHON_BIN ?? 'python3';
+  const pythonBin = resolvePythonBin();
   const helperScript = path.resolve(process.cwd(), 'scripts/ibkr_tws_bridge.py');
   if (!fs.existsSync(helperScript)) {
     throw new Error(`Missing bridge script: ${helperScript}`);

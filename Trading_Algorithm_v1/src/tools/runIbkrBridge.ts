@@ -82,6 +82,20 @@ const loadEnvFile = (filePath: string): void => {
   }
 };
 
+const resolvePythonBin = (): string => {
+  const explicitPythonBin = optionalEnv('IBKR_PYTHON_BIN');
+  if (explicitPythonBin) {
+    return explicitPythonBin;
+  }
+
+  const venvPython = path.resolve(process.cwd(), '.venv-ibkr/bin/python');
+  if (fs.existsSync(venvPython)) {
+    return venvPython;
+  }
+
+  return 'python3';
+};
+
 const run = async (): Promise<void> => {
   const envFile = process.env.IBKR_BRIDGE_ENV_FILE
     ? path.resolve(process.cwd(), process.env.IBKR_BRIDGE_ENV_FILE)
@@ -94,7 +108,7 @@ const run = async (): Promise<void> => {
     throw new Error('IBKR_BRIDGE_SYMBOLS is required when bridge is enabled');
   }
 
-  const pythonBin = process.env.IBKR_PYTHON_BIN ?? 'python3';
+  const pythonBin = resolvePythonBin();
   const bridgeScript = path.resolve(process.cwd(), 'scripts/ibkr_tws_bridge.py');
   if (!fs.existsSync(bridgeScript)) {
     throw new Error(`Missing bridge script: ${bridgeScript}`);
