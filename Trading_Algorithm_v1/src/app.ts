@@ -206,6 +206,8 @@ interface SignalMonitorConfigInput {
   minProjectedReturnDollars: number;
   accountSnapshot: {
     equity: number;
+    highestEodEquity?: number;
+    lossLevel?: number;
     dailyLossPct: number;
     sessionLossPct: number;
     consecutiveLosses: number;
@@ -356,6 +358,19 @@ const parseFloatEnv = (name: string, fallback: number, min?: number, max?: numbe
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
+  }
+  const lowChecked = min === undefined ? parsed : Math.max(min, parsed);
+  return max === undefined ? lowChecked : Math.min(max, lowChecked);
+};
+
+const parseOptionalFloatEnv = (name: string, min?: number, max?: number): number | undefined => {
+  const value = process.env[name];
+  if (value === undefined || value.trim().length === 0) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
   }
   const lowChecked = min === undefined ? parsed : Math.max(min, parsed);
   return max === undefined ? lowChecked : Math.min(max, lowChecked);
@@ -881,6 +896,8 @@ const resolveSignalMonitorConfig = (
     minProjectedReturnDollars: parseFloatEnv('SIGNAL_MONITOR_MIN_PROJECTED_RETURN_DOLLARS', 700, 0),
     accountSnapshot: {
       equity: parseFloatEnv('SIGNAL_MONITOR_ACCOUNT_EQUITY', 100_000, 1),
+      highestEodEquity: parseFloatEnv('SIGNAL_MONITOR_HIGHEST_EOD_EQUITY', 100_000, 1),
+      lossLevel: parseOptionalFloatEnv('SIGNAL_MONITOR_LOSS_LEVEL', 1),
       dailyLossPct: parseFloatEnv('SIGNAL_MONITOR_DAILY_LOSS_PCT', 0, 0),
       sessionLossPct: parseFloatEnv('SIGNAL_MONITOR_SESSION_LOSS_PCT', 0, 0),
       consecutiveLosses: parseIntEnv('SIGNAL_MONITOR_CONSECUTIVE_LOSSES', 0, 0)

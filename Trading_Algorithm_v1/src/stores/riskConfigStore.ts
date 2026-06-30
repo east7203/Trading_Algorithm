@@ -26,7 +26,8 @@ export const defaultRiskConfig = (): RiskConfig => ({
     enabled: true,
     accountSize: 100_000,
     profitTargetPct: 6,
-    maxDrawdownPct: 4,
+    maxDrawdownPct: 3,
+    drawdownMode: 'EOD_TRAILING',
     dailyLossLimitPct: 2,
     minRiskPct: 0.1,
     maxRiskPct: 0.75,
@@ -110,6 +111,9 @@ export class RiskConfigStore {
     }
     if (funded.profitTargetPct <= 0 || funded.maxDrawdownPct <= 0 || funded.dailyLossLimitPct <= 0) {
       throw new Error('Funded account target and loss limits must be greater than 0');
+    }
+    if (!['STATIC', 'EOD_TRAILING'].includes(funded.drawdownMode)) {
+      throw new Error('Funded account drawdown mode is invalid');
     }
     if (funded.minRiskPct < 0 || funded.maxRiskPct <= 0 || funded.minRiskPct > funded.maxRiskPct) {
       throw new Error('Funded account risk range is invalid');

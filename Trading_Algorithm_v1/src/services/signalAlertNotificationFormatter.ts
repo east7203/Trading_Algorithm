@@ -73,7 +73,12 @@ export const buildFundedAccountSummary = (alert: SignalAlert): string | null => 
       : funded.action === 'REDUCE'
         ? 'Reduce'
         : 'Skip';
-  return `${action} ${funded.recommendedRiskPct.toFixed(2)}% • ${funded.confidenceLabel.replace('_', '+')} confidence • ${funded.passPlan}`;
+  return [
+    `${action} ${funded.recommendedRiskPct.toFixed(2)}%`,
+    `${funded.confidenceLabel.replace('_', '+')} confidence`,
+    `loss level ${formatUsd(funded.lossLevel)}`,
+    `DD buffer ${formatUsd(funded.drawdownBufferAmount)}`
+  ].join(' • ');
 };
 
 export const buildProjectedReturnSummary = (alert: SignalAlert): string | null => {

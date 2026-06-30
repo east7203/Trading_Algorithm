@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SignalAlert } from '../../src/domain/types.js';
 import {
+  buildFundedAccountSummary,
   buildReminderStatusText,
   buildProjectedReturnSummary,
   buildTradeLevelLines,
@@ -80,5 +81,37 @@ describe('signal alert notification formatter', () => {
 
   it('summarizes projected TP1 return for worthwhile push alerts', () => {
     expect(buildProjectedReturnSummary(buildAlert())).toBe('TP1 potential $720');
+  });
+
+  it('summarizes funded-account action and loss-level buffer for alerts', () => {
+    const alert = buildAlert();
+    alert.riskDecision.fundedAccount = {
+      enabled: true,
+      action: 'TAKE',
+      confidenceScore: 0.82,
+      confidenceLabel: 'HIGH',
+      recommendedRiskPct: 0.5,
+      recommendedRiskAmount: 500,
+      maxSafeRiskPct: 0.75,
+      requestedRiskPct: 0.5,
+      drawdownMode: 'EOD_TRAILING',
+      profitTargetAmount: 6000,
+      remainingToTargetAmount: 6000,
+      targetProgressPct: 0,
+      remainingToTargetPct: 6,
+      drawdownAnchorEquity: 100000,
+      lossLevel: 97000,
+      drawdownBufferAmount: 3000,
+      dailyLossBufferPct: 2,
+      drawdownUsedPct: 0,
+      drawdownBufferPct: 3,
+      rewardRiskRatio: 1.8,
+      passPlan: 'Use funded-account risk.',
+      reasons: ['High confidence']
+    };
+
+    expect(buildFundedAccountSummary(alert)).toBe(
+      'Take 0.50% • HIGH confidence • loss level $97,000 • DD buffer $3,000'
+    );
   });
 });

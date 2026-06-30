@@ -41,11 +41,27 @@ const buildFundedAccountRecommendation = (
   const label = confidenceLabel(confidenceScore);
   const reasons: string[] = [];
   const accountSize = Math.max(funded.accountSize, 1);
+  const profitTargetAmount = accountSize * (funded.profitTargetPct / 100);
+  const maxDrawdownAmount = accountSize * (funded.maxDrawdownPct / 100);
   const accountProfitPct = ((input.account.equity - accountSize) / accountSize) * 100;
   const targetProgressPct = clamp(accountProfitPct / funded.profitTargetPct, 0, 1);
   const remainingToTargetPct = Math.max(0, funded.profitTargetPct - Math.max(0, accountProfitPct));
-  const drawdownUsedPct = Math.max(0, ((accountSize - input.account.equity) / accountSize) * 100);
-  const drawdownBufferPct = Math.max(0, funded.maxDrawdownPct - drawdownUsedPct);
+  const remainingToTargetAmount = Math.max(0, profitTargetAmount - Math.max(0, input.account.equity - accountSize));
+  const drawdownAnchorEquity =
+    funded.drawdownMode === 'EOD_TRAILING'
+      ? Math.max(accountSize, input.account.highestEodEquity ?? accountSize)
+      : accountSize;
+  const derivedLossLevel =
+    funded.drawdownMode === 'EOD_TRAILING'
+      ? drawdownAnchorEquity - maxDrawdownAmount
+      : accountSize - maxDrawdownAmount;
+  const lossLevel =
+    typeof input.account.lossLevel === 'number' && Number.isFinite(input.account.lossLevel)
+      ? input.account.lossLevel
+      : derivedLossLevel;
+  const drawdownBufferAmount = Math.max(0, input.account.equity - lossLevel);
+  const drawdownBufferPct = (drawdownBufferAmount / accountSize) * 100;
+  const drawdownUsedPct = Math.max(0, funded.maxDrawdownPct - drawdownBufferPct);
   const dailyLossBufferPct = Math.max(0, funded.dailyLossLimitPct - input.account.dailyLossPct);
   const stopDistance = Math.abs(input.candidate.entry - input.candidate.stopLoss);
   const takeProfit = input.candidate.takeProfit[0];
@@ -114,8 +130,14 @@ const buildFundedAccountRecommendation = (
     recommendedRiskAmount,
     maxSafeRiskPct: round(maxSafeRiskPct, 2),
     requestedRiskPct: round(requestedRiskPct, 2),
+    drawdownMode: funded.drawdownMode,
+    profitTargetAmount: round(profitTargetAmount, 2),
+    remainingToTargetAmount: round(remainingToTargetAmount, 2),
     targetProgressPct: round(targetProgressPct, 3),
     remainingToTargetPct: round(remainingToTargetPct, 2),
+    drawdownAnchorEquity: round(drawdownAnchorEquity, 2),
+    lossLevel: round(lossLevel, 2),
+    drawdownBufferAmount: round(drawdownBufferAmount, 2),
     dailyLossBufferPct: round(dailyLossBufferPct, 2),
     drawdownUsedPct: round(drawdownUsedPct, 2),
     drawdownBufferPct: round(drawdownBufferPct, 2),

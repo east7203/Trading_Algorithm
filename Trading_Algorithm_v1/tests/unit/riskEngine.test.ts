@@ -63,7 +63,14 @@ describe('evaluateRisk', () => {
       enabled: true,
       action: 'TAKE',
       confidenceLabel: 'MEDIUM',
-      recommendedRiskPct: 0.5
+      recommendedRiskPct: 0.5,
+      drawdownMode: 'EOD_TRAILING',
+      profitTargetAmount: 6000,
+      remainingToTargetAmount: 6000,
+      drawdownAnchorEquity: 100000,
+      lossLevel: 97000,
+      drawdownBufferAmount: 3000,
+      drawdownBufferPct: 3
     });
     expect(decision.blockedByTradingWindow).toBe(false);
   });
@@ -132,6 +139,43 @@ describe('evaluateRisk', () => {
     expect(decision.fundedAccount).toMatchObject({
       action: 'SKIP',
       confidenceLabel: 'LOW'
+    });
+  });
+
+  it('reduces risk when an EOD trailing drawdown anchor tightens the loss level', () => {
+    const store = new RiskConfigStore();
+    store.patch({
+      policyConfirmation: {
+        firmUsageApproved: true,
+        platformUsageApproved: true,
+        confirmedBy: 'tester',
+        confirmedAt: '2026-03-07T14:00:00.000Z'
+      }
+    });
+
+    const decision = evaluateRisk(
+      {
+        ...baseInput(),
+        account: {
+          ...baseInput().account,
+          equity: 102_000,
+          highestEodEquity: 104_000
+        },
+        requestedRiskPct: 0.5
+      },
+      store.get()
+    );
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.finalRiskPct).toBe(0.25);
+    expect(decision.reasonCodes).toContain('FUNDED_ACCOUNT_RISK_REDUCED');
+    expect(decision.fundedAccount).toMatchObject({
+      action: 'REDUCE',
+      drawdownAnchorEquity: 104000,
+      lossLevel: 101000,
+      drawdownBufferAmount: 1000,
+      drawdownBufferPct: 1,
+      recommendedRiskPct: 0.25
     });
   });
 

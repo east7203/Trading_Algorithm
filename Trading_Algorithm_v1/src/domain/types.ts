@@ -128,6 +128,7 @@ export interface RiskConfig {
     accountSize: number;
     profitTargetPct: number;
     maxDrawdownPct: number;
+    drawdownMode: 'STATIC' | 'EOD_TRAILING';
     dailyLossLimitPct: number;
     minRiskPct: number;
     maxRiskPct: number;
@@ -140,6 +141,8 @@ export interface RiskConfig {
 
 export interface AccountSnapshot {
   equity: number;
+  highestEodEquity?: number;
+  lossLevel?: number;
   dailyLossPct: number;
   sessionLossPct: number;
   consecutiveLosses: number;
@@ -199,8 +202,14 @@ export interface RiskDecision {
     recommendedRiskAmount: number;
     maxSafeRiskPct: number;
     requestedRiskPct: number;
+    drawdownMode: 'STATIC' | 'EOD_TRAILING';
+    profitTargetAmount: number;
+    remainingToTargetAmount: number;
     targetProgressPct: number;
     remainingToTargetPct: number;
+    drawdownAnchorEquity: number;
+    lossLevel: number;
+    drawdownBufferAmount: number;
     dailyLossBufferPct: number;
     drawdownUsedPct: number;
     drawdownBufferPct: number;
