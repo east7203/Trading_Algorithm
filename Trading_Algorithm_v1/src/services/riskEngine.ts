@@ -211,7 +211,16 @@ export const evaluateRisk = (input: RiskCheckInput, config: RiskConfig): RiskDec
   }
 
   const stopDistance = Math.abs(input.candidate.entry - input.candidate.stopLoss);
+  const takeProfit = input.candidate.takeProfit[0];
+  const rewardDistance =
+    typeof takeProfit === 'number' && Number.isFinite(takeProfit)
+      ? Math.abs(takeProfit - input.candidate.entry)
+      : undefined;
+  const rewardRiskRatio =
+    rewardDistance !== undefined && stopDistance > 0 ? round(rewardDistance / stopDistance, 2) : undefined;
   let positionSize = 0;
+  let projectedLossAmount = 0;
+  let projectedRewardAmount = 0;
 
   if (stopDistance <= 0) {
     blocked = true;
@@ -220,13 +229,19 @@ export const evaluateRisk = (input: RiskCheckInput, config: RiskConfig): RiskDec
     blocked = true;
   } else {
     const riskAmount = input.account.equity * (finalRiskPct / 100);
+    projectedLossAmount = round(riskAmount, 2);
     positionSize = Number((riskAmount / stopDistance).toFixed(4));
+    projectedRewardAmount =
+      rewardDistance !== undefined ? round(positionSize * rewardDistance, 2) : 0;
   }
 
   return {
     allowed: !blocked,
     finalRiskPct,
     positionSize,
+    projectedLossAmount,
+    projectedRewardAmount,
+    ...(rewardRiskRatio !== undefined ? { rewardRiskRatio } : {}),
     reasonCodes,
     blockedByNewsWindow,
     blockedByTradingWindow,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SignalAlert } from '../../src/domain/types.js';
 import {
   buildReminderStatusText,
+  buildProjectedReturnSummary,
   buildTradeLevelLines,
   buildTradeLevelSummary,
   signalAlertSourceLabel
@@ -43,6 +44,7 @@ const buildAlert = (): SignalAlert => ({
     allowed: true,
     finalRiskPct: 0.35,
     positionSize: 1,
+    projectedRewardAmount: 720,
     reasonCodes: [],
     blockedByNewsWindow: false,
     blockedByTradingWindow: false,
@@ -74,5 +76,9 @@ describe('signal alert notification formatter', () => {
     expect(signalAlertSourceLabel(buildAlert())).toBe('Manual engine');
     expect(buildReminderStatusText({ reason: 'initial', reminderCount: 0 })).toBeNull();
     expect(buildReminderStatusText({ reason: 'reminder', reminderCount: 1 })).toBe('Still unacknowledged');
+  });
+
+  it('summarizes projected TP1 return for worthwhile push alerts', () => {
+    expect(buildProjectedReturnSummary(buildAlert())).toBe('TP1 potential $720');
   });
 });

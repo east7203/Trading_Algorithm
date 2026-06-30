@@ -302,6 +302,7 @@ const resetUiPrefsEl = document.getElementById('resetUiPrefs');
 const applyMorningPresetEl = document.getElementById('applyMorningPreset');
 const signalMinScoreEl = document.getElementById('signalMinScore');
 const signalAPlusMinScoreEl = document.getElementById('signalAPlusMinScore');
+const signalMinProjectedReturnEl = document.getElementById('signalMinProjectedReturn');
 const signalSessionStartEl = document.getElementById('signalSessionStart');
 const signalSessionEndEl = document.getElementById('signalSessionEnd');
 const signalNyRangeMinutesEl = document.getElementById('signalNyRangeMinutes');
@@ -3296,6 +3297,7 @@ const recommendedAllAlertsPreset = () => ({
   sessionEndMinute: 0,
   nyRangeMinutes: 60,
   minFinalScore: 0,
+  minProjectedReturnDollars: 700,
   aPlusOnlyAfterFirstHour: false,
   aPlusMinScore: 0,
   requireOpeningRangeComplete: false
@@ -3417,7 +3419,9 @@ const describeDeskRules = (config) => {
       : `${formatTimeValue(config.sessionStartHour, config.sessionStartMinute)}-${formatTimeValue(config.sessionEndHour, config.sessionEndMinute)} ${getTimeZoneShortLabel(new Date().toISOString(), config.timezone ?? 'America/New_York')}`);
   const setupCount = (config.enabledSetups ?? []).length;
   const aPlusMode = config.aPlusOnlyAfterFirstHour ? 'A+ after hour 1' : 'Normal scoring all morning';
-  return `${timeWindow} • ${setupCount} setups • ${aPlusMode}`;
+  const minReturn = Number(config.minProjectedReturnDollars ?? 700);
+  const returnMode = minReturn > 0 ? `TP1 ${fmtUsd(minReturn, 0)}+` : 'Any TP1 return';
+  return `${timeWindow} • ${setupCount} setups • ${returnMode} • ${aPlusMode}`;
 };
 
 const updateSystemSummary = () => {
@@ -4125,6 +4129,7 @@ const renderSignalSettings = (config) => {
   signalSettings = { ...config };
   signalMinScoreEl.value = String(config.minFinalScore ?? 72);
   signalAPlusMinScoreEl.value = String(config.aPlusMinScore ?? 82);
+  signalMinProjectedReturnEl.value = String(config.minProjectedReturnDollars ?? 700);
   signalSessionStartEl.value = formatTimeValue(config.sessionStartHour, config.sessionStartMinute);
   signalSessionEndEl.value = formatTimeValue(config.sessionEndHour, config.sessionEndMinute);
   signalNyRangeMinutesEl.value = String(config.nyRangeMinutes ?? 60);
@@ -4154,6 +4159,7 @@ const currentSignalSettingsPayload = () => {
   return {
     minFinalScore: Number(signalMinScoreEl.value),
     aPlusMinScore: Number(signalAPlusMinScoreEl.value),
+    minProjectedReturnDollars: Number(signalMinProjectedReturnEl.value),
     sessionStartHour: sessionStart.hour,
     sessionStartMinute: sessionStart.minute,
     sessionEndHour: sessionEnd.hour,
@@ -6968,7 +6974,7 @@ const calcRr = (entry, stop, tp) => {
   return `${(reward / risk).toFixed(2)}R`;
 };
 
-const formatProjectionNote = (entry, level, type) => {
+const formatProjectionNote = (entry, level, type, projectedDollars) => {
   if (!Number.isFinite(entry) || !Number.isFinite(level)) {
     return '--';
   }
@@ -6979,9 +6985,12 @@ const formatProjectionNote = (entry, level, type) => {
     return 'At entry price';
   }
 
+  const dollarText = Number.isFinite(Number(projectedDollars))
+    ? ` • ${type === 'target' ? 'about +' : 'risk '}${fmtUsd(Math.abs(Number(projectedDollars)), 0)}`
+    : '';
   return type === 'target'
-    ? `${fmtNum(move, 2)} points ${direction} entry`
-    : `${fmtNum(move, 2)} points ${direction} entry before invalidation`;
+    ? `${fmtNum(move, 2)} points ${direction} entry${dollarText}`
+    : `${fmtNum(move, 2)} points ${direction} entry before invalidation${dollarText}`;
 };
 
 const vibrateLight = () => {
@@ -9870,13 +9879,15 @@ const buildSignalAlertCard = (alert) => {
   node.querySelector('.signalProjectedTakeProfitNote').textContent = formatProjectionNote(
     alert.candidate.entry,
     alert.candidate.takeProfit?.[0],
-    'target'
+    'target',
+    alert.riskDecision?.projectedRewardAmount
   );
   node.querySelector('.signalProjectedStopLoss').textContent = fmtNum(alert.candidate.stopLoss, 2);
   node.querySelector('.signalProjectedStopLossNote').textContent = formatProjectionNote(
     alert.candidate.entry,
     alert.candidate.stopLoss,
-    'stop'
+    'stop',
+    alert.riskDecision?.projectedLossAmount
   );
   node.querySelector('.signalBias').textContent = signalBiasLabel(alert);
   node.querySelector('.oneMinuteConfidence').textContent = fmtNum(alert.candidate.oneMinuteConfidence, 2);
@@ -10436,13 +10447,15 @@ const renderReviewCard = (review) => {
   node.querySelector('.reviewProjectedTakeProfitNote').textContent = formatProjectionNote(
     review.alertSnapshot?.candidate?.entry,
     review.alertSnapshot?.candidate?.takeProfit?.[0],
-    'target'
+    'target',
+    review.alertSnapshot?.riskDecision?.projectedRewardAmount
   );
   node.querySelector('.reviewProjectedStopLoss').textContent = fmtNum(review.alertSnapshot?.candidate?.stopLoss, 2);
   node.querySelector('.reviewProjectedStopLossNote').textContent = formatProjectionNote(
     review.alertSnapshot?.candidate?.entry,
     review.alertSnapshot?.candidate?.stopLoss,
-    'stop'
+    'stop',
+    review.alertSnapshot?.riskDecision?.projectedLossAmount
   );
   node.querySelector('.reviewSnapshotTimeframe').textContent = chartSnapshot?.timeframe ?? '--';
   node.querySelector('.reviewSnapshotNote').textContent = chartSnapshot?.generatedAt

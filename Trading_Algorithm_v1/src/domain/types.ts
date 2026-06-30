@@ -91,6 +91,7 @@ export interface SignalMonitorSettings {
   sessionEndMinute: number;
   nyRangeMinutes: number;
   minFinalScore: number;
+  minProjectedReturnDollars: number;
   enabledSymbols: SymbolCode[];
   enabledSetups: SetupType[];
   requireOpeningRangeComplete: boolean;
@@ -181,6 +182,9 @@ export interface RiskDecision {
   allowed: boolean;
   finalRiskPct: number;
   positionSize: number;
+  projectedLossAmount?: number;
+  projectedRewardAmount?: number;
+  rewardRiskRatio?: number;
   reasonCodes: string[];
   blockedByNewsWindow: boolean;
   blockedByTradingWindow: boolean;

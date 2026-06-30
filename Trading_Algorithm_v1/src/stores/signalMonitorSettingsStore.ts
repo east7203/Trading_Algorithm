@@ -21,6 +21,7 @@ export const defaultSignalMonitorSettings = (): SignalMonitorSettings => ({
   sessionEndMinute: 0,
   nyRangeMinutes: 60,
   minFinalScore: 0,
+  minProjectedReturnDollars: 700,
   enabledSymbols: [...VALID_SYMBOLS],
   enabledSetups: [...VALID_SETUPS],
   requireOpeningRangeComplete: false,
@@ -113,6 +114,10 @@ export class SignalMonitorSettingsStore {
 
     if (!Number.isFinite(candidate.minFinalScore) || candidate.minFinalScore < 0 || candidate.minFinalScore > 100) {
       throw new Error('minFinalScore must be between 0 and 100');
+    }
+
+    if (!Number.isFinite(candidate.minProjectedReturnDollars) || candidate.minProjectedReturnDollars < 0) {
+      throw new Error('minProjectedReturnDollars must be greater than or equal to 0');
     }
 
     if (!Number.isFinite(candidate.aPlusMinScore) || candidate.aPlusMinScore < 0 || candidate.aPlusMinScore > 100) {

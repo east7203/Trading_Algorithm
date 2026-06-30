@@ -95,6 +95,7 @@ const relaxSignalSettings = async (ctx: AppContext) => {
     path: '/signals/config',
     payload: {
       minFinalScore: 0,
+      minProjectedReturnDollars: 0,
       requireOpeningRangeComplete: false,
       aPlusOnlyAfterFirstHour: false,
       aPlusMinScore: 0
@@ -174,6 +175,68 @@ describe('signal monitor integration', () => {
     expect(top.chartSnapshot.bars.length).toBeGreaterThan(3);
     expect(top.chartSnapshot.generatedAt).toBe(top.detectedAt);
     expect(top.chartSnapshot.referenceLevels.some((level: { key: string }) => level.key === 'entry')).toBe(true);
+  });
+
+  it('filters score-qualified setups below the minimum projected return', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'signal-monitor-return-filter-'));
+    tempDirs.push(tempDir);
+
+    const ctx = buildApp({
+      continuousTrainingEnabled: false,
+      signalMonitorEnabled: true,
+      signalMonitorSettingsStorePath: path.join(tempDir, 'signal-monitor.json'),
+      signalReviewStorePath: path.join(tempDir, 'signal-reviews.json'),
+      signalMonitorConfig: {
+        bootstrapCsvDir: undefined,
+        archivePath: undefined,
+        lookbackBars1m: 60,
+        minFinalScore: 0,
+        maxBarsPerSymbol: 500
+      }
+    });
+    contexts.push(ctx);
+
+    await relaxSignalSettings(ctx);
+    const returnFilter = await ctx.app.inject({
+      method: 'PATCH',
+      path: '/signals/config',
+      payload: {
+        minProjectedReturnDollars: 10_000
+      }
+    });
+    expect(returnFilter.statusCode).toBe(200);
+
+    const ingest = await ctx.app.inject({
+      method: 'POST',
+      path: '/training/ingest-bars',
+      payload: {
+        bars: buildMomentumBars()
+      }
+    });
+
+    expect(ingest.statusCode).toBe(200);
+
+    const refreshResponse = await ctx.app.inject({
+      method: 'POST',
+      path: '/signals/alerts/refresh'
+    });
+    expect(refreshResponse.statusCode).toBe(200);
+    expect(refreshResponse.json().refresh.symbolStatus).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          symbol: 'NQ',
+          reasonCode: 'BELOW_PROJECTED_RETURN_THRESHOLD',
+          minProjectedReturnDollars: 10_000
+        })
+      ])
+    );
+
+    const alertsResponse = await ctx.app.inject({
+      method: 'GET',
+      path: '/signals/alerts?limit=10'
+    });
+    expect(alertsResponse.statusCode).toBe(200);
+    expect(alertsResponse.json().alerts.length).toBe(0);
   });
 
   it('can refresh the latest board alerts on demand without duplicating the queue', async () => {

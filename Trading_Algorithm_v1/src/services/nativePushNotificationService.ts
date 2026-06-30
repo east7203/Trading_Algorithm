@@ -6,6 +6,7 @@ import type { SignalAlert } from '../domain/types.js';
 import type { AppNotificationMessage } from './operationalReminderService.js';
 import {
   buildFundedAccountSummary,
+  buildProjectedReturnSummary,
   buildReminderStatusText,
   buildTradeLevelSummary,
   signalAlertSourceLabel
@@ -270,6 +271,7 @@ export class NativePushNotificationService {
             signalAlertSourceLabel(alert),
             `${alert.symbol} ${alert.side}`,
             ...buildTradeLevelSummary(alert),
+            buildProjectedReturnSummary(alert),
             buildFundedAccountSummary(alert),
             typeof alert.candidate.finalScore === 'number'
               ? `Score ${alert.candidate.finalScore.toFixed(1)}`

@@ -56,6 +56,9 @@ describe('evaluateRisk', () => {
     const decision = evaluateRisk(baseInput(), store.get());
     expect(decision.allowed).toBe(true);
     expect(decision.finalRiskPct).toBe(0.5);
+    expect(decision.projectedLossAmount).toBe(500);
+    expect(decision.projectedRewardAmount).toBe(750);
+    expect(decision.rewardRiskRatio).toBe(1.5);
     expect(decision.fundedAccount).toMatchObject({
       enabled: true,
       action: 'TAKE',

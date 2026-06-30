@@ -90,6 +90,8 @@ interface EvaluateSymbolResult {
   topSetupType?: SetupType;
   topScore?: number;
   minScoreThreshold?: number;
+  topProjectedReturnDollars?: number;
+  minProjectedReturnDollars?: number;
   status?: SignalScanSymbolStatus['status'];
 }
 
@@ -144,6 +146,7 @@ export type SignalScanReasonCode =
   | 'NO_SETUP_MATCH'
   | 'LEARNING_SUPPRESSED_PATTERN'
   | 'BELOW_SCORE_THRESHOLD'
+  | 'BELOW_PROJECTED_RETURN_THRESHOLD'
   | 'DUPLICATE_ALERT'
   | 'ALERT_READY';
 
@@ -161,6 +164,8 @@ export interface SignalScanSymbolStatus {
   topSetupType?: SetupType;
   topScore?: number;
   minScoreThreshold?: number;
+  topProjectedReturnDollars?: number;
+  minProjectedReturnDollars?: number;
 }
 
 export interface SignalScanSnapshot {
@@ -816,7 +821,9 @@ export class SignalMonitorService {
         candidateCount: result.candidateCount,
         topSetupType: result.topSetupType,
         topScore: result.topScore,
-        minScoreThreshold: result.minScoreThreshold
+        minScoreThreshold: result.minScoreThreshold,
+        topProjectedReturnDollars: result.topProjectedReturnDollars,
+        minProjectedReturnDollars: result.minProjectedReturnDollars
       });
     }
 
@@ -1957,12 +1964,16 @@ export class SignalMonitorService {
       settings.aPlusOnlyAfterFirstHour && localNow.minuteOfDay >= rangeEnd
         ? Math.max(settings.minFinalScore, settings.aPlusMinScore)
         : settings.minFinalScore;
+    const minProjectedReturnDollars = Math.max(0, settings.minProjectedReturnDollars ?? 0);
     const topRankedCandidate = rankedCandidatesWithRisk[0]?.candidate;
-    const qualifyingCandidates = rankedCandidatesWithRisk.filter(
+    const scoreQualifiedCandidates = rankedCandidatesWithRisk.filter(
       ({ candidate }) => (candidate.finalScore ?? 0) >= minScoreThreshold
     );
+    const qualifyingCandidates = scoreQualifiedCandidates.filter(
+      ({ riskDecision }) => (riskDecision.projectedRewardAmount ?? 0) >= minProjectedReturnDollars
+    );
     const topCandidate = qualifyingCandidates[0]?.candidate;
-    if (!topCandidate) {
+    if (scoreQualifiedCandidates.length === 0) {
       const topScore =
         typeof topRankedCandidate?.finalScore === 'number' ? topRankedCandidate.finalScore : undefined;
       return noAlertResult(
@@ -1975,6 +1986,28 @@ export class SignalMonitorService {
           topSetupType: topRankedCandidate?.setupType,
           topScore,
           minScoreThreshold,
+          minProjectedReturnDollars,
+          status: 'SCANNED'
+        }
+      );
+    }
+    if (!topCandidate) {
+      const topReturnCandidate = scoreQualifiedCandidates[0];
+      const topProjectedReturnDollars = topReturnCandidate?.riskDecision.projectedRewardAmount ?? 0;
+      const topScore =
+        typeof topReturnCandidate?.candidate.finalScore === 'number'
+          ? topReturnCandidate.candidate.finalScore
+          : undefined;
+      return noAlertResult(
+        'BELOW_PROJECTED_RETURN_THRESHOLD',
+        `${symbol} found ${scoreQualifiedCandidates.length} setup candidate${scoreQualifiedCandidates.length === 1 ? '' : 's'} that met the score rules, but the best TP1 projection was $${topProjectedReturnDollars.toFixed(0)} and your worthwhile-alert filter is $${minProjectedReturnDollars.toFixed(0)}+.`,
+        {
+          candidateCount: rankedCandidatesWithRisk.length,
+          topSetupType: topReturnCandidate?.candidate.setupType,
+          topScore,
+          minScoreThreshold,
+          topProjectedReturnDollars,
+          minProjectedReturnDollars,
           status: 'SCANNED'
         }
       );
@@ -1991,6 +2024,7 @@ export class SignalMonitorService {
           qualifyingCount: qualifyingCandidates.length,
           topCandidateId: topCandidate.id,
           topFinalScore: topCandidate.finalScore ?? null,
+          minProjectedReturnDollars,
           rankingModelId: activeModel.modelId,
           source: options.source
         }
@@ -2074,6 +2108,7 @@ export class SignalMonitorService {
         topSetupType: topCandidate.setupType,
         topScore: topCandidate.finalScore,
         minScoreThreshold,
+        minProjectedReturnDollars,
         status: 'SKIPPED'
       };
     }
@@ -2087,7 +2122,9 @@ export class SignalMonitorService {
       candidateCount: qualifyingCandidates.length,
       topSetupType: topCandidate.setupType,
       topScore: topCandidate.finalScore,
-      minScoreThreshold
+      minScoreThreshold,
+      topProjectedReturnDollars: qualifyingCandidates[0]?.riskDecision.projectedRewardAmount,
+      minProjectedReturnDollars
     };
   }
 

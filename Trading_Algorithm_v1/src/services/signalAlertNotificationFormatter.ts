@@ -1,5 +1,8 @@
 import type { SignalAlert } from '../domain/types.js';
 
+const formatUsd = (value: number): string =>
+  `$${Math.round(value).toLocaleString('en-US')}`;
+
 export const signalAlertSourceLabel = (alert: SignalAlert): string => {
   switch (alert.source) {
     case 'MANUAL_ENGINE':
@@ -71,4 +74,13 @@ export const buildFundedAccountSummary = (alert: SignalAlert): string | null => 
         ? 'Reduce'
         : 'Skip';
   return `${action} ${funded.recommendedRiskPct.toFixed(2)}% • ${funded.confidenceLabel.replace('_', '+')} confidence • ${funded.passPlan}`;
+};
+
+export const buildProjectedReturnSummary = (alert: SignalAlert): string | null => {
+  const projectedReward = alert.riskDecision.projectedRewardAmount;
+  if (typeof projectedReward !== 'number' || !Number.isFinite(projectedReward) || projectedReward <= 0) {
+    return null;
+  }
+
+  return `TP1 potential ${formatUsd(projectedReward)}`;
 };

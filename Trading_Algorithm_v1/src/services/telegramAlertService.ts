@@ -2,6 +2,7 @@ import type { SignalAlert } from '../domain/types.js';
 import type { TelegramNotificationMessage } from './operationalReminderService.js';
 import {
   buildFundedAccountSummary,
+  buildProjectedReturnSummary,
   buildTradeLevelLines,
   signalAlertSourceLabel
 } from './signalAlertNotificationFormatter.js';
@@ -75,6 +76,7 @@ export class TelegramAlertService {
       reminderLabel ? `${reminderLabel}: ${alert.title}` : `${alert.title}`,
       `${signalAlertSourceLabel(alert)} • ${alert.symbol} ${alert.side} • ${alert.setupType}`,
       ...buildTradeLevelLines(alert),
+      buildProjectedReturnSummary(alert),
       buildFundedAccountSummary(alert),
       typeof alert.candidate.finalScore === 'number' ? `Score: ${alert.candidate.finalScore.toFixed(1)}` : 'Score: --',
       reminderLabel ? 'Reminder: alert is still unacknowledged' : undefined,

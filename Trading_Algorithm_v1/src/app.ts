@@ -203,6 +203,7 @@ interface SignalMonitorConfigInput {
   escalationCheckIntervalMs: number;
   escalationDelaysMs: number[];
   minFinalScore: number;
+  minProjectedReturnDollars: number;
   accountSnapshot: {
     equity: number;
     dailyLossPct: number;
@@ -877,6 +878,7 @@ const resolveSignalMonitorConfig = (
       .filter((seconds) => seconds > 0)
       .map((seconds) => seconds * 1000),
     minFinalScore: parseFloatEnv('SIGNAL_MONITOR_MIN_FINAL_SCORE', 0, 0, 100),
+    minProjectedReturnDollars: parseFloatEnv('SIGNAL_MONITOR_MIN_PROJECTED_RETURN_DOLLARS', 700, 0),
     accountSnapshot: {
       equity: parseFloatEnv('SIGNAL_MONITOR_ACCOUNT_EQUITY', 100_000, 1),
       dailyLossPct: parseFloatEnv('SIGNAL_MONITOR_DAILY_LOSS_PCT', 0, 0),
@@ -2650,7 +2652,8 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
     sessionEndHour: resolvedSignalMonitorConfig.sessionEndHour,
     sessionEndMinute: resolvedSignalMonitorConfig.sessionEndMinute,
     nyRangeMinutes: resolvedSignalMonitorConfig.nyRangeMinutes,
-    minFinalScore: resolvedSignalMonitorConfig.minFinalScore
+    minFinalScore: resolvedSignalMonitorConfig.minFinalScore,
+    minProjectedReturnDollars: resolvedSignalMonitorConfig.minProjectedReturnDollars
   });
   syncRiskTradingWindowToSignalSettings();
   const paperTradingEnabled = options.paperTradingEnabled ?? resolvedPaperTradingConfig.enabled;
