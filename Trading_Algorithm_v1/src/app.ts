@@ -5583,6 +5583,17 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
       staleMinutes !== undefined
         ? `Market data is ${liveFeedStatus.toLowerCase()} and not confirmed live/non-delayed. Last bar is about ${staleMinutes} minute(s) old.`
         : `Market data is ${liveFeedStatus.toLowerCase()} and not confirmed live/non-delayed.`;
+    await notificationActivityStore.start();
+    const nowMs = Date.now();
+    const recentDuplicate = notificationActivityStore.list(80).find((entry) => {
+      const entryAtMs = Date.parse(entry.at);
+      return (
+        entry.tag === 'market-data-not-live'
+        && Number.isFinite(entryAtMs)
+        && nowMs - entryAtMs >= 0
+        && nowMs - entryAtMs < 60 * 60_000
+      );
+    });
 
     await appendIbkrReconnectHistory({
       kind: 'MARKET_DATA_NOT_LIVE',
@@ -5593,6 +5604,20 @@ export const buildApp = (options: BuildAppOptions = {}): AppContext => {
         ? `${bodyText} Last bar: ${body.latestBarTimestamp}.`
         : bodyText
     });
+
+    if (recentDuplicate) {
+      return reply.status(200).send({
+        ok: true,
+        suppressed: true,
+        reason: 'recent-market-data-not-live-alert',
+        source,
+        detectedAt,
+        liveFeedStatus,
+        latestBarTimestamp: body.latestBarTimestamp,
+        staleMinutes,
+        deliveries: []
+      });
+    }
 
     const deliveries = [
       await notifyTradeAssistChannels(

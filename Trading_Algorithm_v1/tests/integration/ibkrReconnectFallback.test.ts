@@ -126,6 +126,23 @@ describe('IBKR reconnect fallback notifications', () => {
     });
     expect(String(webPushMessages[0].body)).toContain('not confirmed live/non-delayed');
     expect(telegramMessages).toHaveLength(0);
+
+    const duplicate = await ctx.app.inject({
+      method: 'POST',
+      path: '/notifications/ibkr/market-data-not-live',
+      payload: {
+        source: 'market-data-watchdog',
+        detectedAt: '2026-06-30T14:30:00.000Z',
+        liveFeedStatus: 'STALE',
+        marketSessionState: 'OPEN',
+        latestBarTimestamp: '2026-06-30T13:47:00.000Z',
+        barAgeMs: 43 * 60_000
+      }
+    });
+
+    expect(duplicate.statusCode).toBe(200);
+    expect(duplicate.json().suppressed).toBe(true);
+    expect(webPushMessages).toHaveLength(1);
   });
 
   it('keeps Telegram quiet when the IBKR reminder reaches app subscribers', async () => {
