@@ -360,7 +360,7 @@ describe('evaluateRisk', () => {
     const decision = evaluateRisk(
       {
         ...baseInput(),
-        now: '2026-03-07T18:00:00.000Z'
+        now: '2026-03-07T20:00:00.000Z'
       },
       store.get()
     );

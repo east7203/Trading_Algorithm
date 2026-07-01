@@ -98,12 +98,12 @@ const usage = (): string =>
     '',
     'Optional:',
     '  --symbol NQ',
-    '  --timezone America/New_York',
+    '  --timezone America/Chicago',
     '  --lookback1m 240',
     '  --lookahead1m 120',
     '  --step 5',
-    '  --sessionStartHour 8 --sessionStartMinute 30',
-    '  --sessionEndHour 11 --sessionEndMinute 30',
+    '  --sessionStartHour 7 --sessionStartMinute 0',
+    '  --sessionEndHour 13 --sessionEndMinute 0',
     '  --nyRangeMinutes 60',
     '  --validationPct 20'
   ].join('\n');

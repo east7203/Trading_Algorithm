@@ -14,9 +14,9 @@ const VALID_SETUPS: SetupType[] = [
 ];
 
 export const defaultSignalMonitorSettings = (): SignalMonitorSettings => ({
-  timezone: 'America/New_York',
-  sessionStartHour: 8,
-  sessionStartMinute: 30,
+  timezone: 'America/Chicago',
+  sessionStartHour: 7,
+  sessionStartMinute: 0,
   sessionEndHour: 13,
   sessionEndMinute: 0,
   nyRangeMinutes: 60,

@@ -12,11 +12,11 @@ export const defaultRiskConfig = (): RiskConfig => ({
   killSwitchEnabled: false,
   tradingWindow: {
     enabled: true,
-    timezone: 'America/New_York',
-    startHour: 8,
-    startMinute: 30,
-    endHour: 11,
-    endMinute: 30
+    timezone: 'America/Chicago',
+    startHour: 7,
+    startMinute: 0,
+    endHour: 13,
+    endMinute: 0
   },
   policyConfirmation: {
     firmUsageApproved: false,

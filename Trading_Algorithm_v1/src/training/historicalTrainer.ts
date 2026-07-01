@@ -55,11 +55,11 @@ export interface TrainedModelResult {
 }
 
 const DEFAULT_OPTIONS: Required<TrainingBuildOptions> = {
-  timezone: 'America/New_York',
-  sessionStartHour: 8,
-  sessionStartMinute: 30,
-  sessionEndHour: 11,
-  sessionEndMinute: 30,
+  timezone: 'America/Chicago',
+  sessionStartHour: 7,
+  sessionStartMinute: 0,
+  sessionEndHour: 13,
+  sessionEndMinute: 0,
   nyRangeMinutes: 60,
   lookbackBars1m: 240,
   lookaheadBars1m: 120,

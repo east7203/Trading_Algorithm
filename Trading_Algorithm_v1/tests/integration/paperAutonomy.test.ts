@@ -160,13 +160,13 @@ describe('paper autonomy integration', () => {
         archivePath: undefined,
         bootstrapCsvDir: undefined,
         minTrendConfidence: 0.55,
-        maxHoldMinutes: 60,
+        maxHoldMinutes: 20,
         maxLiveDelayMinutes: 525600
       }
     });
     contexts.push(ctx);
 
-    const initialBars = buildAutonomyTrendBars('NQ', 420);
+    const initialBars = buildAutonomyTrendBars('NQ', 246);
     const openResponse = await ctx.app.inject({
       method: 'POST',
       path: '/training/ingest-bars',
@@ -175,15 +175,35 @@ describe('paper autonomy integration', () => {
     expect(openResponse.statusCode).toBe(200);
     expect(openResponse.json().paperAutonomyIngest.ideasOpened).toBeGreaterThan(0);
 
+    const openPaperStatus = await ctx.app.inject({
+      method: 'GET',
+      path: '/paper-account/status'
+    });
+    expect(openPaperStatus.statusCode).toBe(200);
+    const pendingTrade = openPaperStatus.json().paperAccount.recentOpenTrades[0];
+    expect(pendingTrade).toBeTruthy();
+
     const lastTimestamp = Date.parse(initialBars.at(-1)?.timestamp ?? '2026-01-06T18:29:00.000Z');
-    const exitBars = Array.from({ length: 30 }, (_, index) => {
-      const close = 20070 + index * 0.9;
+    const entry = Number(pendingTrade.entry);
+    const target = Number(pendingTrade.takeProfit);
+    const direction = pendingTrade.side === 'LONG' ? 1 : -1;
+    const targetDistance = Math.max(Math.abs(target - entry), 1);
+    const exitBars = Array.from({ length: 10 }, (_, index) => {
+      const progress = Math.min(1.2, 0.2 + index * 0.16);
+      const close = entry + direction * targetDistance * progress;
+      const high = pendingTrade.side === 'LONG'
+        ? Math.max(entry, close) + (index >= 4 ? targetDistance * 0.2 : 0.5)
+        : Math.max(entry, close) + (index === 0 ? 0.25 : 0.5);
+      const low = pendingTrade.side === 'LONG'
+        ? Math.min(entry, close) - (index === 0 ? 0.25 : 0.5)
+        : Math.min(entry, close) - (index >= 4 ? targetDistance * 0.2 : 0.5);
+
       return {
         symbol: 'NQ' as const,
         timestamp: new Date(lastTimestamp + (index + 1) * 60_000).toISOString(),
-        open: Number((close - 0.12).toFixed(2)),
-        high: Number((close + 1.0).toFixed(2)),
-        low: Number((close - 0.18).toFixed(2)),
+        open: Number((entry + direction * targetDistance * Math.max(0, progress - 0.1)).toFixed(2)),
+        high: Number(high.toFixed(2)),
+        low: Number(low.toFixed(2)),
         close: Number(close.toFixed(2)),
         volume: 600 + index
       };
@@ -403,7 +423,7 @@ describe('paper autonomy integration', () => {
     expect(autonomyStatus?.session.endMinute).toBe(5);
   });
 
-  it('inherits the default 8:30 to 1:00 desk window when no custom session is provided', async () => {
+  it('inherits the default 7:00 to 1:00 Central desk window when no custom session is provided', async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-autonomy-default-window-'));
     tempDirs.push(tempDir);
 
@@ -432,8 +452,8 @@ describe('paper autonomy integration', () => {
     await ctx.paperAutonomyService?.start();
 
     const autonomyStatus = ctx.paperAutonomyService?.status();
-    expect(autonomyStatus?.session.startHour).toBe(8);
-    expect(autonomyStatus?.session.startMinute).toBe(30);
+    expect(autonomyStatus?.session.startHour).toBe(7);
+    expect(autonomyStatus?.session.startMinute).toBe(0);
     expect(autonomyStatus?.session.endHour).toBe(13);
     expect(autonomyStatus?.session.endMinute).toBe(0);
   });
