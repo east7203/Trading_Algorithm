@@ -7,7 +7,7 @@ REMOTE_HOST="${DEPLOY_HOST:-root@134.209.125.140}"
 REMOTE_PATH="${DEPLOY_PATH:-/opt/trading-algorithm}"
 SSH_KEY="${DEPLOY_KEY:-$HOME/.ssh/trading_vps}"
 SSH_PORT="${DEPLOY_PORT:-22}"
-PM2_APPS="${DEPLOY_PM2_APPS:-trading-api ibkr-bridge yahoo-bridge ibkr-fallback-watchdog}"
+PM2_APPS="${DEPLOY_PM2_APPS:-trading-api ibkr-bridge tradovate-bridge yahoo-bridge ibkr-fallback-watchdog}"
 
 if git -C "${REPO_ROOT}" rev-parse --verify HEAD^ >/dev/null 2>&1; then
   CHANGED_FILES="$(git -C "${REPO_ROOT}" diff --name-only HEAD^ HEAD)"
@@ -57,6 +57,7 @@ ssh -i "${SSH_KEY}" -p "${SSH_PORT}" "${REMOTE_HOST}" "
     scripts/ibkr-recovery-vps.sh \
     scripts/ibkr-resend-push-vps.sh \
     scripts/refresh-ibkr-history-vps.sh \
+    scripts/launch-tradovate-bridge-vps.sh \
     scripts/trigger-ibkr-login-vps.sh
   if [ ! -x .venv-ibkr/bin/python ]; then
     python3 -m venv .venv-ibkr
@@ -160,6 +161,8 @@ PY
         else
           pm2 restart \"\${app}\" --update-env
         fi
+      elif [ \"\${app}\" = \"tradovate-bridge\" ] && [ -f .env.tradovate.bridge ]; then
+        pm2 start scripts/launch-tradovate-bridge-vps.sh --name tradovate-bridge --update-env
       fi
     done
   fi

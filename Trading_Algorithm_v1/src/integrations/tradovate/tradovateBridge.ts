@@ -98,6 +98,13 @@ const defaultSymbolAliases: Record<string, SymbolCode> = {
   MYM: 'MYM'
 };
 
+const QUARTERLY_MONTH_CODES = [
+  { month: 2, code: 'H' },
+  { month: 5, code: 'M' },
+  { month: 8, code: 'U' },
+  { month: 11, code: 'Z' }
+] as const;
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -113,6 +120,38 @@ const normalizeBarTimestamp = (raw: unknown): string | null => {
     return null;
   }
   return new Date(parsed).toISOString();
+};
+
+const thirdFridayUtc = (year: number, month: number): Date => {
+  const first = new Date(Date.UTC(year, month, 1));
+  const firstDay = first.getUTCDay();
+  const firstFriday = 1 + ((5 - firstDay + 7) % 7);
+  return new Date(Date.UTC(year, month, firstFriday + 14));
+};
+
+const frontQuarterlyContractCode = (asOf: Date): string => {
+  const year = asOf.getUTCFullYear();
+  const rolloverCandidates = QUARTERLY_MONTH_CODES.map(({ month, code }) => {
+    const expiry = thirdFridayUtc(year, month);
+    const rollover = new Date(expiry.getTime() - 8 * 24 * 60 * 60 * 1000);
+    return { month, code, rollover };
+  });
+  const active = rolloverCandidates.find(({ rollover }) => asOf.getTime() < rollover.getTime())
+    ?? { ...QUARTERLY_MONTH_CODES[0], rollover: thirdFridayUtc(year + 1, QUARTERLY_MONTH_CODES[0].month) };
+  const finalRollover = rolloverCandidates[rolloverCandidates.length - 1].rollover;
+  const contractYear =
+    active.month === QUARTERLY_MONTH_CODES[0].month && asOf.getTime() >= finalRollover.getTime()
+      ? year + 1
+      : year;
+  return `${active.code}${contractYear % 10}`;
+};
+
+export const resolveTradovateContractSymbol = (symbol: string, asOf = new Date()): string => {
+  const normalized = symbol.trim().toUpperCase();
+  if (normalized === 'NQ' || normalized === 'ES' || normalized === 'MNQ' || normalized === 'MES') {
+    return `${normalized}${frontQuarterlyContractCode(asOf)}`;
+  }
+  return normalized;
 };
 
 const resolveSymbolFromToken = (raw: string): SymbolCode | null => {
@@ -758,6 +797,6 @@ export const parseSymbolsEnv = (raw: string | undefined): string[] => {
   }
   return raw
     .split(',')
-    .map((value) => value.trim())
+    .map((value) => resolveTradovateContractSymbol(value))
     .filter((value) => value.length > 0);
 };

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   extractFinalizedOneMinuteBars,
   mapTradovateSymbol,
-  parseSocketPayloads
+  parseSocketPayloads,
+  parseSymbolsEnv,
+  resolveTradovateContractSymbol
 } from '../../src/integrations/tradovate/tradovateBridge.js';
 
 describe('tradovate bridge helpers', () => {
@@ -13,6 +15,13 @@ describe('tradovate bridge helpers', () => {
     expect(mapTradovateSymbol('MNQU6')).toBe('MNQ');
     expect(mapTradovateSymbol('MYMU6')).toBe('MYM');
     expect(mapTradovateSymbol('custom-symbol', { 'CUSTOM-SYMBOL': 'NQ' })).toBe('NQ');
+  });
+
+  it('resolves root symbols to current quarterly Tradovate contracts', () => {
+    expect(resolveTradovateContractSymbol('NQ', new Date('2026-07-01T14:00:00.000Z'))).toBe('NQU6');
+    expect(resolveTradovateContractSymbol('ES', new Date('2026-07-01T14:00:00.000Z'))).toBe('ESU6');
+    expect(resolveTradovateContractSymbol('NQM6', new Date('2026-07-01T14:00:00.000Z'))).toBe('NQM6');
+    expect(parseSymbolsEnv('NQ,ES')).toHaveLength(2);
   });
 
   it('parses socket payload arrays in object and string forms', () => {
