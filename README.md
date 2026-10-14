@@ -1,153 +1,59 @@
-# Trading Algorithm
+# Futures Analytics Platform
 
-Time-series learning and decision-support platform for `NQ` and `ES` that combines rule-based setup detection, a unified trade-learning database, self-learning score adjustment, continuous ranking-model retraining, broker-session recovery, and operator-facing mobile alerts.
+A TypeScript and Node.js portfolio project for processing live futures data, evaluating trade setups, and presenting alerts and operational status to a human operator. The engineering focus is API integration, application reliability, automated testing, and observable backend workflows.
 
-This is a portfolio project built to solve a practical problem: keep a discretionary futures workflow disciplined, observable, and repeatable without turning it into a black-box auto trader.
+## At a glance
 
-## What This Project Does
+- Backend: TypeScript, Node.js, Fastify, and Zod validation.
+- Data flow: market-data ingestion, setup detection, risk checks, and ranking.
+- Reliability: broker reconnect handling, persisted recovery state, data-quality checks, and alerts.
+- Interface: a mobile web dashboard with session summaries and alert review.
+- Delivery: Vitest tests, GitHub Actions, and Linux/VPS deployment configuration.
+- Persistence: local JSON and NDJSON files; this application does not require PostgreSQL.
 
-- detects multiple intraday futures setups from live `NQ` / `ES` market data
-- ranks setups with a continuously retrained model instead of static priority weights
-- stores each trade idea as a labeled learning record with outcome, reasoning, research context, and thesis metadata
-- builds a self-learning profile that adjusts future signal scoring from resolved trade outcomes
-- blocks or penalizes setups around macro events and risk-policy violations
-- delivers alerts to mobile/web/Telegram with review and acknowledgment workflows
-- survives broker disconnects with IBKR recovery logic, fallback notifications, and state persistence
-- keeps an auditable event trail for signals, labels, training, and recovery operations
-
-## Why It Is Interesting
-
-This is not a toy charting script. It combines several systems that usually live separately:
-
-- live market-data ingestion
-- multi-timeframe setup detection
-- trade-outcome labeling and storage
-- self-learning profile generation
-- model training and promotion
-- economic-calendar context
-- mobile UI and push delivery
-- broker-session recovery on a VPS
-
-The interesting engineering work is in the glue: keeping those systems stateful, testable, and understandable under real operational constraints.
-
-## Architecture
-
-A deeper version is in [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+## How it works
 
 ```mermaid
 flowchart LR
-  A["IBKR / fallback data bridges"] --> B["1-minute bar archive"]
-  B --> C["Signal monitor"]
-  C --> D["Setup detectors\n(5m alerts, 15m/1H context)"]
-  D --> E["Risk + macro/news filter"]
-  E --> F["Ranking model"]
-  F --> G["Alerts\nMobile / Telegram / Web push"]
-  G --> H["Trade-learning database"]
-  H --> I["Self-learning profile"]
-  H --> J["Continuous training service"]
-  I --> F
-  J --> F
-  K["IBKR recovery services"] --> G
-  K --> A
-  L["Economic calendar provider"] --> E
+  A[Market data APIs] --> B[Ingestion and validation]
+  B --> C[Setup detection]
+  C --> D[Risk checks and ranking]
+  D --> E[Dashboard and alerts]
+  E --> F[Trade outcome records]
+  F --> G[Ranking model retraining]
+  G --> D
+  H[Broker recovery services] --> E
 ```
 
-## Core Engineering Highlights
+The application combines deterministic risk rules with a learned ranking layer. Alerts support operator review; they are not a promise of investment returns. See [architecture and tradeoffs](docs/ARCHITECTURE.md) for more detail.
 
-### 1. Multi-setup futures engine
-The signal engine does not depend on a single pattern. It can evaluate multiple setups in parallel, including a Werlein-style liquidity / SMT / higher-timeframe context setup added as a separate detector rather than hard-replacing the base engine.
+## Code worth reviewing
 
-### 2. 5-minute alerting with higher-timeframe context
-Alerts are generated on closed `5m` bars, while the setup logic can still use `15m` and `1H` structure for context. That keeps entries timely without throwing away higher-timeframe signal quality.
+| Engineering area | Implementation | Test example |
+| --- | --- | --- |
+| HTTP application | [Fastify application](Trading_Algorithm_v1/src/app.ts) | [Execution lifecycle](Trading_Algorithm_v1/tests/integration/executionLifecycle.test.ts) |
+| Risk controls | [Risk engine](Trading_Algorithm_v1/src/services/riskEngine.ts) | [Guardrail acceptance tests](Trading_Algorithm_v1/tests/acceptance/guardrails.test.ts) |
+| Ranking | [Ranker](Trading_Algorithm_v1/src/services/ranker.ts) | [Ranker unit tests](Trading_Algorithm_v1/tests/unit/ranker.test.ts) |
+| Model retraining | [Continuous training service](Trading_Algorithm_v1/src/training/continuousTrainingService.ts) | [Training integration tests](Trading_Algorithm_v1/tests/integration/continuousTraining.test.ts) |
+| Recovery persistence | [Reconnect state store](Trading_Algorithm_v1/src/stores/ibkrReconnectStateStore.ts) | [Recovery persistence tests](Trading_Algorithm_v1/tests/integration/ibkrReconnectStatePersistence.test.ts) |
 
-### 3. Unified trade-learning database
-Every trade idea can be stored with setup metadata, research context, autonomy thesis, review notes, and realized outcome. That turns the project from a signal app into a labeled learning system with a real feedback dataset.
+The [mobile dashboard](Trading_Algorithm_v1/public/mobile/index.html) shows the operator-facing side of the system.
 
-### 4. Continuous retraining plus fast self-learning
-The system adapts in two layers:
+## Local setup
 
-- a fast self-learning profile that adjusts score and risk from recent resolved outcomes
-- a slower retraining loop that rebuilds the ranking model from the trade-learning database
+Install Node.js compatible with the project dependencies, then run:
 
-That separation lets the desk adapt quickly without pretending every change needs a full model rebuild.
-
-### 5. Macro-aware filtering
-The signal engine integrates a live economic calendar layer and scores/blocks setups around relevant macro events instead of pretending price action exists in isolation.
-
-### 6. Broker recovery as an application feature
-IBKR disconnects are treated as a first-class operational problem. The system persists reconnect state, sends recovery-progress notifications, and supports phone-assisted recovery rather than leaving broker outages invisible.
-
-### 7. Operator-facing mobile workflow
-The mobile UI is not a generic dashboard. It is designed around the actual operational loop: signal review, setup filtering, recovery status, session summary, and training visibility.
-
-## Stack
-
-- **Backend:** TypeScript, Fastify, Node.js
-- **Validation:** Zod
-- **Training:** custom ranking-model pipeline over historical + live examples, plus a self-learning profile built from resolved trade records
-- **Market data:** IBKR TWS API / IB Gateway, with fallback bridge support
-- **Calendar/news context:** Trading Economics primary calendar when `TRADING_ECONOMICS_API_KEY` is installed, with Forex Factory fallback/red-folder coverage
-- **Notifications:** Telegram, web push, native push hooks
-- **Mobile UI:** hosted PWA + Capacitor iOS wrapper
-- **Desktop:** Electron shell / Mac notifier utilities
-- **Testing:** Vitest unit, integration, and acceptance coverage
-- **Deployment:** GitHub Actions -> VPS workflow
-
-## Repository Layout
-
-- [Trading_Algorithm_v1/](./Trading_Algorithm_v1): active application codebase
-- [Trading_Algorithm_v1/src](./Trading_Algorithm_v1/src): API, signal engine, training, integrations
-- [Trading_Algorithm_v1/mobile](./Trading_Algorithm_v1/mobile): mobile PWA source
-- [Trading_Algorithm_v1/desktop](./Trading_Algorithm_v1/desktop): desktop notifier and shell
-- [Trading_Algorithm_v1/scripts](./Trading_Algorithm_v1/scripts): VPS deployment, IBKR, and ops scripts
-- [Trading_Algorithm_v1/tests](./Trading_Algorithm_v1/tests): unit, integration, and acceptance tests
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md): system overview and design tradeoffs
-
-## Fast Evaluation
-
-From the active app directory:
-
-```bash
+```sh
 cd Trading_Algorithm_v1
-npm install
+npm ci
 npm run build
 npm test
-npm run dev
 ```
 
-Key employer-facing signals in the repo:
+Review the application configuration and provider credentials before starting development services with `npm run dev`. External market-data, broker, and notification integrations require separate configuration. Keep credentials outside source control.
 
-- meaningful test coverage instead of hand-wavy claims
-- explicit labeled-outcome learning loop instead of vague “AI” claims
-- measurable feature buckets by setup, symbol, research direction, and autonomy thesis
-- explicit risk controls and manual-execution boundaries
-- real deployment workflow and VPS operating model
-- evidence of iterative operational engineering, not just feature accumulation
+## Scope and limitations
 
-## Product Boundaries
+This is an independent portfolio project rather than a commercial trading product. Model quality depends on the available data and evaluation method; successful software tests do not establish trading profitability. File-backed persistence suits the current deployment design but has concurrency and scaling limits that a shared database would address.
 
-The system is intentionally **manual-execution first**.
-
-It helps detect, rank, filter, and review setups. It does not pretend that automated order placement is the only interesting problem in trading software. That constraint is deliberate and reflected in the code.
-
-## Current State
-
-- active futures symbols: `NQ`, `ES`
-- alert timeframe: `5m`
-- higher-timeframe context: `15m`, `1H`, `4H`, `D1`, `W1`
-- live broker/data path: IBKR on VPS
-- live economic calendar path: Trading Economics primary when keyed + Forex Factory fallback
-- continuous training: enabled on VPS
-- self-learning profile: enabled on VPS
-
-## Notes For Reviewers
-
-- The active app lives in `Trading_Algorithm_v1/` because this repository evolved through several iterations rather than being curated from day one.
-- The root README is the portfolio overview; the nested README is the runtime/operator documentation.
-- No secrets are stored in the repository; only example env files are tracked.
-
-## Runtime Documentation
-
-For the full operator/deployment README, see:
-
-- [Trading_Algorithm_v1/README.md](./Trading_Algorithm_v1/README.md)
+Changes to the main branch can trigger the configured VPS deployment workflow. Review deployment settings before using the workflow in another environment.
